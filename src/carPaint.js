@@ -37,7 +37,7 @@ export function makeCarMaterials(envMap) {
   });
 
   /** Plain body colour, no per-body detail maps (trucks, spoilers, mirrors). */
-  MAT.make = (hex, metal = 0.55, rough = 0.36) =>
+  MAT.make = (hex, metal = 0.42, rough = 0.34) =>
     new THREE.MeshPhysicalMaterial(paintBase(hex, metal, rough));
 
   /**
@@ -46,7 +46,7 @@ export function makeCarMaterials(envMap) {
    * scales it, and the map is ~0.42 over panels and ~1.0 in the shut lines.
    */
   MAT.body = (hex, detail) => {
-    const m = new THREE.MeshPhysicalMaterial(paintBase(hex, 0.55, 0.80));
+    const m = new THREE.MeshPhysicalMaterial(paintBase(hex, 0.42, 0.78));
     if (detail) {
       m.map = detail.albedo;
       m.roughnessMap = detail.rough;
@@ -83,7 +83,7 @@ export function makeCarMaterials(envMap) {
     color: 0xe2e6ea, metalness: 1.0, roughness: 0.075, envMap, envMapIntensity: 1.7,
   });
   MAT.trim = new THREE.MeshStandardMaterial({   // satin aluminium / gloss black trim
-    color: 0x2b3037, metalness: 0.85, roughness: 0.22, envMap, envMapIntensity: 1.2,
+    color: 0x2b3037, metalness: 0.82, roughness: 0.30, envMap, envMapIntensity: 1.0,
   });
 
   const tyreN = tyreNormal();
@@ -120,10 +120,15 @@ export function makeCarMaterials(envMap) {
      emissiveIntensity to 16 for a Lichthupe — so it stays a single material
      with a clear lens look. `drl` is the daytime running light, which is
      always lit and is most of what makes a car read as a car at 400 m. */
+  /* The lens is dark glass, not a white blob. vehicles.js drives this
+     material's emissiveIntensity to 0.4 with the lamps off, 2.2 with them on
+     and 16 for a Lichthupe, so the *emissive colour* has to be muted enough
+     that 0.4 reads as "off" in daylight while 16 is still a flash you can see
+     from four hundred metres. In daylight the DRL does the talking. */
   MAT.headlight = new THREE.MeshPhysicalMaterial({
-    color: 0x8fa2b6, emissive: 0xfff1d2, emissiveIntensity: 0.4,
-    metalness: 0.15, roughness: 0.07,
-    envMap, envMapIntensity: 1.6, clearcoat: 1.0, clearcoatRoughness: 0.03,
+    color: 0x39424c, emissive: 0xada18c, emissiveIntensity: 0.4,
+    metalness: 0.10, roughness: 0.05,
+    envMap, envMapIntensity: 1.5, clearcoat: 1.0, clearcoatRoughness: 0.03,
   });
   MAT.drl = new THREE.MeshStandardMaterial({
     color: 0x20262e, emissive: 0xe9f4ff, emissiveIntensity: 2.4,

@@ -171,25 +171,31 @@ function basis(dir) {
   const u = new THREE.Vector3().crossVectors(f, r).normalize();
   return { f, r, u };
 }
+/* Panel brightness is the whole balancing act. A softbox has to be bright
+   enough to blow out where the reflection is narrow — a grazing shoulder line,
+   the lip of a rim — and dim enough that a broad flat surface like a bonnet
+   does not go to paper white. Big and dim beats small and fierce, so these are
+   narrower and far weaker than the first attempt, which turned the roof into a
+   light source. */
 const PANELS = [
-  // key: high front-left three-quarter, big and warm
-  { b: basis(new THREE.Vector3(-0.62, 0.58, 0.53)), ha: 0.62, hb: 0.34, i: [17, 16.2, 14.6], soft: 0.42 },
+  // key: high front-left three-quarter, warm
+  { b: basis(new THREE.Vector3(-0.62, 0.58, 0.53)), ha: 0.46, hb: 0.19, i: [5.6, 5.3, 4.8], soft: 0.55 },
   // overhead strip running the length of the car: the shoulder-line highlight
-  { b: basis(new THREE.Vector3(0.04, 1.0, 0.06)), ha: 1.15, hb: 0.085, i: [21, 21, 21.5], soft: 0.30 },
+  { b: basis(new THREE.Vector3(0.04, 1.0, 0.06)), ha: 1.10, hb: 0.068, i: [7.6, 7.6, 7.9], soft: 0.40 },
   // cool rim from behind the right rear quarter, separates the car from black
-  { b: basis(new THREE.Vector3(0.74, 0.40, -0.55)), ha: 0.44, hb: 0.26, i: [7.0, 8.2, 11.0], soft: 0.45 },
+  { b: basis(new THREE.Vector3(0.74, 0.40, -0.55)), ha: 0.34, hb: 0.18, i: [2.4, 2.8, 3.7], soft: 0.55 },
   // low broad fill in front so the nose is not a silhouette
-  { b: basis(new THREE.Vector3(0.10, 0.16, 0.98)), ha: 0.95, hb: 0.42, i: [1.5, 1.55, 1.7], soft: 0.75 },
+  { b: basis(new THREE.Vector3(0.10, 0.16, 0.98)), ha: 0.95, hb: 0.42, i: [0.85, 0.88, 0.97], soft: 0.75 },
 ];
 function studioShade(x, y, z, out) {
   // surround: near-black, lifting very slightly towards the top
-  let r = 0.020 + 0.030 * Math.max(0, y);
-  let g = 0.022 + 0.032 * Math.max(0, y);
-  let b = 0.026 + 0.038 * Math.max(0, y);
+  let r = 0.034 + 0.042 * Math.max(0, y);
+  let g = 0.036 + 0.045 * Math.max(0, y);
+  let b = 0.042 + 0.052 * Math.max(0, y);
   if (y < 0) {
     // sweep floor: mid grey close to the horizon, falling away underneath
     const d = Math.pow(-y, 0.55);
-    const f = 0.135 * (1 - d) + 0.020 * d;
+    const f = 0.105 * (1 - d) + 0.018 * d;
     r += f * 1.00; g += f * 1.02; b += f * 1.06;
   }
   for (const p of PANELS) {

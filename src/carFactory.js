@@ -591,6 +591,12 @@ function frontEnd(spec, dims, bucket, tier) {
     bucket.dark.push(box(w * 1.16, h * 1.42, 0.10, x, y, zf - 0.085, 0, ry));
     if (fine) bucket.chrome.push(box(w * 0.99, h * 1.00, 0.045, x, y, zf - 0.055, 0, ry));
     bucket.light.push(box(w, h, 0.05, x, y, zf - 0.028, 0, ry));
+    // two small projector barrels inside, so the unit has something in it
+    if (fine) {
+      for (const k of [-0.24, 0.24]) {
+        bucket.chrome.push(cyl(h * 0.30, h * 0.30, 0.05, 10, x + w * k, y, zf - 0.052, 'x'));
+      }
+    }
   };
   /** Horizontal bars in a grille aperture: an open grille, not a black hole. */
   const bars = (w, h, x, yc, z, n) => {
@@ -653,10 +659,17 @@ function frontEnd(spec, dims, bucket, tier) {
         bowl.scale(1, 0.94, 0.62); bowl.rotateX(0.34);
         bowl.translate(cx, y, zf - 0.315);
         bucket.dark.push(bowl);
-        const l = new THREE.SphereGeometry(H * 0.081, fine ? 18 : 12, 10);
+        const l = new THREE.SphereGeometry(H * 0.076, fine ? 18 : 12, 10);
         l.scale(1, 0.92, 0.55); l.rotateX(0.34);
-        l.translate(cx, y, zf - 0.285);
+        l.translate(cx, y, zf - 0.288);
         bucket.light.push(l);
+        // the bright bit is a small element inside the dark cover glass
+        if (fine) {
+          const inner = new THREE.SphereGeometry(H * 0.034, 12, 8);
+          inner.scale(1, 1, 0.6); inner.rotateX(0.34);
+          inner.translate(cx, y + H * 0.006, zf - 0.300);
+          bucket.drl.push(inner);
+        }
         const ring = new THREE.TorusGeometry(H * 0.088, H * 0.011, 5, fine ? 20 : 12);
         ring.rotateX(0.34); ring.translate(cx, y, zf - 0.282);
         bucket.drl.push(ring);
@@ -687,7 +700,7 @@ function frontEnd(spec, dims, bucket, tier) {
   }
 }
 
-function rearEnd(spec, dims, bucket, tier) {
+function rearEnd(spec, dims, bucket, tier, stations) {
   const hw = dims.width / 2, H = dims.height, L = dims.length, tail = -L / 2;
   const fine = tier !== 'lo';
   const zr = tail - 0.035;
@@ -736,16 +749,30 @@ function rearEnd(spec, dims, bucket, tier) {
     bucket.chrome.push(cyl(0.062, 0.058, 0.20, fine ? 14 : 8, x, H * 0.155, tail + 0.04, 'x'));
     bucket.dark.push(cyl(0.045, 0.045, 0.13, fine ? 12 : 8, x, H * 0.155, tail + 0.10, 'x'));
   }
-  // wing / spoiler
+  /* Wing / spoiler. Heights come off the *actual* loft rather than a fraction
+     of the car's height: guessing left the ducktail floating a hand's width
+     above the engine lid, which is the first thing the eye picks up. */
+  const deckAt = (z) => {
+    let best = stations[0], bd = 1e9;
+    for (const st of stations) {
+      const d = Math.abs(st.z - z);
+      if (d < bd) { bd = d; best = st; }
+    }
+    return Math.max(best.yBelt, best.yRoof) + best.crown;
+  };
   if (spec.wing === 'ducktail') {
-    bucket.paint.push(box(hw * 1.44, H * 0.040, 0.26, 0, H * 0.918, tail + 0.30, -0.19));
-    bucket.paint.push(box(hw * 1.40, H * 0.085, 0.09, 0, H * 0.872, tail + 0.19));
-    if (fine) bucket.trim.push(box(hw * 1.42, H * 0.014, 0.05, 0, H * 0.940, tail + 0.40, -0.19));
+    const zA = tail + 0.30, zB = tail + 0.19;
+    const yA = deckAt(zA), yB = deckAt(zB);
+    bucket.paint.push(box(hw * 1.44, H * 0.038, 0.26, 0, yA + H * 0.048, zA, -0.19));
+    bucket.paint.push(box(hw * 1.40, H * 0.075, 0.10, 0, yB + H * 0.012, zB));
+    if (fine) bucket.trim.push(box(hw * 1.42, H * 0.014, 0.05, 0, yA + H * 0.070, zA + 0.10, -0.19));
   } else if (spec.wing === 'roof') {
-    bucket.paint.push(box(hw * 1.50, H * 0.040, 0.30, 0, H * 0.995, tail + 0.28, -0.14));
-    if (fine) bucket.trim.push(box(hw * 1.46, H * 0.016, 0.06, 0, H * 1.012, tail + 0.16, -0.14));
+    const zA = tail + 0.26;
+    bucket.paint.push(box(hw * 1.50, H * 0.040, 0.30, 0, deckAt(zA) + H * 0.030, zA, -0.14));
+    if (fine) bucket.trim.push(box(hw * 1.46, H * 0.016, 0.06, 0, deckAt(zA) + H * 0.048, zA - 0.12, -0.14));
   } else if (spec.wing === 'lip') {
-    bucket.paint.push(box(hw * 1.58, H * 0.032, 0.14, 0, H * 0.735, tail + 0.10, -0.24));
+    const zA = tail + 0.11;
+    bucket.paint.push(box(hw * 1.58, H * 0.030, 0.15, 0, deckAt(zA) + H * 0.016, zA, -0.24));
   }
 }
 
@@ -1097,7 +1124,7 @@ function bakeCar(id) {
   bucket.paint.push(paint);
   if (glass) bucket.glass.push(glass);
   frontEnd(spec, dims, bucket, tier);
-  rearEnd(spec, dims, bucket, tier);
+  rearEnd(spec, dims, bucket, tier, stations);
   sideDetail(spec, dims, bucket, stations, tier, spec.arch);
 
   if (tier === 'lo') {

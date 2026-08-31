@@ -60,8 +60,10 @@ void main() {
   gl_FragColor = vec4(s, 1.0);
 }`;
 
+/* three already injects colorspace_pars_fragment into every fragment shader's
+   prologue, so only the assignment chunk goes in here — including the pars a
+   second time is a redefinition and the shader will not compile. */
 const COMP_FRAG = /* glsl */`
-#include <colorspace_pars_fragment>
 uniform sampler2D tScene;
 uniform sampler2D tBloom;
 uniform float strength;
@@ -104,7 +106,7 @@ export function createPostFX(renderer, w, h, opts = {}) {
       bright: new THREE.ShaderMaterial({
         uniforms: {
           tSrc: { value: null },
-          threshold: { value: opts.threshold ?? 0.68 },
+          threshold: { value: opts.threshold ?? 0.80 },
           knee: { value: 0.30 },
         },
         vertexShader: QUAD_VERT, fragmentShader: BRIGHT_FRAG,
@@ -118,7 +120,7 @@ export function createPostFX(renderer, w, h, opts = {}) {
       comp: new THREE.ShaderMaterial({
         uniforms: {
           tScene: { value: null }, tBloom: { value: null },
-          strength: { value: opts.strength ?? 0.62 },
+          strength: { value: opts.strength ?? 0.38 },
         },
         vertexShader: QUAD_VERT, fragmentShader: COMP_FRAG,
         depthTest: false, depthWrite: false,
