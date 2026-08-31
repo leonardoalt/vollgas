@@ -187,7 +187,25 @@ The estate the fictional-marque catalogue could not supply.
   encoding mojibake in a recipe works until somebody opens the file. Then
   `dev/optimise-model.sh`, 677 kB → 149 kB. At load time the modeller's rear
   plate quad is dropped and the wheels are measured but not drawn.
-* Generic by title and by design; no marque, no badges.
+* No badges, no marque in the title, no logo modelled anywhere.
+* **Trade-dress caveat — read this.** The title is generic and the model is
+  clean, but the author's own Sketchfab description says:
+  > "Un-copyrighted VW passat 2010 with basic interior"
+
+  The body is a de-badged Volkswagen Passat B6 Variant. The licence is not in
+  question; the *shape* is recognisable, in the same way the 930 is. This is a
+  deliberate, flagged choice rather than an oversight, and the alternatives were
+  worse:
+
+  | option | trade dress | tintable | detail |
+  |---|---|---|---|
+  | Anserkon estate (**shipped**) | de-badged Passat B6 | yes | 18.5 k tris |
+  | Comrade1280 pack `Wagon Body` | invented, clean | **no** — colour is baked into the texture, so every estate on the road would be the same shade | 4.6 k tris |
+  | Zhabotinsky `Fairheaven SW '84` | invented, clean | yes | 23.6 k tris, but 1980s American, and 15% too long when scaled on the wheelbase |
+
+  Reversing it is a two-line change in the `rs6` recipe in `src/carModels.js`.
+  Daniel Zhabotinsky's *Shvan 92 Traveller* is the model that would settle this
+  properly and is not reachable — see the note above about the 2022 snapshot.
 * Anserkon was identified in the earlier search as one of the best-fitting
   authors available and written off as unreachable because no mirror existed.
   Objaverse is that mirror.

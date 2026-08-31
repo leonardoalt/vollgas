@@ -93,9 +93,16 @@ https://api.sketchfab.com/v3/search?type=models&q=<query>&downloadable=true&coun
 https://api.sketchfab.com/v3/search?type=models&user=DanielZhabotinsky&downloadable=true&count=24
 ```
 
-Do **not** pass `&licenses=<uid>` — the ids float and a wrong one makes the API
-reject the whole request. Read `license.label` off each result instead and keep
-`CC Attribution`, rejecting anything with `Share Alike`.
+Do **not** pass `&licenses=<uid>`. The uuids are easy to get wrong and the API
+400s the whole query when you do — and worse, the one commonly copied around,
+`b9ddc40b93e34cdca1fc152f39b9f375`, is CC-BY-**SA**, not CC-BY. Either use the
+slugs (`&licenses=by`, `&licenses=cc0`) or read `license.label` off each result
+and keep `CC Attribution`, rejecting anything with `Share Alike`.
+
+Paging the search API is also the slow way round. Objaverse publishes per-shard
+metadata, so the whole snapshot can be indexed offline once and queried locally;
+a 65,851-row index of every CC-BY/CC0 vehicle-ish object in it was built during
+this work and left at `/tmp/carhunt2/work/idx2.json`.
 
 The files are Sketchfab's own exports, so each carries author, licence and
 source URL in `asset.extras`. `node dev/glb-licence.mjs <file>` prints it. A
@@ -180,12 +187,39 @@ the end, on identical code.
 
 ## Gaps and known issues
 
-* **The artic lorry is still procedural.** It is the last one. Replacing it is
-  a bigger job than it looks: `buildTruck` is bespoke, has no `CARS` entry, and
-  produces 22 individually spinning wheels, while every candidate artic in
-  `/tmp/carhunt/trucks/` is a single mesh with its wheels baked in — so a model
-  truck would gain detail and lose rolling wheels, which on a vehicle you
-  overtake at 250 km/h is a bad trade. Deliberately left.
+* **The artic lorry is still procedural, and it is now the weakest thing on the
+  road.** It was attempted and reverted; the attempt is worth knowing about so
+  nobody repeats the dead end.
+
+  The right model exists: **"Truck" by ROY** (`eda924f23ba04cd5b1e5160abf2320fa`,
+  CC BY 4.0, mirrored, 36 k tris, 163 kB optimised) — a modern European
+  cab-over tractor with a three-axle box semi-trailer, 15.89 m long against the
+  rig's 15.8, no badges. Body, glass, lights and paint all separate cleanly and
+  it tints. Everything about it fits *except* its wheels.
+
+  What was built and works: a `manyWheels` path with `wheelClusters()` grouping
+  wheel triangles in plan view, an `EXTRA` pseudo-spec so a vehicle outside
+  `CARS` can be fitted, `fitBy: 'length'`, and the same model-provider hook in
+  `buildTruck` that `buildCar` already had. What defeated it: the wheels will
+  not decompose reliably. Each tyre is 1.39 m across while the trailer's axles
+  are ~1.5 m apart, so no clustering radius separates axles without also
+  fragmenting individual wheels — at 0.5 m one wheel becomes three, at 0.8 m
+  two axles become one. Eleven of the 33 groups found were axle beams,
+  driveshafts and landing gear that share the `wheels.*` materials; a roundness
+  and on-the-road filter removes those cleanly, but it cannot fix the
+  fragmentation. Mounting procedural wheels instead needs the axle positions,
+  which is the same unsolved problem.
+
+  Shipping it would have meant a lorry with wheels in slightly wrong places or
+  not turning — worse than a plain one, and below the bar applied to everything
+  else here. The fix is either a truck model whose wheels are one mesh per
+  wheel with clean names, or per-axle positions read off this model by hand in
+  a modelling tool and hard-coded into a recipe.
+* **The estate is a de-badged VW Passat B6 Variant.** The title is generic and
+  no badge is modelled, but the author's description says so outright. Same
+  category of decision as the 930, and flagged the same way — CREDITS.md has
+  the reasoning and the two alternatives, both worse. Reversing it is a two-line
+  recipe change.
 * **Four vehicles share the estate body** (`rs6`, `kombi`, both Zivi estates)
   and three pairs share other files. Traffic paint is randomised so it reads as
   variety on the road, but a fifth traffic shape would be an easy win if a
