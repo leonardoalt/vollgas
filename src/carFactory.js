@@ -634,7 +634,8 @@ export const CARS = {
     paints: [{ n: 'Indischrot', c: 0xb0121f }, { n: 'GT-Silber', c: 0xb9bdc0 }, { n: 'Achatgrau', c: 0x4a5157 }],
     perf: { mass: 1640, power: 478, cd: 0.72, vmax: 330, grip: 1.42, awd: true, gears: 8, redline: 7200 },
     blurb: 'Heckmotor, Allrad, 650 PS. Klebt bei 300 noch auf der linken Spur und lässt sich vom Gegenverkehr nicht beeindrucken. Teuerste Art, in Flensburg Punkte zu sammeln.',
-  },
+
+    blurbEn: 'Rear engine, all-wheel drive, 650 hp. Still planted in the left-hand lane at 300, and utterly unbothered by oncoming traffic. The most expensive way there is to collect points in Flensburg.',  },
   m5: {
     name: 'Bayern M-Sport M5 CS', marque: 'Bayerische Motoren', arch: 'sedan',
     dims: D(5.00, 1.90, 1.47, 0.155),
@@ -647,7 +648,8 @@ export const CARS = {
     paints: [{ n: 'Marina-Bay-Blau', c: 0x1c56b4 }, { n: 'Frozen Schwarz', c: 0x1a1c1f }, { n: 'Brands-Hatch-Grau', c: 0x6e757b }],
     perf: { mass: 1825, power: 460, cd: 0.78, vmax: 305, grip: 1.34, awd: true, gears: 8, redline: 7000 },
     blurb: 'Vier Türen, Allrad, V8-Biturbo. Der Klassiker der linken Spur: fährt 300 als wäre es 130 und hat Platz für das Gepäck von vier Leuten, die das nicht wollten.',
-  },
+
+    blurbEn: 'Four doors, all-wheel drive, twin-turbo V8. The classic of the fast lane: does 300 like it is 130, with room for the luggage of four people who did not want to be here.',  },
   rs6: {
     name: 'Ingolstadt RS-6 Avant', marque: 'Vier Ringe', arch: 'wagon',
     dims: D(5.02, 1.95, 1.47, 0.16),
@@ -660,7 +662,8 @@ export const CARS = {
     paints: [{ n: 'Nardograu', c: 0x9a9da0 }, { n: 'Mythosschwarz', c: 0x22252a }, { n: 'Tangorot', c: 0x8e1a12 }],
     perf: { mass: 2075, power: 441, cd: 0.86, vmax: 305, grip: 1.38, awd: true, gears: 8, redline: 6800 },
     blurb: 'Der Kombi, der alles gewinnt. Quattro heißt: bei Regen, Rollsplitt und Baustelle immer noch Vollgas. Dafür 2,1 Tonnen, die man in der Kurve merkt.',
-  },
+
+    blurbEn: 'The estate that wins everything. Quattro means full throttle in the rain, over loose chippings and through the roadworks. The price is 2.1 tonnes you can feel in every corner.',  },
   amg: {
     name: 'Affalterbach AMG 63 S', marque: 'Stern aus Stuttgart', arch: 'coupe4',
     dims: D(4.94, 1.90, 1.43, 0.15),
@@ -673,7 +676,8 @@ export const CARS = {
     paints: [{ n: 'Selenitgrau', c: 0x5b6066 }, { n: 'Obsidianschwarz', c: 0x191b1e }, { n: 'Hyazinthrot', c: 0x7e1220 }],
     perf: { mass: 1795, power: 375, cd: 0.76, vmax: 315, grip: 1.30, awd: false, gears: 9, redline: 7000 },
     blurb: 'Hinterrad, Handarbeit, Hubraum. Beschleunigt so wie es klingt und will beim Rausbeschleunigen aus der Kurve mitreden. Für Leute, die Gegenlenken für ein Feature halten.',
-  },
+
+    blurbEn: 'Rear-wheel drive, hand-built, all the displacement. Accelerates exactly the way it sounds and wants a say in how you get out of a corner. For people who think opposite lock is a feature.',  },
 
   /* ---------------------------------------------------------- other traffic */
   kombi: {

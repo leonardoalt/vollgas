@@ -155,7 +155,7 @@ export class Enforcement {
     z.psi = 0;
     z.state = COP_STATE.CRUISE;
     z.warned = false;
-    z.measure = 0; z.measurePeak = 0; z.pursueClose = 0; z.cooldown = 0;
+    z.measure = 0; z.measurePeak = 0; z.pursueClose = 0; z.cooldown = 0; z.grace = 0;
     z.setLights(false);
   }
 
@@ -176,7 +176,7 @@ export class Enforcement {
         if (camLim !== Infinity && pKmh > camLim + 4) {
           cam.fired = true;
           const p = penaltyFor(pKmh - camLim);
-          this._ticket(player, p, `Blitzer · ${sectionAt(cam.s).name}`, camLim, pKmh);
+          this._ticket(player, p, 'blitzer', sectionAt(cam.s).name, camLim, pKmh);
           this.flashT = 0.45;
           this.events.push({ type: 'flash', penalty: p, limit: camLim, speed: pKmh });
         } else {
@@ -200,41 +200,53 @@ export class Enforcement {
       if (z.state === COP_STATE.CRUISE) {
         // recycle patrol cars we have left far behind or never met
         if (rel < -450 || rel > 3400) { this._park(z, player.s, false); }
-        // did the player just blow past this one, well over the limit?
-        const passing = rel < 30 && rel > -85;
-        const zLim = limitAt(z.s);
+        /* Engage only once the player is genuinely past — rel is the car's
+           position relative to us, so it has to be negative. Starting while
+           still ahead meant the MEASURE block, which runs in this same frame
+           and needs us behind, voided the measurement instantly. */
+        const passed = rel < -6 && rel > -95;
+        const zLim = limitAt(player.s);
         const excess = zLim === Infinity ? 0 : pKmh - zLim;
-        if (passing && excess > 21 && player.v > z.v + 2) {
+        if (passed && excess > 21 && player.v > z.v + 2) {
           z.state = COP_STATE.MEASURE;
           z.measure = 0;
+          z.grace = 2.2;                 // time to pull out and settle in behind
           z.measurePeak = pKmh;
           this.events.push({ type: 'measure-start', cop: z });
         }
       }
 
       if (z.state === COP_STATE.MEASURE) {
-        const zLim = limitAt(z.s);
+        // the offence happens where the player is, not where the patrol car is
+        const zLim = limitAt(player.s);
         const gap = player.s - z.s;
+        z.grace = Math.max(0, (z.grace || 0) - dt);
         z.measurePeak = Math.max(z.measurePeak, pKmh);
-        const stillOver = zLim !== Infinity && pKmh > zLim + 11;
-        const inRange = gap > -20 && gap < 340;
-        if (!inRange) {
+        const restricted = zLim !== Infinity;
+        const stillOver = restricted && pKmh > zLim + 11;
+        const inRange = gap > -25 && gap < 340;
+        if (!inRange && z.grace <= 0) {
           // out-measured: either you pulled clear or they lost you in traffic
           z.state = COP_STATE.DONE; z.cooldown = 6;
           z.measure = 0;
           this.events.push({ type: 'measure-lost', cop: z });
+        } else if (!restricted) {
+          // you reached the end of the restriction — there is nothing to measure
+          z.state = COP_STATE.DONE; z.cooldown = 10;
+          z.measure = 0;
+          this.events.push({ type: 'measure-freed', cop: z });
         } else if (!stillOver) {
           z.measure = Math.max(0, z.measure - dt * 0.55);
-          if (z.measure <= 0) {
+          if (z.measure <= 0 && z.grace <= 0) {
             z.state = COP_STATE.DONE; z.cooldown = 8;
             this.events.push({ type: 'measure-abort', cop: z });
           }
-        } else {
+        } else if (z.grace <= 0) {
           // a valid ProViDa measurement needs a sustained follow
           z.measure += dt / 4.2;
           if (z.measure >= 1) {
             const p = penaltyFor(z.measurePeak - zLim);
-            this._ticket(player, p, `ProViDa · ${sectionAt(z.s).name}`, zLim, z.measurePeak);
+            this._ticket(player, p, 'provida', sectionAt(player.s).name, zLim, z.measurePeak);
             z.state = COP_STATE.PURSUE;
             z.pursueClose = 0;
             z.setLights(true);
@@ -363,11 +375,13 @@ export class Enforcement {
     }
   }
 
-  _ticket(player, p, where, limit, speed) {
+  /** src is a key ('blitzer' | 'provida'); the label is formatted at render
+      time so switching language relabels tickets already issued. */
+  _ticket(player, p, src, place, limit, speed) {
     player.fines += p.fine;
     player.points += p.points;
     player.tickets.push({
-      where, limit: Math.round(limit), speed: Math.round(speed),
+      src, place, limit: Math.round(limit), speed: Math.round(speed),
       excess: p.excess, fine: p.fine, points: p.points, ban: p.ban,
     });
   }

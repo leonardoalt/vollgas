@@ -2,6 +2,7 @@
    hud.js — instrument cluster, rear-space radar and the DOM overlays.
    ========================================================================== */
 import { LENGTH, GEO, sectionAt } from './track.js';
+import { t, lang } from './i18n.js';
 
 const DIN = '"Roboto Condensed","Arial Narrow",Helvetica,Arial,sans-serif';
 const $ = (id) => document.getElementById(id);
@@ -28,16 +29,32 @@ export class Hud {
 
   show(on) { this.el.hud.classList.toggle('hidden', !on); }
 
-  /* ------------------------------------------------------------- alerts */
-  alert(text, sub = '', kind = 'warn', ttl = 3.4) {
-    // collapse duplicates that are still on screen
-    for (const a of this.alerts) if (a.text === text) { a.t = 0; return; }
+  /* ------------------------------------------------------------- alerts
+     Each alert carries a category key. A new alert with a key already on
+     screen replaces it in place and counts the repeat, so a burst of fines
+     is one growing row rather than a stack that buries the road. */
+  alert(text, sub = '', kind = 'warn', ttl = 3.4, key = null, showReps = true) {
+    const k = key || text;
+    const existing = this.alerts.find(a => a.key === k);
+    if (existing) {
+      existing.t = 0;
+      existing.reps++;
+      existing.el.className = 'alert ' + kind;
+      existing.el.innerHTML = this._alertHtml(text, sub, showReps ? existing.reps : 1);
+      return existing;
+    }
     const div = document.createElement('div');
     div.className = 'alert ' + kind;
-    div.innerHTML = `<div>${text}${sub ? `<small>${sub}</small>` : ''}</div>`;
+    div.innerHTML = this._alertHtml(text, sub, 1);
     this.el.alerts.appendChild(div);
-    this.alerts.push({ el: div, t: 0, ttl, text });
+    const entry = { el: div, t: 0, ttl, text, key: k, reps: 1 };
+    this.alerts.push(entry);
     while (this.alerts.length > 4) this._killAlert(this.alerts[0]);
+    return entry;
+  }
+  _alertHtml(text, sub, reps) {
+    const rep = reps > 1 ? `<span class="rep">\u00d7${reps}</span>` : '';
+    return `<div>${text}${rep}${sub ? `<small>${sub}</small>` : ''}</div>`;
   }
   _killAlert(a) {
     a.el.classList.add('fade');
@@ -86,15 +103,18 @@ export class Hud {
   update(st) {
     const e = this.el;
     const sec = sectionAt(st.s);
-    if (sec.name !== this._lastSection) {
+    if (sec.name !== this._lastSection || this._lastLang !== lang) {
       this._lastSection = sec.name;
+      this._lastLang = lang;
+      // place names stay German; the descriptive line follows the UI language
       e.section.textContent = sec.name;
-      e.sub.textContent = sec.sub;
+      e.sub.textContent = (lang === 'en' && sec.subEn) ? sec.subEn : sec.sub;
     }
     this.setLimit(sec.limit == null ? Infinity : sec.limit, !!sec.advice);
 
-    const t = Math.max(0, st.raceTime);
-    const mm = Math.floor(t / 60), ss = (t - mm * 60);
+    // NB: not `t` — that is the translate function imported at the top
+    const secs = Math.max(0, st.raceTime);
+    const mm = Math.floor(secs / 60), ss = (secs - mm * 60);
     e.time.textContent = `${mm}:${ss.toFixed(1).padStart(4, '0')}`;
     e.pos.textContent = `${st.place}/${st.fieldSize}`;
     const left = Math.max(0, (LENGTH - st.s) / 1000);
@@ -117,10 +137,8 @@ export class Hud {
       e.pvFill.style.width = (Math.min(1, st.provida) * 100).toFixed(1) + '%';
       const gap = Math.max(0, Math.round(st.providaGap));
       e.pvHead.innerHTML =
-        `<span class="pv-dot"></span> P R O V I D A &nbsp;·&nbsp; MESSUNG L\u00c4UFT &nbsp;·&nbsp; ${gap} m`;
-      e.pvSub.textContent = gap > 240
-        ? 'Abstand w\u00e4chst \u2014 dranbleiben und die Messung platzt'
-        : 'Zivilfahrzeug hinter dir \u2014 abbremsen oder abh\u00e4ngen';
+        `<span class="pv-dot"></span> P R O V I D A &nbsp;·&nbsp; ${t('pv.head')} &nbsp;·&nbsp; ${gap} m`;
+      e.pvSub.textContent = t(gap > 240 ? 'pv.far' : 'pv.close');
     }
     e.vignette.classList.toggle('on', st.pursuit || st.damage > 80);
   }
@@ -216,7 +234,7 @@ export class Hud {
     c.closePath(); c.fill();
     c.fillStyle = 'rgba(255,255,255,.28)';
     c.font = `400 ${W * 0.032}px ${DIN}`;
-    c.fillText('GANG', cx, gy + gh * 0.24);
+    c.fillText(t('hud.gear'), cx, gy + gh * 0.24);
     c.fillStyle = 'rgba(255,255,255,.92)';
     c.font = `700 ${W * 0.078}px ${DIN}`;
     c.fillText(st.stopped ? 'P' : String(st.gear + 1), cx, gy + gh * 0.66);

@@ -27,6 +27,15 @@ npm run build      # static bundle in dist/
 | `C` | cycle camera (chase / close / cockpit / bonnet / cinematic) |
 | `M` | mute · `P` pause · `R` restart |
 
+The interface is available in **German or English** — the `DE`/`EN` button sits in
+the menu header and the choice is remembered. It defaults to German if your
+browser prefers German, English otherwise.
+
+The road signs, gantries, licence plates and place names stay German in both.
+A German Autobahn has German signage, and reading *Ausfahrt*, *Ende aller
+Streckenverbote* and *Raststätte Neckarburg* off the verge is most of what makes
+the route feel like the A81.
+
 ## The route
 
 26 km compressed from the real A81, in the real running order, with the real
@@ -137,9 +146,18 @@ src/
   vehicles.js    driving model, traffic AI with Rechtsfahrgebot, rival racers
   police.js      Zivilstreifen, ProViDa, mobile Blitzer, Lichthupe, BKat fines
   hud.js         canvas cluster, rear-space radar, alerts
+  i18n.js        UI strings in German and English (world signage stays German)
   game.js        states, cameras, event pump, results
 dev/             headless harnesses (see below)
 ```
+
+### Alerts
+
+Alerts run down a column on the left, never across the middle — a burst of fines
+stacked centre-screen buries the car exactly when you most need to see it. Each
+alert also carries a category key: a second alert with a key already on screen
+replaces it in place and counts the repeat, so three speed cameras in a row are
+one growing row (`GEBLITZT ×3 · 840 €`) rather than three.
 
 ### Rear-view mirror
 
@@ -177,7 +195,10 @@ node dev/shot.mjs  <url> out.png                   # single screenshot
 node dev/drive.mjs <url> <outdir> <secs> [lawful]  # autopilot a race, log state + events
 node dev/race-shot.mjs <url> out.png <km> <cam>    # in-race shot at a given km
 node dev/cop-shot.mjs <url> out.png measure|pursue # ProViDa / pursuit
-node dev/finish.mjs  <url> out.png                 # finish line + Bußgeldbescheid
+node dev/finish.mjs  <url> out.png [de|en]         # finish line + penalty notice
+node dev/audio-check.mjs <url>                     # engine really goes silent on pause/results
+node dev/lang-check.mjs  <url> <outdir>            # both languages, flags untranslated nodes
+node dev/alert-check.mjs <url> out.png [de|en]     # alert burst: coalescing + placement
 ```
 
 `dev/cars.html?cars=turbo,m5&mode=side|front|rear|front34|rear34|top` is a car

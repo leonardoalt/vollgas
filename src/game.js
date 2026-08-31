@@ -12,6 +12,7 @@ import { Hud } from './hud.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { LENGTH, LANES, toWorld, rng, STAGE_KM } from './track.js';
+import { t, lang, setLang, toggleLang, applyDom, GLOBALS } from './i18n.js';
 
 const KMH = 3.6;
 const $ = (id) => document.getElementById(id);
@@ -62,7 +63,7 @@ export class Game {
     this.camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.32, 5200);
     this.setupMirror();
 
-    const setText = (t) => { const el = $('load-text'); if (el) el.textContent = t + ' …'; };
+    const setText = (stage) => { const el = $('load-text'); if (el) el.textContent = `${t('load')} · ${stage} …`; };
     await new Promise(r => requestAnimationFrame(r));
     this.world = buildWorld(this.scene, renderer, setText);
     initMaterials(this.world.env);
@@ -77,6 +78,11 @@ export class Game {
     };
 
     addEventListener('resize', () => this.onResize());
+    GLOBALS.km = STAGE_KM;
+    document.documentElement.lang = lang;
+    applyDom();
+    const langBtn = $('lang-btn');
+    if (langBtn) langBtn.onclick = () => { toggleLang(); this.buildMenu(); };
     this.buildMenu();
     $('loading').classList.add('done');
     this.state = 'menu';
@@ -182,19 +188,21 @@ export class Game {
     const id = PLAYER_CARS[this.selected];
     const spec = CARS[id];
     $('car-detail-name').textContent = spec.name;
-    $('car-detail-sub').textContent = `${spec.marque} · ${spec.perf.awd ? 'Allrad' : 'Hinterrad'} · ${spec.perf.gears}-Gang`;
+    $('car-detail-sub').textContent =
+      `${spec.marque} · ${t(spec.perf.awd ? 'car.awd' : 'car.rwd')} · ${t('car.gears', { n: spec.perf.gears })}`;
     const p = spec.perf;
+    const hp = lang === 'en' ? `${Math.round(p.power * 1.341)} hp` : `${Math.round(p.power * 1.36)} PS`;
     const stats = [
-      ['V max', p.vmax, 340, `${p.vmax} km/h`],
-      ['Leistung', p.power, 500, `${Math.round(p.power * 1.36)} PS`],
-      ['Kg / kW', 1 - (p.mass / p.power) / 6, 1, `${(p.mass / p.power).toFixed(1)}`],
-      ['Grip', p.grip, 1.5, `${p.grip.toFixed(2)} g`],
-      ['Gewicht', 1 - (p.mass - 1500) / 800, 1, `${p.mass} kg`],
+      [t('stat.vmax'), p.vmax, 340, `${p.vmax} km/h`],
+      [t('stat.power'), p.power, 500, hp],
+      [t('stat.kgkw'), 1 - (p.mass / p.power) / 6, 1, `${(p.mass / p.power).toFixed(1)}`],
+      [t('stat.grip'), p.grip, 1.5, `${p.grip.toFixed(2)} g`],
+      [t('stat.mass'), 1 - (p.mass - 1500) / 800, 1, `${p.mass} kg`],
     ];
     $('car-stats').innerHTML = stats.map(([l, v, max, txt]) =>
       `<div class="stat"><span class="sl">${l}</span><span class="sb"><i style="width:${Math.max(4, Math.min(100, (v / max) * 100)).toFixed(0)}%"></i></span><span class="sv">${txt}</span></div>`
     ).join('');
-    $('car-blurb').textContent = spec.blurb;
+    $('car-blurb').textContent = (lang === 'en' && spec.blurbEn) ? spec.blurbEn : spec.blurb;
   }
 
   /* ------------------------------------------------------------ the race */
@@ -234,7 +242,7 @@ export class Game {
     $('results').classList.add('hidden');
     this.audio.start();
     this.audio.resume();
-    this.hud.alert('A 81 · STUTTGART → SINGEN', `${STAGE_KM} km · freie Abschnitte nutzen`, 'info', 4.5);
+    this.hud.alert(t('a.route'), t('a.route.sub', { km: STAGE_KM }), 'info', 4.5, 'route');
   }
 
   teardown() {
@@ -307,7 +315,7 @@ export class Game {
   /* --------------------------------------------------------- race scoring */
   standings() {
     const field = [
-      { name: 'DU', s: this.player.s, me: true, v: this.player.v, finishT: this.player.finishT },
+      { name: t('res.me'), s: this.player.s, me: true, v: this.player.v, finishT: this.player.finishT },
       ...this.traffic.rivals.map(r => ({ name: r.name, s: r.s, v: r.v, finishT: r.finished ? r.finishT : null, car: r.spec.name })),
     ];
     field.sort((a, b) => b.s - a.s);
@@ -318,7 +326,7 @@ export class Game {
     this.finished = true;
     this.player.finishT = this.raceTime;
     const field = [
-      { name: 'DU', car: CARS[this.carId].name, t: this.raceTime, me: true, s: LENGTH, fines: this.player.fines },
+      { name: t('res.me'), car: CARS[this.carId].name, t: this.raceTime, me: true, s: LENGTH, fines: this.player.fines },
       ...this.traffic.rivals.map(r => ({
         name: r.name, car: r.spec.name, s: r.s, fines: r.fines,
         t: r.finished ? r.finishT : this.raceTime + Math.max(1, (LENGTH - r.s) / Math.max(8, r.v)),
@@ -336,7 +344,7 @@ export class Game {
   outOfRace(reason) {
     this.finished = true;
     const field = [
-      { name: 'DU', car: CARS[this.carId].name, t: Infinity, me: true, dnf: reason },
+      { name: t('res.me'), car: CARS[this.carId].name, t: Infinity, me: true, dnf: reason },
       ...this.traffic.rivals.map(r => ({
         name: r.name, car: r.spec.name,
         t: r.finished ? r.finishT : this.raceTime + Math.max(1, (LENGTH - r.s) / Math.max(8, r.v)),
@@ -353,30 +361,39 @@ export class Game {
   showResults() {
     const r = this.results;
     const p = this.player;
-    $('results-title').textContent = r.dnf ? 'RENNEN BEENDET' : 'ZIEL · SINGEN (BODENSEE)';
-    const places = ['SIEG', 'ZWEITER', 'DRITTER', 'VIERTER'];
-    $('results-place').textContent = r.dnf ? r.dnf : `${places[r.place - 1] || r.place + '.'} · V max ${Math.round(p.vmaxSeen)} km/h`;
+    $('results-title').textContent = r.dnf ? t('res.over') : t('res.finish');
+    const places = t('res.place');
+    $('results-place').textContent = r.dnf ? r.dnf
+      : t('res.placevmax', { place: places[r.place - 1] || r.place + '.', v: Math.round(p.vmaxSeen) });
 
-    const fmt = (t) => t === Infinity ? '—' : `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
+    const fmt = (x) => x === Infinity ? '—' : `${Math.floor(x / 60)}:${(x % 60).toFixed(1).padStart(4, '0')}`;
+    // German writes 320,00 € after the number; English writes €320.00 before it
+    const money = (n) => lang === 'de'
+      ? `${n.toLocaleString('de-DE')},00 €`
+      : `€${n.toLocaleString('en-GB')}.00`;
     $('results-table').innerHTML =
-      '<tr><th>Pos</th><th>Fahrer</th><th>Fahrzeug</th><th class="n">Bußgeld</th><th class="n">Zeit</th></tr>' +
-      r.field.map((f, i) => `<tr class="${f.me ? 'me' : ''}"><td>${i + 1}</td><td>${f.name}</td><td>${f.car || ''}</td><td class="n">${f.fines ? f.fines + ' €' : '—'}</td><td class="n">${fmt(f.t)}</td></tr>`).join('');
+      `<tr><th>${t('res.pos')}</th><th>${t('res.driver')}</th><th>${t('res.car')}</th>` +
+      `<th class="n">${t('res.fine')}</th><th class="n">${t('res.time')}</th></tr>` +
+      r.field.map((f, i) => `<tr class="${f.me ? 'me' : ''}"><td>${i + 1}</td><td>${f.name}</td><td>${f.car || ''}</td><td class="n">${f.fines ? money(f.fines) : '—'}</td><td class="n">${fmt(f.t)}</td></tr>`).join('');
 
     const tk = $('results-ticket');
     if (p.tickets.length === 0) {
       tk.className = 'clean';
-      tk.innerHTML = `<h4>Kein Bußgeldbescheid</h4>Sauber durchgekommen. Keine Messung, kein Blitzer, keine Punkte.
-        <div class="tk-total"><span>Gesamt</span><span>0,00 €</span></div>`;
+      tk.innerHTML = `<h4>${t('res.clean')}</h4>${t('res.clean.sub')}
+        <div class="tk-total"><span>${t('res.total')}</span><span>${money(0)}</span></div>`;
     } else {
       tk.className = 'dirty';
-      const ban = Math.max(...p.tickets.map(t => t.ban));
-      tk.innerHTML = `<h4>Bußgeldbescheid · Regierungspräsidium Karlsruhe</h4>` +
-        p.tickets.map(t =>
-          `<div class="tk-row"><span>${t.where} — ${t.speed} statt ${t.limit} km/h (+${t.excess})</span><span>${t.fine},00 €</span></div>`
+      const ban = Math.max(...p.tickets.map(x => x.ban));
+      tk.innerHTML = `<h4>${t('res.ticket')}</h4>` +
+        p.tickets.map(x =>
+          `<div class="tk-row"><span>${t('res.row', {
+            where: `${t('src.' + x.src)} · ${x.place}`,
+            speed: x.speed, limit: x.limit, excess: x.excess,
+          })}</span><span>${money(x.fine)}</span></div>`
         ).join('') +
-        `<div class="tk-row"><span>Punkte im Fahreignungsregister Flensburg</span><span>${p.points}</span></div>` +
-        (ban > 0 ? `<div class="tk-row"><span>Fahrverbot</span><span>${ban} Monat${ban > 1 ? 'e' : ''}</span></div>` : '') +
-        `<div class="tk-total"><span>Gesamt</span><span>${p.fines},00 €</span></div>`;
+        `<div class="tk-row"><span>${t('res.pointsrow')}</span><span>${p.points}</span></div>` +
+        (ban > 0 ? `<div class="tk-row"><span>${t('res.ban')}</span><span>${t(ban > 1 ? 'res.months' : 'res.month', { n: ban })}</span></div>` : '') +
+        `<div class="tk-total"><span>${t('res.total')}</span><span>${money(p.fines)}</span></div>`;
     }
     $('results').classList.remove('hidden');
   }
@@ -386,41 +403,61 @@ export class Game {
     for (const ev of this.enf.drainEvents()) {
       switch (ev.type) {
         case 'measure-start':
-          this.hud.alert('ZIVILSTREIFE HÄNGT DRAN', 'ProViDa-Messung beginnt', 'bad', 4);
+          this.hud.alert(t('a.measure'), t('a.measure.sub'), 'bad', 4.5, 'provida');
           this.audio.blip();
           break;
         case 'measure-abort':
-          this.hud.alert('MESSUNG ABGEBROCHEN', 'Rechtzeitig vom Gas gegangen', 'good', 3);
+          this.hud.alert(t('a.abort'), t('a.abort.sub'), 'good', 3, 'provida');
           break;
         case 'measure-lost':
-          this.hud.alert('ABGEHÄNGT', 'Die Messung ist nicht verwertbar', 'good', 3);
+          this.hud.alert(t('a.lost'), t('a.lost.sub'), 'good', 3, 'provida');
+          break;
+        case 'measure-freed':
+          this.hud.alert(t('a.freed'), t('a.freed.sub'), 'good', 3, 'provida');
           break;
         case 'measure-done': {
           const p = ev.penalty;
-          this.hud.alert(`ANZEIGE · ${p.fine} €`,
-            `${Math.round(ev.speed)} statt ${ev.limit} km/h · ${p.points} Punkt${p.points === 1 ? '' : 'e'}${p.ban ? ` · ${p.ban} Mon. Fahrverbot` : ''}`,
-            'bad', 6);
-          this.hud.alert('STOP POLIZEI — BITTE FOLGEN', 'Abhängen oder anhalten', 'bad', 6);
+          const sub = t('a.charge.sub', {
+            speed: Math.round(ev.speed), limit: ev.limit, points: p.points,
+            pl: p.points === 1 ? '' : (lang === 'de' ? 'e' : 's'),
+          }) + (p.ban ? t('a.charge.ban', { n: p.ban }) : '');
+          this.hud.alert(t('a.charge', { fine: p.fine }), sub, 'bad', 6, 'charge');
+          this.hud.alert(t('a.follow'), t('a.follow.sub'), 'bad', 6, 'pursuit');
           break;
         }
         case 'flash': {
           const p = ev.penalty;
           this.hud.blitzFlash();
           this.audio.flash();
-          this.hud.alert(`GEBLITZT · ${p.fine} €`,
-            `${Math.round(ev.speed)} statt ${ev.limit} km/h${p.points ? ` · ${p.points} Punkte` : ''}`, 'bad', 5);
+          // a burst of cameras collapses into one row with a running total
+          // ?? not || — raceTime is legitimately 0 during the countdown, and
+          // `0 || -99` reads as "no previous flash", resetting the run every time
+          const now = this.raceTime;
+          if (now - (this._flashT ?? -99) > 12) { this._flashN = 0; this._flashSum = 0; }
+          this._flashT = now;
+          this._flashN = (this._flashN ?? 0) + 1;
+          this._flashSum = (this._flashSum ?? 0) + p.fine;
+          const head = this._flashN > 1
+            ? t('a.flash.multi', { n: this._flashN, fine: this._flashSum })
+            : t('a.flash', { fine: p.fine });
+          const sub = t('a.flash.sub', { speed: Math.round(ev.speed), limit: ev.limit })
+            + (p.points ? t('a.flash.points', { n: p.points }) : '');
+          // the head already carries the ×N and the running total
+          this.hud.alert(head, sub, 'bad', 5, 'flash', false);
           break;
         }
         case 'lichthupe':
-          this.hud.alert('LICHTHUPE VOM GEGENVERKEHR',
-            ev.threat.kind === 'blitzer' ? `Blitzer in ca. ${Math.round(ev.threat.rel / 100) * 100} m` : `Zivilstreife voraus`,
-            'warn', 4);
+          this.hud.alert(t('a.warn'),
+            ev.threat.kind === 'blitzer'
+              ? t('a.warn.blitzer', { m: Math.round(ev.threat.rel / 100) * 100 })
+              : t('a.warn.zivi'),
+            'warn', 4, 'warn');
           break;
         case 'escaped':
-          this.hud.alert('VERFOLGUNG ABGEBROCHEN', 'Sie sind weg', 'good', 3.5);
+          this.hud.alert(t('a.escaped'), t('a.escaped.sub'), 'good', 3.5, 'pursuit');
           break;
         case 'stopped':
-          this.hud.alert('VERKEHRSKONTROLLE', 'Rechts ranfahren · Führerschein und Fahrzeugpapiere', 'bad', 8);
+          this.hud.alert(t('a.stopped'), t('a.stopped.sub'), 'bad', 8, 'pursuit');
           break;
       }
     }
@@ -450,8 +487,8 @@ export class Game {
       if (after !== before) {
         if (after > 0) { this.hud.countdown(String(after)); this.audio.blip(); }
         else {
-          this.hud.countdown('LOS!', true);
-          this.hud.alert('BIS BÖBLINGEN GILT EIN LIMIT', 'Danach freie Fahrt', 'info', 3.2);
+          this.hud.countdown(t('go'), true);
+          this.hud.alert(t('a.start'), t('a.start.sub'), 'info', 3.2, 'start');
           this.audio.blip();
           setTimeout(() => this.hud.countdown(null), 900);
         }
@@ -474,7 +511,7 @@ export class Game {
     resolveCollisions(p, this.traffic.all, (kind, sev) => {
       this.shake = Math.max(this.shake, 0.10 + sev * 0.85);
       this.audio.impact(sev);
-      if (kind === 'rear' && sev > 0.55) this.hud.alert('AUFFAHRUNFALL', 'Schaden am Fahrzeug', 'bad', 2.6);
+      if (kind === 'rear' && sev > 0.55) this.hud.alert(t('a.crash'), t('a.crash.sub'), 'bad', 2.6, 'crash');
     }, dt);
     if (p.scrape) this.shake = Math.max(this.shake, 0.05);
     if (p.offroad && p.v > 12) this.shake = Math.max(this.shake, 0.035);
@@ -521,8 +558,8 @@ export class Game {
 
     // ---- end conditions
     if (p.s >= LENGTH - 8) this.finish();
-    else if (p.damage >= 100 && p.v < 2) this.outOfRace('Fahrzeug nicht mehr fahrbereit · Abschleppdienst');
-    else if (p.points >= 8) this.outOfRace('8 Punkte in Flensburg · Fahrerlaubnis entzogen');
+    else if (p.damage >= 100 && p.v < 2) this.outOfRace(t('dnf.wreck'));
+    else if (p.points >= 8) this.outOfRace(t('dnf.points'));
   }
 
   /* ----------------------------------------------------------- main loop */

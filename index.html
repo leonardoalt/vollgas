@@ -21,17 +21,17 @@
         <div class="sign-ab" id="hud-ab">A 81</div>
         <div id="hud-section">
           <div id="hud-section-name">Stuttgart-Zuffenhausen</div>
-          <div id="hud-section-sub">Richtung Singen (Bodensee)</div>
+          <div id="hud-section-sub" data-i18n="hud.dir">Richtung Singen (Bodensee)</div>
         </div>
       </div>
 
       <!-- top center: race state -->
       <div id="hud-race">
         <div class="race-row">
-          <div class="race-cell"><span class="lbl">Zeit</span><span class="val" id="hud-time">0:00.0</span></div>
-          <div class="race-cell"><span class="lbl">Platz</span><span class="val" id="hud-pos">1/4</span></div>
-          <div class="race-cell"><span class="lbl">Ziel</span><span class="val" id="hud-dist">42.0 km</span></div>
-          <div class="race-cell"><span class="lbl">V&nbsp;max</span><span class="val" id="hud-vmax">0</span></div>
+          <div class="race-cell"><span class="lbl" data-i18n="hud.time">Zeit</span><span class="val" id="hud-time">0:00.0</span></div>
+          <div class="race-cell"><span class="lbl" data-i18n="hud.pos">Platz</span><span class="val" id="hud-pos">1/4</span></div>
+          <div class="race-cell"><span class="lbl" data-i18n="hud.goal">Ziel</span><span class="val" id="hud-dist">42.0 km</span></div>
+          <div class="race-cell"><span class="lbl" data-i18n="hud.vmax">V max</span><span class="val" id="hud-vmax">0</span></div>
         </div>
         <div id="hud-progress"><div id="hud-progress-fill"></div><div id="hud-progress-me"></div></div>
       </div>
@@ -40,9 +40,9 @@
       <div id="hud-legal">
         <div id="hud-limit" class="limit-sign limit-none"><span>ENDE</span></div>
         <div id="hud-legal-stats">
-          <div class="legal-row"><span class="lbl">Bu&szlig;geld</span><span class="val" id="hud-fine">0 &euro;</span></div>
-          <div class="legal-row"><span class="lbl">Flensburg</span><span class="val" id="hud-points">0 P</span></div>
-          <div class="legal-row"><span class="lbl">Schaden</span><span class="val" id="hud-damage">0 %</span></div>
+          <div class="legal-row"><span class="lbl" data-i18n="hud.fine">Bu&szlig;geld</span><span class="val" id="hud-fine">0 &euro;</span></div>
+          <div class="legal-row"><span class="lbl" data-i18n="hud.points">Flensburg</span><span class="val" id="hud-points">0 P</span></div>
+          <div class="legal-row"><span class="lbl" data-i18n="hud.damage">Schaden</span><span class="val" id="hud-damage">0 %</span></div>
         </div>
       </div>
 
@@ -53,7 +53,7 @@
 
       <!-- bottom left: mirror / rear radar -->
       <div id="hud-rear">
-        <div id="hud-rear-title">R&Uuml;CKRAUM</div>
+        <div id="hud-rear-title" data-i18n="hud.rear">R&Uuml;CKRAUM</div>
         <canvas id="radar" width="240" height="240"></canvas>
       </div>
 
@@ -62,9 +62,9 @@
 
       <!-- provida measurement -->
       <div id="hud-provida" class="hidden">
-        <div class="pv-head"><span class="pv-dot"></span> P R O V I D A &nbsp;&middot;&nbsp; MESSUNG L&Auml;UFT</div>
+        <div class="pv-head"><span class="pv-dot"></span> P R O V I D A &nbsp;&middot;&nbsp; <span data-i18n="pv.head">MESSUNG L&Auml;UFT</span></div>
         <div class="pv-bar"><div class="pv-fill"></div></div>
-        <div class="pv-sub">Zivilfahrzeug hinter dir &mdash; abbremsen oder abh&auml;ngen</div>
+        <div class="pv-sub" data-i18n="pv.close">Zivilfahrzeug hinter dir</div>
       </div>
 
       <div id="countdown" class="hidden"><span></span></div>
@@ -78,10 +78,11 @@
       <div class="menu-bg"></div>
       <div class="menu-inner">
         <header id="menu-head">
+          <button id="lang-btn" type="button" title="Sprache / Language">EN</button>
           <div class="sign-ab big">A 81</div>
           <div class="menu-title">
             <h1>AUTOBAHN RACER</h1>
-            <p>Stuttgart &rarr; Singen (Bodensee) &middot; 42&nbsp;km &middot; Streckenabschnitte ohne Limit</p>
+            <p data-i18n="menu.tagline">Stuttgart &rarr; Singen</p>
           </div>
         </header>
 
@@ -98,27 +99,27 @@
         <div id="menu-foot">
           <div id="briefing">
             <div class="brief-col">
-              <h3>Steuerung</h3>
+              <h3 data-i18n="menu.controls">Steuerung</h3>
               <ul>
-                <li><b>W</b> / <b>&uarr;</b> Gas &middot; <b>S</b> / <b>&darr;</b> Bremse</li>
-                <li><b>A</b> <b>D</b> / <b>&larr;</b> <b>&rarr;</b> Lenken</li>
-                <li><b>Leer</b> Handbremse &middot; <b>C</b> Kamera wechseln</li>
-                <li><b>M</b> Ton &middot; <b>R</b> Neustart &middot; <b>P</b> Pause</li>
+                <li data-i18n-html="menu.c1"></li>
+                <li data-i18n-html="menu.c2"></li>
+                <li data-i18n-html="menu.c3"></li>
+                <li data-i18n-html="menu.c4"></li>
               </ul>
             </div>
             <div class="brief-col">
-              <h3>Zivile Streifen &amp; Blitzer</h3>
+              <h3 data-i18n="menu.police">Zivile Streifen</h3>
               <ul>
-                <li>Unauff&auml;llige 5er Tourings, E-Klassen und A6 quattro fahren mit &mdash; Blaulicht sitzt hinter dem K&uuml;hlergrill.</li>
-                <li><b>ProViDa</b>: h&auml;ngt sich an dich, misst per Video. Balken voll = Anzeige.</li>
-                <li>Die Streifen laufen bis 300 &mdash; wegfahren allein reicht nicht.</li>
-                <li>Mobile <b>Blitzer</b>-Transporter stehen im Seitenstreifen.</li>
-                <li><b>Lichthupe</b> vom Gegenverkehr = Messung voraus. Danke, Kollege.</li>
-                <li>Auf freien Abschnitten gilt kein Limit &mdash; da darf gerannt werden.</li>
+                <li data-i18n-html="menu.p1"></li>
+                <li data-i18n-html="menu.p2"></li>
+                <li data-i18n-html="menu.p3"></li>
+                <li data-i18n-html="menu.p4"></li>
+                <li data-i18n-html="menu.p5"></li>
+                <li data-i18n-html="menu.p6"></li>
               </ul>
             </div>
           </div>
-          <button id="start-btn">RENNEN STARTEN</button>
+          <button id="start-btn" data-i18n="menu.start">RENNEN STARTEN</button>
         </div>
       </div>
     </div>
@@ -131,12 +132,12 @@
         <div id="results-place">&nbsp;</div>
         <table id="results-table"></table>
         <div id="results-ticket"></div>
-        <button id="again-btn">NOCH EINMAL</button>
+        <button id="again-btn" data-i18n="menu.again">NOCH EINMAL</button>
       </div>
     </div>
 
-    <div id="loading"><div class="load-inner"><div class="sign-ab big">A 81</div><p id="load-text">Strecke wird gebaut&hellip;</p></div></div>
-    <div id="pause" class="hidden"><div>PAUSE<small>P zum Fortsetzen</small></div></div>
+    <div id="loading"><div class="load-inner"><div class="sign-ab big">A 81</div><p id="load-text" data-i18n="load">Strecke wird gebaut</p></div></div>
+    <div id="pause" class="hidden"><div><span data-i18n="pause">PAUSE</span><small data-i18n="pause.hint">P zum Fortsetzen</small></div></div>
   </div>
   <script type="module" src="/src/main.js"></script>
 </body>

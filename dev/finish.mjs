@@ -1,5 +1,5 @@
 import puppeteer from 'puppeteer-core';
-const [url, out] = process.argv.slice(2);
+const [url, out, wantLang] = process.argv.slice(2);
 const browser = await puppeteer.launch({
   executablePath: '/usr/bin/chromium', headless: true,
   args: ['--no-sandbox', '--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader',
@@ -7,6 +7,7 @@ const browser = await puppeteer.launch({
 });
 const page = await browser.newPage();
 await page.setViewport({ width: 1280, height: 760 });
+if (wantLang) await page.evaluateOnNewDocument((l) => { try { localStorage.setItem('a81.lang', l); } catch {} }, wantLang);
 const errs = [];
 page.on('pageerror', e => errs.push('[pageerror] ' + e.message));
 page.on('console', m => { if (m.type() === 'error') errs.push('[err] ' + m.text()); });
@@ -22,14 +23,14 @@ const info = await page.evaluate(async () => {
   g.raceTime = 431.7;
   p.vmaxSeen = 318;
   // a plausible sheet of offences collected along the way
-  for (const [where, lim, kmh] of [
-    ['Blitzer · Stuttgart-Zuffenhausen', 100, 148],
-    ['ProViDa · Horb am Neckar', 120, 197],
-    ['Blitzer · Empfingen', 80, 121],
+  for (const [src, place, lim, kmh] of [
+    ['blitzer', 'Stuttgart-Zuffenhausen', 100, 148],
+    ['provida', 'Horb am Neckar', 120, 197],
+    ['blitzer', 'Empfingen', 80, 121],
   ]) {
     const pen = penaltyFor(kmh - lim);
     p.fines += pen.fine; p.points += pen.points;
-    p.tickets.push({ where, limit: lim, speed: kmh, excess: pen.excess, fine: pen.fine, points: pen.points, ban: pen.ban });
+    p.tickets.push({ src, place, limit: lim, speed: kmh, excess: pen.excess, fine: pen.fine, points: pen.points, ban: pen.ban });
   }
   // give the rivals sensible progress, then run the player over the line
   g.traffic.rivals.forEach((r, i) => { r.s = LENGTH - 400 - i * 900; r.v = 70; r.fines = i * 40; });
