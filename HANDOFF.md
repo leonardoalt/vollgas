@@ -2,6 +2,45 @@
 
 Branch: `worktree-agent-a6340a3413cc4f8e9` (pushed to `origin`).
 
+## Phase A — the backwards cars (fixed)
+
+Shipped state was: three of the four traffic cars pointed the wrong way and
+several had wheels outside the arches. `dev/shots/after-model-traffic.png` on
+the previous commit shows it. Root causes, all in the fitting stage:
+
+1. **`principalYaw` was approximate and sometimes wrong by 18 degrees.** It
+   sampled yaw at one-degree steps over a *subsample* of vertices, and
+   subsampling misses the extreme points that define a bounding box. The estate
+   squared up 18 degrees out and measured 2.78 m wide. Replaced by `squareYaw`
+   in the new `src/carFit.js`: exact minimum-area rectangle via the convex hull
+   (the optimum always has a side flush with a hull edge). Sign convention was
+   also inverted, which only showed on bodies that were not already axis-aligned.
+2. **Nothing decided which end was the nose.** The recipe applied a flat
+   `yaw: Math.PI` to all four pack cars, on the assumption that a pack lays its
+   models out facing one way. This one arranges ten cars in a ring. Replaced by
+   `noseSign`, which votes on four cues: bonnet run, roof position,
+   side-elevation area centroid, and — decisively — **where the wing mirrors
+   are**, since mirrors are always at the front even on a rear-engined car,
+   which is the case the other three cues get wrong on the 911.
+3. **The pack merges wheels by material, not by car.** The saloon and the
+   estate share a wheel design, so "the estate's wheel set" was eight wheels
+   belonging to two cars, and splitting it into quadrants gave a 1.48 m
+   wheelbase on a 4.4 m car. Everything scaled from that was wrong. Wheels are
+   now clipped to the body's own footprint before being measured.
+4. **Wheels were bolted to the rig's track**, which is wider than some model
+   bodies. They now go just inside the arch, measured on the body at that axle.
+5. **The artic's dual tyres stood 23 cm proud of its own trailer.** Moved in.
+
+`dev/fleet-check.mjs` exists so this cannot happen again — see below.
+
+Also fixed while measuring: `envelopeOf` and `roofHeight` in `carFit.js` size a
+vehicle from z-slice and y-slice profiles rather than a bounding box, because
+the 911 wears a radio aerial 43 cm above its roof and the artic carries fuel
+tanks wider than its trailer, and neither should define the vehicle. All
+profiles are taken over **triangles**, not vertices: a procedural box has eight
+corners and nothing in between, so a 13 m trailer otherwise contributes to two
+z-slices out of forty-eight.
+
 Two things happened here. The cars got a real rendering pipeline — HDR
 environment, clearcoat paint, panel gaps, better geometry, bloom — and then
 they got **real glTF bodies** under a licence we can actually ship.
@@ -33,6 +72,9 @@ because that licence requires it visibly wherever the work is shared.
 | `dev/model.html`, `dev/model.js` | glTF bench (`?cars=&mode=&env=&grid=1`). |
 | `dev/carsx.html`, `dev/carsx.js` | Car bench lit the way the game lights them. |
 | `dev/tricheck.mjs`, `dev/netcheck.mjs`, `dev/probe.mjs`, `dev/timecheck.mjs` | Per-vehicle triangle breakdown, failed-request log, in-page probe, load timing. |
+| `src/carFit.js` | **New.** The fitting geometry, as pure functions over `BufferGeometry` — no assets, no DOM, no renderer, so it can be exercised straight from Node. `squareYaw`, `noseSign`, `archAxles`, `envelopeOf`, `roofHeight`, `sliceProfile`, `clipToFootprint`, `wheelCorners`, `halfWidthAt`. |
+| `dev/fleet.html`, `dev/fleet.js` | **New.** Builds every id in `CARS` plus the truck through the real path. `?ids=&mode=&layout=row\|grid\|stack&env=&grid=1&paint=`. |
+| `dev/fleet-check.mjs` | **New.** The gate. Asserts facing, wheels-in-arches, wheels-on-ground, envelope and the `userData` contract for all 14 vehicles; `--shots <dir>` also writes the contact sheets. Exits non-zero on any failure. |
 
 ## `src/game.js` — every line touched
 
@@ -74,10 +116,12 @@ the end, on identical code.
 * **No good body for `m5`, `rs6`, `amg`.** No credibly-licensed, well-authored
   modern German super-saloon, fast estate or four-door coupé exists — every
   candidate failed provenance (see `CREDITS.md`). They stay procedural.
-* **Zivilstreifen stay procedural.** Putting them on the pack saloon/estate
-  saved 222 k tris and 264 calls, but the rig's wheelbase-to-length ratio for
-  those four cars does not match the pack's, so the wheels sat outside the
-  arches. Reverted deliberately.
+* **Zivilstreifen stay procedural** *(as of Phase A — being addressed in Phase
+  B)*. The earlier note here said the pack's wheelbase-to-length ratio did not
+  fit those four cars. That conclusion was drawn from the broken wheel
+  measurement described above; measured correctly, the pack's saloon fits `m5`
+  to within 7% and its estate fits `rs6` to within 6%. The reasoning was wrong,
+  not just the numbers.
 * The 930 is a **1975 car** wearing 992 performance figures. It is the only
   legitimately-licensed 911 available. Flagged for the owner.
 * `dev/lang-check.mjs` referenced `hud-rear-title`, which exists neither here
@@ -116,3 +160,26 @@ bundles, so there is no extra decoder file to fetch at runtime.
   `glows[].material.opacity`, `wheels[].userData.spin` (rotated about **X**)
   and `.radius`, `blues[].material`, `led.userData.{on,off}`.
   `MAT.make(hex, metal, rough)` is still used by `buildTruck`.
+
+
+## Running the gates
+
+```
+npx vite --port 5301 --strictPort &          # dev
+npx vite build
+python3 -m http.server 4374 --bind 127.0.0.1 --directory /tmp/prodroot &   # /tmp/prodroot/vollgas -> dist
+
+node dev/fleet-check.mjs    http://localhost:5301/ --shots dev/shots
+node dev/lang-check.mjs     http://localhost:5301/ /tmp/langshots
+node dev/phys.mjs           http://localhost:5301/
+node dev/arrest-check.mjs   http://localhost:5301/ /tmp/arrest.png
+node dev/busted-check.mjs   http://localhost:5301/ /tmp
+node dev/physics2-check.mjs http://localhost:5301/ /tmp/p2.png
+node dev/penalty-check.mjs  http://localhost:5301/ /tmp/pen.png
+node dev/prod-check.mjs     http://127.0.0.1:4374/vollgas/ /tmp/prod.png
+```
+
+`vite preview` could not be used for `prod-check` on this machine — it answered
+404 for an asset that `curl` fetched happily from the same URL. A plain static
+server rooted so that `/vollgas/` maps to `dist/` works, and is what the numbers
+below were measured on.

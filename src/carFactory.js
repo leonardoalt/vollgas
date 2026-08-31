@@ -600,6 +600,7 @@ export function buildWheel(spec, front, tier = 'lo') {
   if (geo.cal && spec.caliper) {
     g.add(new THREE.Mesh(geo.cal, spec.caliper === 'yellow' ? MAT.caliperYel : MAT.caliperRed));
   }
+  g.name = 'wheel';
   g.userData.spin = spin;
   g.userData.radius = r;
   return g;
@@ -1308,15 +1309,18 @@ export function finishCar(g, ctx) {
   // ---- plates, front and rear, in one mesh
   const plateTxt = opts.plate || spec.plate || 'S AB 81';
   const pw = Math.min(0.52, bodyW * 0.30);
-  g.add(platePair(plateTxt, pw,
+  const plates = platePair(plateTxt, pw,
     dims.height * 0.245, nose + 0.008,
-    dims.height * 0.30, tail - 0.008));
+    dims.height * 0.30, tail - 0.008);
+  plates.name = 'plates';
+  g.add(plates);
 
   // ---- fake contact shadow, car-shaped rather than a circle in a rectangle
   const sh = new THREE.Mesh(new THREE.PlaneGeometry(bodyW * 2.05, (nose - tail) * 1.34), MAT.shadow);
   sh.rotation.x = -Math.PI / 2;
   sh.position.set(0, 0.015, (nose + tail) / 2);
   sh.renderOrder = -1;
+  sh.name = 'shadow';
   g.add(sh);
 
   // ---- unmarked police kit: blue LEDs behind the grille and on the rear shelf
@@ -1327,6 +1331,7 @@ export function finishCar(g, ctx) {
     const mkBlue = (x, y, z, w, h, ry = 0) => {
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.045), MAT.blue.clone());
       m.position.set(x, y, z); m.rotation.y = ry;
+      m.name = 'blue';
       g.add(m); blues.push(m); return m;
     };
     // front: two strips tucked in behind the radiator grille
@@ -1351,6 +1356,7 @@ export function finishCar(g, ctx) {
     lm.position.set(0, ly - H * 0.055, lz - 0.04);
     lm.rotation.y = Math.PI;
     lm.userData = { off: off.tex, on: on.tex };
+    lm.name = 'ledSign';
     g.add(lm); led = lm;
   }
 
@@ -1436,7 +1442,9 @@ export function buildTruck(opts = {}) {
     for (const s of [-1, 1]) {
       for (let t = 0; t < (twin ? 2 : 1); t++) {
         const w = buildWheel({ wheelRF: r, wheelRR: r, wheelWF: 0.30, wheelWR: 0.30, spokes: 6, rimDark: true }, true, 'truck');
-        w.position.set(s * (1.02 + t * 0.34), r, z);
+        /* Dual tyres tuck *inside* the 2.55 m body: at the old 1.02/1.36
+           the outer wall stood 23 cm proud of the trailer. */
+        w.position.set(s * ((twin ? 0.75 : 1.02) + t * 0.34), r, z);
         g.add(w); wheels.push(w);
       }
     }
@@ -1446,10 +1454,13 @@ export function buildTruck(opts = {}) {
   addAxle(-9.30, true); addAxle(-10.70, true); addAxle(-12.10, true);
 
   const plate = opts.plate || 'RW TR 4711';
-  g.add(plateMesh(plate, 0.52, 0, 0, 0.95, 2.52));
+  const trPlate = plateMesh(plate, 0.52, 0, 0, 0.95, 2.52);
+  trPlate.name = 'plates';
+  g.add(trPlate);
 
   const sh = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 17.5), MAT.shadow);
   sh.rotation.x = -Math.PI / 2; sh.position.set(0, 0.015, -5.2); sh.renderOrder = -1;
+  sh.name = 'shadow';
   g.add(sh);
 
   /* Everything above was modelled with the origin at the tractor's front
