@@ -1,7 +1,7 @@
 /* ==========================================================================
    hud.js — instrument cluster, rear-space radar and the DOM overlays.
    ========================================================================== */
-import { LENGTH, LANES, GEO, sectionAt, limitAt } from './track.js';
+import { LENGTH, GEO, sectionAt } from './track.js';
 
 const DIN = '"Roboto Condensed","Arial Narrow",Helvetica,Arial,sans-serif';
 const $ = (id) => document.getElementById(id);

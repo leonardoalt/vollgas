@@ -18,11 +18,9 @@
 
    Fines follow the real Bußgeldkatalog for outside built-up areas.
    ========================================================================== */
-import * as THREE from 'three';
 import { LENGTH, LANES, GEO, SECTIONS, limitAt, sectionAt, sample, toWorld } from './track.js';
-import { buildCar, CARS, randomPlate, MAT } from './carFactory.js';
+import { buildCar, CARS, randomPlate } from './carFactory.js';
 import { TrafficCar } from './vehicles.js';
-import { ledTex } from './textures.js';
 
 const KMH = 3.6;
 

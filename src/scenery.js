@@ -10,7 +10,7 @@
    ========================================================================== */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { track, N, SEG, LENGTH, SECTIONS, BIOME, sectionAt, toWorld, sample } from './track.js';
+import { track, N, LENGTH, SECTIONS, BIOME, sectionAt, toWorld, sample } from './track.js';
 import { groundTex } from './textures.js';
 
 /* ------------------------------------------------------------ small noise */
@@ -206,35 +206,45 @@ const DENSITY = {          // trees per kilometre, per side
   [BIOME.FARM]: 22, [BIOME.ALB]: 40, [BIOME.HEGAU]: 70,
 };
 
-export function buildVegetation(rand, terrainHeight) {
+/* Bucket size for vegetation instancing. One InstancedMesh spanning all 26 km
+   can never be frustum-culled, so its full triangle count is paid every frame;
+   splitting it per route segment lets the far ones drop out. */
+const VEG_BUCKET = 1800;
+
+export function buildVegetation(rand) {
   const group = new THREE.Group();
   group.name = 'vegetation';
-  const spruce = [], leafy = [], bush = [], vine = [];
+  const nBuckets = Math.ceil(LENGTH / VEG_BUCKET);
+  const mk = () => Array.from({ length: nBuckets }, () => []);
+  const bins = { spruce: mk(), leafy: mk(), bush: mk(), vine: mk() };
 
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
   const p = new THREE.Vector3();
+  const UP = { x: 0, y: 1, z: 0 };
 
   for (let s = 20; s < LENGTH - 20; s += 9) {
     const sec = sectionAt(s);
+    const b = Math.min(nBuckets - 1, Math.floor(s / VEG_BUCKET));
     const dens = DENSITY[sec.biome] || 30;
     const perStep = (dens / 1000) * 9 * 2;
-    let n = Math.floor(perStep) + (rand() < perStep % 1 ? 1 : 0);
+    const n = Math.floor(perStep) + (rand() < perStep % 1 ? 1 : 0);
     for (let k = 0; k < n; k++) {
       const side = rand() < 0.5 ? -1 : 1;
-      // keep well clear of the carriageway, hard shoulder and barrier
+      // well clear of the carriageway, hard shoulder and barrier
       const d = 20 + rand() ** 0.55 * 205;
-      const u = side * d;
-      const w = toWorld(s + rand() * 9, u, p);
+      const w = toWorld(s + rand() * 9, side * d, p);
       const y = w.y + hillHeight(w.x, w.z, d) - 0.3;
       const scale = 0.65 + rand() * 0.8;
-      q.setFromAxisAngle({ x: 0, y: 1, z: 0 }, rand() * 6.28);
+      q.setFromAxisAngle(UP, rand() * 6.28);
       sc.set(scale, scale * (0.85 + rand() * 0.4), scale);
       m4.compose({ x: w.x, y, z: w.z }, q, sc);
       const roll = rand();
-      if (sec.biome === BIOME.FOREST) (roll < 0.82 ? spruce : leafy).push(m4.clone());
-      else if (sec.biome === BIOME.URBAN) (roll < 0.35 ? spruce : roll < 0.8 ? leafy : bush).push(m4.clone());
-      else if (sec.biome === BIOME.ALB) (roll < 0.55 ? spruce : roll < 0.85 ? leafy : bush).push(m4.clone());
-      else (roll < 0.30 ? spruce : roll < 0.78 ? leafy : bush).push(m4.clone());
+      let kind;
+      if (sec.biome === BIOME.FOREST) kind = roll < 0.82 ? 'spruce' : 'leafy';
+      else if (sec.biome === BIOME.URBAN) kind = roll < 0.35 ? 'spruce' : roll < 0.8 ? 'leafy' : 'bush';
+      else if (sec.biome === BIOME.ALB) kind = roll < 0.55 ? 'spruce' : roll < 0.85 ? 'leafy' : 'bush';
+      else kind = roll < 0.30 ? 'spruce' : roll < 0.78 ? 'leafy' : 'bush';
+      bins[kind][b].push(m4.clone());
     }
     // vineyard rows on the Neckar slopes
     if (sec.biome === BIOME.VINEYARD && rand() < 0.30) {
@@ -246,35 +256,37 @@ export function buildVegetation(rand, terrainHeight) {
           const u = side * (d0 + r * 3.4);
           const w = toWorld(s + t * 2.6, u, p);
           const y = w.y + hillHeight(w.x, w.z, Math.abs(u)) - 0.3;
-          q.setFromAxisAngle({ x: 0, y: 1, z: 0 }, 0);
+          q.setFromAxisAngle(UP, 0);
           sc.set(1, 0.85 + rand() * 0.3, 1);
           m4.compose({ x: w.x, y, z: w.z }, q, sc);
-          vine.push(m4.clone());
+          bins.vine[b].push(m4.clone());
         }
       }
     }
   }
 
-  const inst = (geo, mat, arr) => {
-    if (!arr.length) return;
-    const im = new THREE.InstancedMesh(geo, mat, arr.length);
-    arr.forEach((m, i) => im.setMatrixAt(i, m));
-    im.instanceMatrix.needsUpdate = true;
-    im.frustumCulled = false;
-    group.add(im);
-  };
   const needle = new THREE.MeshStandardMaterial({ color: 0x2c4a2b, roughness: 0.92, flatShading: true });
   const broad = new THREE.MeshStandardMaterial({ color: 0x466d33, roughness: 0.9, flatShading: true });
   const scrub = new THREE.MeshStandardMaterial({ color: 0x55703a, roughness: 0.95, flatShading: true });
   const vineM = new THREE.MeshStandardMaterial({ color: 0x5d6f3c, roughness: 0.9, flatShading: true });
-
-  inst(spruceGeo(), needle, spruce);
-  inst(leafyGeo(), broad, leafy);
-  inst(bushGeo(), scrub, bush);
   const vg = new THREE.BoxGeometry(0.25, 1.6, 0.9); vg.translate(0, 0.8, 0);
-  inst(vg, vineM, vine);
 
-  group.userData.counts = { spruce: spruce.length, leafy: leafy.length, bush: bush.length, vine: vine.length };
+  const GEOM = { spruce: spruceGeo(), leafy: leafyGeo(), bush: bushGeo(), vine: vg };
+  const MATS = { spruce: needle, leafy: broad, bush: scrub, vine: vineM };
+  const counts = {};
+  for (const kind of Object.keys(bins)) {
+    counts[kind] = 0;
+    for (const arr of bins[kind]) {
+      if (!arr.length) continue;
+      counts[kind] += arr.length;
+      const im = new THREE.InstancedMesh(GEOM[kind], MATS[kind], arr.length);
+      arr.forEach((m, i) => im.setMatrixAt(i, m));
+      im.instanceMatrix.needsUpdate = true;
+      im.computeBoundingSphere();
+      group.add(im);
+    }
+  }
+  group.userData.counts = counts;
   return group;
 }
 

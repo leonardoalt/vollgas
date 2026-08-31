@@ -3,17 +3,15 @@
    ========================================================================== */
 import * as THREE from 'three';
 import { buildWorld } from './world.js';
-import {
-  initMaterials, buildCar, CARS, PLAYER_CARS, randomPlate,
-} from './carFactory.js';
+import { initMaterials, CARS, PLAYER_CARS } from './carFactory.js';
 import {
   Player, Traffic, resolveCollisions,
 } from './vehicles.js';
-import { Enforcement, COP_STATE, penaltyFor } from './police.js';
+import { Enforcement, COP_STATE } from './police.js';
 import { Hud } from './hud.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
-import { LENGTH, LANES, sample, toWorld, sectionAt, limitAt, rng, totalKm } from './track.js';
+import { LENGTH, LANES, toWorld, rng, STAGE_KM } from './track.js';
 
 const KMH = 3.6;
 const $ = (id) => document.getElementById(id);
@@ -156,7 +154,7 @@ export class Game {
     $('results').classList.add('hidden');
     this.audio.start();
     this.audio.resume();
-    this.hud.alert('A 81 · STUTTGART → SINGEN', `${totalKm.toFixed(0)} km · freie Abschnitte nutzen`, 'info', 4.5);
+    this.hud.alert('A 81 · STUTTGART → SINGEN', `${STAGE_KM} km · freie Abschnitte nutzen`, 'info', 4.5);
   }
 
   teardown() {

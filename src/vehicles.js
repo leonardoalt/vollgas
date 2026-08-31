@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import {
   sample, toWorld, LANES, GEO, LENGTH, sectionAt, limitAt, pavedRange,
 } from './track.js';
-import { buildCar, buildTruck, CARS, randomPlate, MAT } from './carFactory.js';
+import { buildCar, buildTruck, CARS, randomPlate } from './carFactory.js';
 
 const G = 9.81;
 const KMH = 3.6;

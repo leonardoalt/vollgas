@@ -7,15 +7,12 @@
    away, and merged down to a handful of meshes per chunk.
    ========================================================================== */
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { SEG, LENGTH, SECTIONS, GEO, BIOME, sample, sectionAt, rng } from './track.js';
 import {
-  track, N, SEG, LENGTH, SECTIONS, GEO, BIOME, sample, sectionAt, toWorld, rng,
-} from './track.js';
-import {
-  asphaltTex, groundTex, skyTex, facadeTex, signLimit, signEndAll, signAdvice,
-  signAusfahrt, signGantry, signRast, signBaustelle, signKm, signTunnel, COL,
+  asphaltTex, skyTex, facadeTex, signLimit, signEndAll, signAdvice,
+  signAusfahrt, signGantry, signRast, signBaustelle, signKm, signTunnel,
 } from './textures.js';
-import { buildTerrain, buildVegetation, buildLandmarks, hillHeight } from './scenery.js';
+import { buildTerrain, buildVegetation, buildLandmarks } from './scenery.js';
 
 const CHUNK = 512;                    // metres per road chunk
 const CROSSFALL = 0.025;              // 2.5 %, drains to the outside
@@ -633,7 +630,7 @@ export function buildWorld(scene, renderer, onProgress = () => {}) {
   onProgress('Gelände');
   scene.add(buildTerrain());
   onProgress('Schwarzwald');
-  scene.add(buildVegetation(rng, hillHeight));
+  scene.add(buildVegetation(rng));
   onProgress('Wahrzeichen');
   const lm = buildLandmarks(rng, facadeTex);
   scene.add(lm.group);
