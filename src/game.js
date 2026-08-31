@@ -4,6 +4,12 @@
 import * as THREE from 'three';
 import { buildWorld } from './world.js';
 import { initMaterials, CARS, PLAYER_CARS } from './carFactory.js';
+import { roadEnv } from './carEnv.js';
+import { createPostFX } from './postfx.js';
+import { mountHero } from './carHero.js';
+import { mountCredits } from './credits.js';
+import { preloadCarModels } from './carModels.js';
+import { createPerfHud } from './perfHud.js';
 import {
   Player, Traffic, resolveCollisions,
 } from './vehicles.js';
@@ -70,7 +76,21 @@ export class Game {
     const setText = (stage) => { const el = $('load-text'); if (el) el.textContent = `${t('load')} · ${stage} …`; };
     await new Promise(r => requestAnimationFrame(r));
     this.world = buildWorld(this.scene, renderer, setText);
-    initMaterials(this.world.env);
+    /* [car visuals] The cars get their own procedurally generated HDR sky to
+       reflect — sun disc, crisp horizon, dark ground bounce (see carEnv.js) —
+       instead of a PMREM of the flat background gradient, which carries no
+       information and makes clearcoat pointless. Kept as a separate env map so
+       the world's own materials are left exactly as they were. */
+    this.carEnv = roadEnv(renderer);
+    initMaterials(this.carEnv);
+
+    /* [car visuals] Real car bodies. This is a network fetch, so it reports
+       into the loading screen and never throws — any model that fails to
+       arrive simply leaves that car on its procedural body. */
+    setText('Fahrzeuge');
+    this.modelStats = await preloadCarModels(this.carEnv, (f, label) => {
+      setText(`${label} ${Math.round(f * 100)} %`);
+    });
 
     // baseline lighting values, so the tunnel can dim them
     this.baseHemi = this.scene.children.find(o => o.isHemisphereLight);
@@ -81,10 +101,23 @@ export class Game {
       fogCol: this.scene.fog.color.clone(),
     };
 
+    /* [car visuals] Bloom. Five small passes of our own rather than
+       EffectComposer, which would tone-map a second time on top of the scene
+       pass — see postfx.js. Returns null if the device cannot give us a float
+       target, in which case we just render straight to the canvas as before. */
+    this.post = createPostFX(renderer, innerWidth, innerHeight);
+
+    /* [car visuals] fps / frame-time readout: F, or ?stats=1. The only way to
+       answer "does it run" honestly, since every other number in this project
+       was measured on a software rasteriser. */
+    this.perf = createPerfHud({ visible: /[?&]stats=1/.test(location.search) });
+
     addEventListener('resize', () => this.onResize());
     GLOBALS.km = STAGE_KM;
     document.documentElement.lang = lang;
     applyDom();
+    // [car visuals] CC-BY on the car models requires a visible credit
+    mountCredits($('car-detail'));
     /* The car pictures are live renders, which means a second WebGL context.
        Creating it here delayed the loading screen clearing by well over a
        second, so it is built on the first menu frame instead and the list is
@@ -92,7 +125,7 @@ export class Game {
     this.showroom = null;
     this._needShowroom = true;
     const langBtn = $('lang-btn');
-    if (langBtn) langBtn.onclick = () => { toggleLang(); this.buildMenu(); };
+    if (langBtn) langBtn.onclick = () => { toggleLang(); mountCredits($('car-detail')); this.buildMenu(); };
     this.buildMenu();
     $('loading').classList.add('done');
     this.state = 'menu';
@@ -103,6 +136,7 @@ export class Game {
     this.renderer.setSize(innerWidth, innerHeight, false);
     this.camera.aspect = innerWidth / innerHeight;
     this.camera.updateProjectionMatrix();
+    if (this.post) this.post.setSize(innerWidth, innerHeight);   // [car visuals]
     this.layoutMirror();
   }
 
@@ -204,6 +238,10 @@ export class Game {
     const id = PLAYER_CARS[this.selected];
     const spec = CARS[id];
     if (this.showroom) this.showroom.setCar(id, spec.paints[this.paintIdx % spec.paints.length].c);
+    // [car visuals] still photograph as the hero image where we have one
+    /* The live model is the default view: it is the car you actually drive,
+       and making that look right is the point. The photo is one click away. */
+    mountHero($('car-stage'), $('car-canvas'), id, this._heroPhoto === true);
     $('car-detail-name').textContent = spec.name;
     $('car-detail-sub').textContent =
       `${spec.marque} · ${t(spec.perf.awd ? 'car.awd' : 'car.rwd')} · ${t('car.gears', { n: spec.perf.gears })}`;
@@ -706,7 +744,9 @@ export class Game {
       // the mirror is a small strip; 30 Hz is indistinguishable and halves its cost
       this._mirrorTick = ((this._mirrorTick || 0) + 1) % 2;
       if (racing && !this.paused && this._mirrorTick === 0) this.renderMirror();
-      this.renderer.render(this.scene, this.camera);
+      // [car visuals] bloom composite when available, plain render otherwise
+      if (this.post) this.post.render(this.scene, this.camera);
+      else this.renderer.render(this.scene, this.camera);
       if (racing) {
         this.renderer.autoClear = false;
         this.renderer.render(this.overlay, this.overlayCam);
@@ -715,6 +755,7 @@ export class Game {
       const info = this.renderer.info.render;
       this.frameStats = { calls: info.calls, tris: info.triangles };
       this.renderer.info.reset();
+      if (this.perf) this.perf.update(dt, this.frameStats);   // [car visuals]
       requestAnimationFrame(frame);
     };
     requestAnimationFrame(frame);

@@ -36,8 +36,11 @@ for (const want of ['de', 'en']) {
   await page.keyboard.up('w');
   const hud = await page.evaluate(() => ({
     labels: [...document.querySelectorAll('#hud-race .lbl, #hud-legal .lbl')].map(e => e.textContent),
-    rear: document.getElementById('hud-rear-title').textContent,
-    sub: document.getElementById('hud-section-sub').textContent,
+    /* Defensive lookups: these ids have drifted out of index.html over time and
+       a hard reference made the whole language check throw before it printed
+       anything. A missing panel should read as null, not crash the harness. */
+    rear: (document.getElementById('hud-rear-title') || {}).textContent ?? null,
+    sub: (document.getElementById('hud-section-sub') || {}).textContent ?? null,
   }));
   await page.screenshot({ path: `${outDir}/lang-${want}-race.png` });
   console.log(`\n=== ${want} ===`);

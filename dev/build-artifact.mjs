@@ -6,9 +6,29 @@ import { join } from 'node:path';
 
 const dist = 'dist';
 const files = readdirSync(join(dist, 'assets'));
-const js = readFileSync(join(dist, 'assets', files.find(f => f.endsWith('.js'))), 'utf8');
+let js = readFileSync(join(dist, 'assets', files.find(f => f.endsWith('.js'))), 'utf8');
 const css = readFileSync(join(dist, 'assets', files.find(f => f.endsWith('.css'))), 'utf8');
 const html = readFileSync(join(dist, 'index.html'), 'utf8');
+
+/* Vite emits imported assets as separate hashed files, which a single-file page
+   cannot fetch. Inline each one as a data URI and rewrite the reference. */
+const MIME = {
+  '.webp': 'image/webp', '.png': 'image/png', '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.svg': 'image/svg+xml',
+  // car bodies: without these the single-file page silently falls back to the
+  // procedural cars, because there is no server to fetch a .glb from
+  '.glb': 'model/gltf-binary',
+};
+for (const f of files) {
+  const ext = f.slice(f.lastIndexOf('.'));
+  if (!MIME[ext]) continue;
+  const b64 = readFileSync(join(dist, 'assets', f)).toString('base64');
+  const uri = `data:${MIME[ext]};base64,${b64}`;
+  const before = js;
+  js = js.split(`/vollgas/assets/${f}`).join(uri).split(`assets/${f}`).join(uri);
+  console.log(`inlined ${f} (${(b64.length / 1024).toFixed(0)} kB b64)`
+    + (before === js ? ' — WARNING: no reference found' : ''));
+}
 
 // the game's own DOM, between <body> and </body>
 const body = html.slice(html.indexOf('<body>') + 6, html.lastIndexOf('</body>'))
