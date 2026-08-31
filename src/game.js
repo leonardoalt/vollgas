@@ -6,6 +6,7 @@ import { buildWorld } from './world.js';
 import { initMaterials, CARS, PLAYER_CARS } from './carFactory.js';
 import { roadEnv } from './carEnv.js';
 import { createPostFX } from './postfx.js';
+import { mountHero } from './carHero.js';
 import {
   Player, Traffic, resolveCollisions,
 } from './vehicles.js';
@@ -219,6 +220,8 @@ export class Game {
     const id = PLAYER_CARS[this.selected];
     const spec = CARS[id];
     if (this.showroom) this.showroom.setCar(id, spec.paints[this.paintIdx % spec.paints.length].c);
+    // [car visuals] still photograph as the hero image where we have one
+    mountHero($('car-stage'), $('car-canvas'), id, this._heroPhoto !== false);
     $('car-detail-name').textContent = spec.name;
     $('car-detail-sub').textContent =
       `${spec.marque} · ${t(spec.perf.awd ? 'car.awd' : 'car.rwd')} · ${t('car.gears', { n: spec.perf.gears })}`;

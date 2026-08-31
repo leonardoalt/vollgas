@@ -980,7 +980,10 @@ export const CARS = {
     tailStyle: 'bar', tailY: 0.66, pipes: 2, wing: 'ducktail',
     mirrorZ: 0.752, mirrorY: 0.715, beltAt: 0.66, handles: [0.56],
     plate: 'S PS 911',
-    paints: [{ n: 'Indischrot', c: 0xb0121f }, { n: 'GT-Silber', c: 0xb9bdc0 }, { n: 'Achatgrau', c: 0x4a5157 }],
+    /* Gentianblau first, because the still photograph in the menu is of the
+       blue car and the car you drive has to be the car in the picture. */
+    paints: [{ n: 'Gentianblau', c: 0x1b46b0 }, { n: 'Indischrot', c: 0xb0121f },
+      { n: 'GT-Silber', c: 0xb9bdc0 }, { n: 'Achatgrau', c: 0x4a5157 }],
     perf: { mass: 1640, power: 478, cd: 0.72, vmax: 330, grip: 1.42, awd: true, gears: 8, launch: 0.78, redline: 7200 },
     blurb: 'Heckmotor, Allrad, 650 PS. Klebt bei 300 noch auf der linken Spur und lässt sich vom Gegenverkehr nicht beeindrucken. Teuerste Art, in Flensburg Punkte zu sammeln.',
 
