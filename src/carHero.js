@@ -28,10 +28,10 @@ import amgHero from './assets/amg-hero.webp';
  * mistake.
  */
 export const HERO = {
-  turbo: { src: turboHero, paint: 0x1b46b0 },
+  turbo: { src: turboHero, paint: 0x1b46b0 },   // 992 Carrera
   m5: { src: m5Hero, paint: 0x3b4350 },
   rs6: { src: rs6Hero, paint: 0x9a9da0 },
-  amg: { src: amgHero, paint: 0x44474c },
+  amg: { src: amgHero, paint: 0x44474c },       // C 63 S, matching the spec
 };
 
 const BAR = 'position:absolute;left:8px;bottom:7px;z-index:3;display:flex;gap:4px;';
@@ -48,7 +48,7 @@ const BTN = 'font:600 9px/1 inherit;letter-spacing:.10em;padding:4px 7px;'
  *
  * @returns true if a still is being shown.
  */
-export function mountHero(stage, canvas, id, showPhoto = true) {
+export function mountHero(stage, canvas, id, showPhoto = false) {
   if (!stage || !canvas) return false;
   const hero = HERO[id];
   let img = stage.querySelector('.car-hero-img');

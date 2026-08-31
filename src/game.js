@@ -7,6 +7,8 @@ import { initMaterials, CARS, PLAYER_CARS } from './carFactory.js';
 import { roadEnv } from './carEnv.js';
 import { createPostFX } from './postfx.js';
 import { mountHero } from './carHero.js';
+import { mountCredits } from './credits.js';
+import { preloadCarModels } from './carModels.js';
 import {
   Player, Traffic, resolveCollisions,
 } from './vehicles.js';
@@ -81,6 +83,14 @@ export class Game {
     this.carEnv = roadEnv(renderer);
     initMaterials(this.carEnv);
 
+    /* [car visuals] Real car bodies. This is a network fetch, so it reports
+       into the loading screen and never throws — any model that fails to
+       arrive simply leaves that car on its procedural body. */
+    setText('Fahrzeuge');
+    this.modelStats = await preloadCarModels(this.carEnv, (f, label) => {
+      setText(`${label} ${Math.round(f * 100)} %`);
+    });
+
     // baseline lighting values, so the tunnel can dim them
     this.baseHemi = this.scene.children.find(o => o.isHemisphereLight);
     this.baseSun = this.world.sun;
@@ -100,6 +110,8 @@ export class Game {
     GLOBALS.km = STAGE_KM;
     document.documentElement.lang = lang;
     applyDom();
+    // [car visuals] CC-BY on the car models requires a visible credit
+    mountCredits($('car-detail'));
     /* The car pictures are live renders, which means a second WebGL context.
        Creating it here delayed the loading screen clearing by well over a
        second, so it is built on the first menu frame instead and the list is
@@ -221,7 +233,9 @@ export class Game {
     const spec = CARS[id];
     if (this.showroom) this.showroom.setCar(id, spec.paints[this.paintIdx % spec.paints.length].c);
     // [car visuals] still photograph as the hero image where we have one
-    mountHero($('car-stage'), $('car-canvas'), id, this._heroPhoto !== false);
+    /* The live model is the default view: it is the car you actually drive,
+       and making that look right is the point. The photo is one click away. */
+    mountHero($('car-stage'), $('car-canvas'), id, this._heroPhoto === true);
     $('car-detail-name').textContent = spec.name;
     $('car-detail-sub').textContent =
       `${spec.marque} · ${t(spec.perf.awd ? 'car.awd' : 'car.rwd')} · ${t('car.gears', { n: spec.perf.gears })}`;

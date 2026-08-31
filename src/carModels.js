@@ -62,6 +62,13 @@ const RECIPE = {
     strip: [/sticker/i, /^plate$/i, /wunderbaum/i, /^material_0$/],
     coat: [/^coat$/i],
     yaw: 0,
+    /* The model's own rims did not survive decimation — the simplifier eats
+       thin spokes first and leaves a tyre with a hole in it. carFactory's
+       revolved wheels are better than what was left, cost a tenth as much, and
+       come with the coloured calipers visible through the spokes. The model's
+       wheel geometry is still measured, because the wheelbase is what we scale
+       the whole car by; it just is not drawn. */
+    ownWheels: true,
     wheelMat: [/rim/i, /tire/i],
     paintMat: [/^paint$/i],
     glassMat: [/glass/i],
@@ -141,12 +148,25 @@ function toFloat(geo) {
   return g;
 }
 
+/* Baked geometry, memoised per mesh.
+
+   Five cars come out of two files, and picking the right wheel set for each
+   body means measuring every candidate wheel group. Without a cache that is
+   dozens of full dequantise-and-transform passes over the same meshes, which
+   was adding seconds to the loading screen. Callers mutate what they get back,
+   so hand out clones. */
+const _baked = new Map();
+
 /** Bake a mesh's world transform into a float copy of its geometry. */
 function bakeWorld(mesh) {
-  mesh.updateWorldMatrix(true, false);
-  const g = toFloat(mesh.geometry);
-  g.applyMatrix4(mesh.matrixWorld);
-  return g;
+  let g = _baked.get(mesh);
+  if (!g) {
+    mesh.updateWorldMatrix(true, false);
+    g = toFloat(mesh.geometry);
+    g.applyMatrix4(mesh.matrixWorld);
+    _baked.set(mesh, g);
+  }
+  return g.clone();
 }
 
 /**
@@ -302,7 +322,7 @@ function fitTemplate(id, gltfScene, envMap) {
       if (d < bestD) { bestD = d; chosen = meshes; }
     }
   }
-  if (chosen) {
+  if (chosen && !rec.ownWheels) {
     for (const o of chosen) {
       const g = bakeWorld(o);
       if (!wheelMats.has(o.material)) wheelMats.set(o.material, []);
@@ -333,7 +353,13 @@ function fitTemplate(id, gltfScene, envMap) {
   let scale;
   const rigWB = Math.abs(spec.axleF - spec.axleR);
   let quad = null;
-  if (roles.wheel.length) {
+  if (rec.ownWheels) {
+    /* Our own wheels, mounted at the rig's axles, so the body only has to fill
+       the rig's footprint — scale on overall length. This also skips splitting
+       the model's wheel mesh into quadrants, which was the most expensive thing
+       in the whole fitting pass and is now pointless. */
+    scale = dims.length / (full.max.z - full.min.z);
+  } else if (roles.wheel.length) {
     // measure the model's wheelbase from the split wheel clusters
     const merged = mergeGeometries(roles.wheel.map(g => g.clone()));
     quad = splitQuadrants(merged);
@@ -584,6 +610,13 @@ export function setModelsEnabled(v) { _enabled = !!v; }
  * @param onProgress  (fraction, label) for the loading screen
  */
 export async function preloadCarModels(envMap, onProgress = () => {}) {
+  /* Escape hatch for the harnesses: ?nomodels=1 runs the whole game on the
+     procedural bodies, which is how the model cost is measured against the
+     baseline and how the fallback path stays tested. */
+  if (typeof location !== 'undefined' && /[?&]nomodels=1/.test(location.search)) {
+    _enabled = false;
+    return {};
+  }
   const loader = new GLTFLoader();
   loader.setMeshoptDecoder(MeshoptDecoder);
 
@@ -609,6 +642,7 @@ export async function preloadCarModels(envMap, onProgress = () => {}) {
     onProgress(done / needed.length, 'Fahrzeuge');
   }
 
+  _baked.clear();
   for (const id of wanted) {
     const scene = scenes[RECIPE[id].file];
     if (!scene) continue;
@@ -619,5 +653,6 @@ export async function preloadCarModels(envMap, onProgress = () => {}) {
       console.warn('carModels: could not fit', id, e && e.message);
     }
   }
+  _baked.clear();                 // release the intermediate float copies
   return modelStats();
 }

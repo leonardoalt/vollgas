@@ -481,15 +481,21 @@ function wheelGeoms(radius, width, spokes, tier) {
   if (_wheelCache.has(key)) return _wheelCache.get(key);
   const R = radius, W = width;
   const hi = tier === 'hi', mid = tier === 'mid';
-  const seg = hi ? 30 : mid ? 24 : 16;
+  /* A Sattelzug has twenty-two wheels and nobody has ever looked closely at
+     one of them, so it gets its own tier. Left at the traffic-car tier the
+     trucks were spending more triangles on tyres than the player's car spends
+     on its entire body. */
+  const seg = hi ? 30 : mid ? 24 : tier === 'truck' ? 10 : 16;
 
   // ---- tyre: bead, sidewall bulge, shoulder, tread, and back down again
   const tp = hi
     ? [[-0.500, 0.745], [-0.472, 0.818], [-0.442, 0.902], [-0.402, 0.961],
        [-0.330, 0.994], [0.000, 1.000], [0.330, 0.994], [0.402, 0.961],
        [0.442, 0.902], [0.472, 0.818], [0.500, 0.745]]
-    : [[-0.500, 0.745], [-0.442, 0.902], [-0.335, 0.992],
-       [0.335, 0.992], [0.442, 0.902], [0.500, 0.745]];
+    : tier === 'truck'
+      ? [[-0.500, 0.800], [-0.400, 0.985], [0.400, 0.985], [0.500, 0.800]]
+      : [[-0.500, 0.745], [-0.442, 0.902], [-0.335, 0.992],
+        [0.335, 0.992], [0.442, 0.902], [0.500, 0.745]];
   const tyre = revolveX(tp.map(([x, r]) => [x * W, r * R]), seg);
 
   // ---- rim: barrel, then a flange that turns back on itself to make a lip
@@ -1412,7 +1418,7 @@ export function buildTruck(opts = {}) {
   const addAxle = (z, twin, r = 0.52) => {
     for (const s of [-1, 1]) {
       for (let t = 0; t < (twin ? 2 : 1); t++) {
-        const w = buildWheel({ wheelRF: r, wheelRR: r, wheelWF: 0.30, wheelWR: 0.30, spokes: 6, rimDark: true }, true);
+        const w = buildWheel({ wheelRF: r, wheelRR: r, wheelWF: 0.30, wheelWR: 0.30, spokes: 6, rimDark: true }, true, 'truck');
         w.position.set(s * (1.02 + t * 0.34), r, z);
         g.add(w); wheels.push(w);
       }

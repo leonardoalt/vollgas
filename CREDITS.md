@@ -1,60 +1,136 @@
 # Credits
 
-## Third-party art assets: none
+Vollgas began with no art assets at all — every mesh, texture and sign was
+generated at load time. That is still true of the world, the signage and most
+of the traffic. It is no longer true of the cars, and this file records exactly
+what came from where.
 
-Vollgas ships **no external art assets**. Every mesh, texture, sign, plate and
-environment map in the game is generated procedurally at load time from code in
-`src/`. There is nothing to attribute because nothing was imported.
+The in-game attribution required by CC BY is rendered in the car-select panel
+(`src/credits.js`), not only here.
 
-This was re-verified deliberately in August 2026, when the question was asked
-whether open-source badge-free replicas of a 911 / M5 / RS6 / C63 could be
-dropped in instead of the procedural bodies. The answer was no. The findings are
-recorded here so nobody has to redo the search.
+## 3D models
 
-## Why no third-party car models (research record, 2026-08)
+Both are **CC BY 4.0**: commercial use allowed, attribution required. The
+licence text quoted below is the `license.txt` shipped inside each model's own
+distribution, and the same attribution is embedded in `asset.extras` of the
+GLBs we ship.
 
-The requirement was: permissive **and verifiable** licence (CC0 / CC-BY / MIT),
-trademark-free, four cars under 8 MB total, downloadable without a login wall.
+### FREE 1975 Porsche 911 (930) Turbo — used for `turbo`
 
-| Source | Licence, as actually stated | Verdict |
-|---|---|---|
-| [Kenney Car Kit](https://kenney.nl/assets/car-kit) | CC0, stated on [kenney.nl/support](https://kenney.nl/support), `License.txt` in the zip | **Licence is clean.** 4 cars ≈ 690 kB raw / ~115 kB gzip, one shared 12 kB atlas, direct download. Rejected on *looks*: it is deliberately stylised toy geometry and is a visual downgrade from the current procedural bodies. |
-| [OGA "Ultimate 3D Car Assets Pack"](https://opengameart.org/content/ultimate-3d-car-assets-pack-w-interiors-and-animations) (Lyricsz) | OGA licence field: CC0 | Clean, 20 cars incl. glTF in 1.68 MB. Same problem: stylised. |
-| [Quaternius cars](https://quaternius.com/packs/cars.html) | Author's site says CC0; Poly Pizza labels the same model CC-BY 3.0 | Clean either way, ~430 tris per car. Far too simple. |
-| three.js `examples/models/gltf/ferrari.glb` | **No licence.** three.js's [MIT LICENSE](https://raw.githubusercontent.com/mrdoob/three.js/dev/LICENSE) covers the software, not example media — see [three.js#23089](https://github.com/mrdoob/three.js/issues/23089) | **Rejected.** The credited source (Sketchfab model `57bf6cc5…` by vicent091036) is now *disabled* and its API entry 404s — i.e. taken down. Unverifiable licence, bad provenance, and a badged Ferrari. |
-| [Poly Haven](https://polyhaven.com/license) | Genuinely CC0 | No vehicles at all — [/models/vehicles-transport](https://polyhaven.com/models/vehicles-transport) returns zero results. |
-| [Khronos glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) | `CarConcept.glb` CC-BY 4.0; `ToyCar.glb` CC0 | Rejected on size: 11.8 MB and 5.4 MB respectively, for one car. |
-| Sketchfab CC0 filter | — | `license=cc0&downloadable=true&categories=cars-vehicles` returns 11 models and **not one is a car** (boats, wagons, a bicycle). `GET /v3/models/{uid}/download` unauthenticated returns HTTP 401: hard login wall. |
-| Sketchfab "CC0" realistic cars | Description says CC0, structured licence field says "Free Standard" (Sketchfab's own proprietary licence) | **Rejected as unverifiable** — the two statements contradict each other. Also 480 k faces. |
-| Sketchfab CC-BY realistic cars | Tagged CC Attribution by uploaders | **Rejected on provenance.** The same search returns a *Cyberpunk 2077 Quadra V-Tech* tagged CC-BY: a straight rip from CD Projekt. A CC tag on Sketchfab says nothing about whether the uploader had the right to grant it. |
-| [Daniel Zhabotinsky](https://sketchfab.com/DanielZhabotinsky) | API licence field: `CC Attribution` / CC BY 4.0, plus an explicit grant in each description | **The one genuinely viable realistic option.** ~20 low-poly cars, 15–28 k faces, and crucially **fictional marques** (Phoenix 455, Tiara GT, LCT 3000 …) so trademark-clean by design rather than by de-badging. Rejected here only because each needs a manual authenticated download and texture downscaling, which this change could not do unattended — worth revisiting. |
-| Poly Pizza branded realistic cars | CC-BY 3.0 via the Google Poly archive; licence chain is real | **Rejected on trademarks.** Nissan GTR, Ferrari F40, Camaro ZL1 are marque names *and* recognisable body shapes; trade dress does not care what you rename the file. |
-| TurboSquid / CGTrader | Royalty-free licences require the model be **non-extractable** — "proprietary formats that cannot be extracted, exported, or decompiled" ([TurboSquid](https://blog.turbosquid.com/royalty-free-license/)), "the 3rd party cannot retrieve it on its own" ([CGTrader](https://help.cgtrader.com/hc/en-us/articles/360015124437-Royalty-Free-License)) | **Rejected, and specifically incompatible with a browser game**: serving a `.glb` over HTTP is exactly the prohibited case. |
-| Free3D, Pixabay 3D | Per-model "personal use" / [Pixabay licence](https://pixabay.com/service/license-summary/) forbids standalone distribution | Rejected. |
-| Stunt Rally, VDrift, TORCS | GPL v2/v3 | Rejected: viral, not permissive. |
-| Speed Dreams | GPLv2+ code, **Free Art License** for the car data | Rejected: share-alike copyleft. |
-| SuperTuxKart | [Mixed GPL / CC-BY / CC-BY-SA](https://supertuxkart.net/Licensing), CC-BY-SA preferred | Rejected: viral, mixed-licence tree, and the karts are cartoon animals. |
-| Blender BMW27 (Mike Pan) | [BlendSwap](https://blendswap.com/3d/bmw): CC-BY-SA | Rejected: copyleft, badged BMW, and a render scene rather than a game asset. |
+* Author: **Lionsharp Studios** — <https://sketchfab.com/lionsharp>
+* Source: <https://sketchfab.com/3d-models/free-1975-porsche-911-930-turbo-8568d9d14a994b9cae59499f0dbed21e>
+* Licence: **CC BY 4.0** — <https://creativecommons.org/licenses/by/4.0/>
+  > `* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)`
+  > `* requirements:	Author must be credited. Commercial use is allowed.`
+* Required credit, verbatim:
+  > This work is based on "FREE 1975 Porsche 911 (930) Turbo"
+  > (https://sketchfab.com/3d-models/free-1975-porsche-911-930-turbo-8568d9d14a994b9cae59499f0dbed21e)
+  > by Lionsharp Studios (https://sketchfab.com/lionsharp) licensed under
+  > CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* Shipped as `src/assets/models/car-930.glb` (2.58 MB).
+* **What we changed:** optimised with `@gltf-transform/cli` (textures to WebP at
+  1024 px, meshopt compression), 241 k → 150 k triangles. Then, at load time in
+  `src/carModels.js`: the `930_stickers` and `plate` materials are dropped
+  (badges, model lettering and the modeller's licence plate — we fit a German
+  one), the `930_wunderbaum` hanging air freshener is dropped as it is another
+  party's trademark, the modeller's ground-shadow quad is dropped, and the
+  duplicated `coat` shell is dropped because we apply a real clearcoat. The
+  remaining paint material is tinted to the player's chosen colour and given
+  our environment map. Net in game: ~124 k triangles.
 
-**Conclusion.** There is a clean CC0 set (Kenney, OGA, Quaternius) but it is
-stylised low-poly that would look worse than what the game already has, and the
-realistic options are all either illegally re-uploaded, licence-ambiguous,
-copyleft, trademark-encumbered, forbidden in open web formats, or far too heavy.
-So the cars stayed procedural and the effort went into lighting, materials and
-geometry instead.
+### Generic passenger car pack — used for traffic (`taxi`, `kombi`, `hatch`, `van`)
 
-The one option worth reopening if photoreal bodies ever become the goal is
-Daniel Zhabotinsky's CC-BY fictional-marque cars — genuinely permissive,
-genuinely trademark-free, and the right polygon count. That would need
-`CREDITS.md` to carry "Car models by Daniel Zhabotinsky, CC BY 4.0" and a link
-to <https://sketchfab.com/DanielZhabotinsky>.
+* Author: **Comrade1280** — <https://sketchfab.com/comrade1280>
+* Source: <https://sketchfab.com/3d-models/generic-passenger-car-pack-20f9af9b8a404d5cb022ac6fe87f21f5>
+* Licence: **CC BY 4.0** — <https://creativecommons.org/licenses/by/4.0/>
+  > `* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)`
+  > `* requirements:	Author must be credited. Commercial use is allowed.`
+* Required credit, verbatim:
+  > This work is based on "Generic passenger car pack"
+  > (https://sketchfab.com/3d-models/generic-passenger-car-pack-20f9af9b8a404d5cb022ac6fe87f21f5)
+  > by Comrade1280 (https://sketchfab.com/comrade1280) licensed under
+  > CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* Shipped as `src/assets/models/car-generic-pack.glb` (1.68 MB).
+* **What we changed:** same optimisation pass. At load time we take one body out
+  of the ten in the file per traffic type, drop a stray cylinder, and fit our
+  own procedurally generated wheels because the pack's wheel designs are laid
+  out beside the bodies rather than mounted on them.
+* This pack carries **no marque badges of any kind** — it is deliberately
+  trademark-free, which is why it was chosen for traffic.
+
+### Provenance note
+
+Both were checked for signs of being re-uploaded rips of commercial game
+assets, which a large fraction of "free CC" car models are. Lionsharp Studios
+is a studio with a coherent commercial portfolio and the model description is a
+first-person account of its own mid-poly/clearcoat workflow; Comrade1280 has a
+consistent original portfolio of trademark-free vehicles. Candidates that
+failed this check were rejected — see "Rejected" below.
+
+## Photographs
+
+`src/assets/*-hero.webp` — the four car-select hero images.
+
+Made by the project owner (Leo Alt) and supplied for this use. Not third-party
+works; no external licence applies. Re-encoded from 1672×941 PNG (~1.5 MB each)
+to 1440 px WebP (~58 kB each) and, for the 911, the two wheel-centre crests
+were blanked so the set carries no marque badges, consistent with the rest of
+the project. Bonnet and grille emblems on the M5 and AMG images had already
+been removed by the owner before they reached this branch.
 
 ## Fonts
 
-The UI loads **Barlow Condensed** and **JetBrains Mono** from Google Fonts
-(`index.html`). Both are licensed under the SIL Open Font License 1.1. This is
-the only external network request the game makes.
+**Barlow Condensed** and **JetBrains Mono**, loaded from Google Fonts in
+`index.html`, both under the SIL Open Font License 1.1. This is the only
+external network request the game makes at runtime.
 
 ## Software
 
-Three.js (MIT), Vite (MIT). See `node_modules/*/LICENSE`.
+Three.js (MIT), Vite (MIT). `@gltf-transform/cli` (MIT) was used offline to
+optimise the models; it is not a runtime dependency.
+
+---
+
+# Rejected sources — the research record
+
+The question "can we just use real car models?" was investigated properly in
+August 2026 against these requirements: licence permissive **and verifiable**
+(CC0 / CC-BY / MIT), downloadable without an account, badge-free or trivially
+de-badgeable, and plausibly authored by the uploader rather than ripped. This
+record exists so nobody has to repeat the search.
+
+**Structural finding:** Sketchfab's `/v3/models/{uid}/download` endpoint returns
+HTTP 401 without OAuth, so Sketchfab is not directly usable as a source. Its
+*search* API is open, and Sketchfab glTF exports carry `license.txt` plus
+`asset.extras` attribution, so where such an export has been mirrored in a
+public GitHub repository the CC BY grant travels with it and remains valid
+regardless of the host repository's own licence. That is how both models above
+were obtained.
+
+| Source | Licence as actually stated | Verdict |
+|---|---|---|
+| Kenney Car Kit, OpenGameArt "Ultimate 3D Car Assets Pack", Quaternius cars | Genuinely CC0 | Clean licences, rejected on looks: stylised toy geometry, a visual downgrade on the procedural bodies. |
+| three.js `examples/models/gltf/ferrari.glb` | **No licence.** three.js's MIT licence covers the software, not example media ([three.js#23089](https://github.com/mrdoob/three.js/issues/23089)) | Rejected. The credited Sketchfab source has since been disabled, i.e. taken down. Unverifiable licence, bad provenance, badged. |
+| Khronos `CarConcept.glb` | CC BY 4.0, clean | Viable but 11.8 MB for one concept car that matches none of our four. Kept in reserve. |
+| Khronos `VirtualCity` | *"3DRT license with allowances for glTF Testing"* | Testing only. Rejected. |
+| Sketchfab CC0 filter | — | Returns **no cars at all** — museum scans, boats, a bicycle. |
+| Sketchfab "CC0" realistic cars | Description says CC0, structured licence field says "Free Standard" (Sketchfab's own proprietary licence) | Rejected as unverifiable: the two statements contradict each other. |
+| BMW M3 Touring G81 (`Car2022`) | Tagged CC BY | **Rejected — rip.** Description is a Forza car-list stat block (`Years: 2023 / Class: A / Weight: Medium`); tags `unity, unity3d`. This was the best fast-estate candidate. |
+| Hyundai i20 (`ANDREO12`) | Tagged CC BY | **Rejected — rip.** Description links a ZModeler group; ZModeler is the GTA vehicle-rip toolchain. |
+| 2000 Audi A4 (`tonielpro520`) | Tagged CC BY | **Rejected.** Description says "Free REUPLOAD". |
+| BMW M8 F92, Audi A5 Sportback | Tagged CC BY | **Rejected.** Descriptions are copy-pasted manufacturer marketing copy; the A5 is 950 k faces, i.e. manufacturer CAD. |
+| Mercedes-Benz AMG CLS, Audi A7 Quattro | Was CC BY | Both now 404 on Sketchfab — taken down. |
+| Porsche 911 Carrera 4S (Lionsharp) | **CC BY-SA** | Rejected: share-alike. Note `Tresjs/tres` ships tempting pre-compacted `porsche-911.glb` files — triangle counts confirm these are the ShareAlike Carrera 4S, **not** the CC BY 930. Do not use them. |
+| Mercedes E-Class W212 (`Peter_D`), BMW M3 E30 (`Bexxie`) | CC BY 4.0, provenance good | Genuinely usable. Not used here only because neither fits a super-saloon, fast estate or four-door coupé well. Real options if the roster changes. |
+| `mmcworks`, `mk2design`, `anserkon` generic sedans/coupés/estates | CC BY, excellent provenance and fit | **Unusable: no public mirror exists**, and Sketchfab needs OAuth to download. The best-fit authors found. |
+| Poly Pizza branded realistic cars | CC BY 3.0 via the Google Poly archive; chain is real | Rejected on trademarks: Nissan GTR, Ferrari F40 etc. are marque names *and* recognisable trade dress. |
+| TurboSquid / CGTrader "free" | Royalty-free terms require the model be **non-extractable** — "proprietary formats that cannot be extracted, exported, or decompiled" | Rejected, and specifically incompatible with a browser game: serving a `.glb` over HTTP is the prohibited case. |
+| Free3D, Pixabay 3D | Per-model "personal use"; Pixabay forbids standalone redistribution | Rejected. |
+| Stunt Rally, VDrift, TORCS (GPL); Speed Dreams (Free Art Licence); SuperTuxKart (CC BY-SA) | Copyleft | Rejected: viral, would infect the repository. |
+| Blender BMW27 (Mike Pan) | CC BY-SA | Rejected: copyleft, badged, and a render scene rather than a game asset. |
+| Poly Haven, ambientCG | CC0 | No vehicles. |
+
+**Gaps that remain.** There is no credibly-licensed, well-authored, high-detail
+**fast estate** or **four-door coupé** available. Every candidate for those two
+body styles failed the provenance check. `m5`, `rs6` and `amg` therefore still
+use the procedural bodies, and will until a legitimate model appears.
