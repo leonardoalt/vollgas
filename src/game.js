@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { buildWorld } from './world.js';
 import { initMaterials, CARS, PLAYER_CARS } from './carFactory.js';
+import { roadEnv } from './carEnv.js';
 import {
   Player, Traffic, resolveCollisions,
 } from './vehicles.js';
@@ -70,7 +71,13 @@ export class Game {
     const setText = (stage) => { const el = $('load-text'); if (el) el.textContent = `${t('load')} · ${stage} …`; };
     await new Promise(r => requestAnimationFrame(r));
     this.world = buildWorld(this.scene, renderer, setText);
-    initMaterials(this.world.env);
+    /* [car visuals] The cars get their own procedurally generated HDR sky to
+       reflect — sun disc, crisp horizon, dark ground bounce (see carEnv.js) —
+       instead of a PMREM of the flat background gradient, which carries no
+       information and makes clearcoat pointless. Kept as a separate env map so
+       the world's own materials are left exactly as they were. */
+    this.carEnv = roadEnv(renderer);
+    initMaterials(this.carEnv);
 
     // baseline lighting values, so the tunnel can dim them
     this.baseHemi = this.scene.children.find(o => o.isHemisphereLight);

@@ -10,7 +10,8 @@
    transparent background, and is parked while you are driving.
    ========================================================================== */
 import * as THREE from 'three';
-import { buildCar, CARS } from './carFactory.js';
+import { buildCar, CARS, retargetEnv } from './carFactory.js';
+import { studioEnv } from './carEnv.js';
 
 export class Showroom {
   constructor(canvas) {
@@ -28,17 +29,28 @@ export class Showroom {
     this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.2;
+    this.renderer.toneMappingExposure = 1.0;
 
     this.scene = new THREE.Scene();
-    // studio rig: soft fill, a key from the front quarter, a cool rim behind
-    this.scene.add(new THREE.HemisphereLight(0xdfeaf6, 0x2a2f36, 1.5));
-    const key = new THREE.DirectionalLight(0xfff4e4, 2.6);
+
+    /* A photographic studio, as an HDR environment rather than as lamps: three
+       softboxes and a long overhead strip (see carEnv.js). The strip is what
+       draws the single long highlight down the shoulder line, which is the
+       thing that makes a car photograph look like a car photograph — four
+       point lights cannot do it at any intensity.
+
+       It has to be built here rather than reused from the game, because a
+       PMREM result lives on the GPU of the renderer that made it and this is a
+       second context. `retargetEnv` re-points each car's materials at it. */
+    this.env = studioEnv(this.renderer);
+    this.scene.environment = this.env;
+    this.matCache = new Map();
+
+    // one soft key on top of the environment, so edges keep a little bite
+    const key = new THREE.DirectionalLight(0xfff2df, 1.15);
     key.position.set(-5, 5.5, 7); this.scene.add(key);
-    const rim = new THREE.DirectionalLight(0x9fc4ff, 1.5);
+    const rim = new THREE.DirectionalLight(0xa8cbff, 0.55);
     rim.position.set(6, 3.5, -6); this.scene.add(rim);
-    const top = new THREE.DirectionalLight(0xffffff, 0.7);
-    top.position.set(0, 9, 0.5); this.scene.add(top);
 
     this.turntable = new THREE.Group();
     this.scene.add(this.turntable);
@@ -55,6 +67,7 @@ export class Showroom {
     let car = this.cars.get(key);
     if (!car) {
       car = buildCar(id, { paint, glow: false });
+      retargetEnv(car, this.env, this.matCache);
       // sit it on the ground and centre it on the turntable
       car.position.set(0, 0, 0);
       this.cars.set(key, car);

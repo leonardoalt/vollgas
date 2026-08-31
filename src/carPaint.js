@@ -129,17 +129,10 @@ export function makeCarMaterials(envMap) {
     color: 0x20262e, emissive: 0xe9f4ff, emissiveIntensity: 2.4,
     metalness: 0.3, roughness: 0.18, envMap, envMapIntensity: 0.9,
   });
-  MAT.reflector = new THREE.MeshStandardMaterial({
-    color: 0xa8b0b8, metalness: 1.0, roughness: 0.30, envMap, envMapIntensity: 1.2,
-  });
   MAT.tail = new THREE.MeshPhysicalMaterial({
     color: 0x59060a, emissive: 0xff2410, emissiveIntensity: 0.75,
     metalness: 0.0, roughness: 0.10,
     envMap, envMapIntensity: 1.1, clearcoat: 1.0, clearcoatRoughness: 0.04,
-  });
-  MAT.indicator = new THREE.MeshStandardMaterial({
-    color: 0x6a3a04, emissive: 0xff8c10, emissiveIntensity: 0.28,
-    metalness: 0.0, roughness: 0.16, envMap, envMapIntensity: 0.9,
   });
   MAT.blue = new THREE.MeshStandardMaterial({
     color: 0x081538, emissive: 0x1636ff, emissiveIntensity: 0, roughness: 0.22, metalness: 0.35,
@@ -169,8 +162,8 @@ export function makeCarMaterials(envMap) {
  * be lit entirely by four directional lights. Cloning the materials per
  * context fixes it and lets the menu have a proper studio environment.
  */
-export function retargetEnv(root, envMap) {
-  const seen = new Map();
+export function retargetEnv(root, envMap, cache = new Map()) {
+  const seen = cache;
   root.traverse((o) => {
     if (!o.isMesh && !o.isSprite) return;
     const m = o.material;

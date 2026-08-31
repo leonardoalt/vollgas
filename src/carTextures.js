@@ -224,11 +224,11 @@ export function tyreNormal() {
         const u = x / W, v = y / H;
         let h = 0;
         // two circumferential grooves across the tread band
-        for (const gv of [0.34, 0.66]) h -= Math.exp(-((v - gv) / 0.045) ** 2) * 1.0;
+        for (const gv of [0.34, 0.66]) h -= Math.exp(-(((v - gv) / 0.045) ** 2)) * 1.0;
         // lateral blocks, staggered either side of the centre rib
         const rowPhase = v < 0.5 ? 0 : 0.5;
         const bu = ((u * 9 + rowPhase) % 1);
-        h -= Math.exp(-((bu - 0.5) / 0.09) ** 2) * 0.65;
+        h -= Math.exp(-(((bu - 0.5) / 0.09) ** 2)) * 0.65;
         // shoulder lugs
         if (v < 0.14 || v > 0.86) h -= (((u * 26) % 1) < 0.42 ? 0.5 : 0);
         h += (Math.random() - 0.5) * 0.10;
