@@ -112,30 +112,57 @@ function build(id) {
     }
   }
 
-  /* Frame everything. `stack` puts every car at the origin, which is only
-     useful to the measuring code, so frame it on one car. */
+  /* Frame everything.
+
+     Computing a distance from the scene's width and hoping is not enough: for
+     a three-quarter view the camera sits off to one side, so the far car is
+     further away than the near one and falls out of frame. Place the camera on
+     the chosen bearing, then project every corner of every vehicle and push
+     the camera back until they all land inside the frustum. Ten iterations
+     converge on anything. */
   const box = new THREE.Box3();
   for (const { obj } of cars) box.expandByObject(obj);
   const size = box.getSize(new THREE.Vector3());
   const centre = box.getCenter(new THREE.Vector3());
-  /* Fit the row to the *horizontal* field of view. A contact sheet is wide and
-     a row of cars is wide, so framing on the vertical FOV leaves the fleet as
-     a strip of confetti under an acre of sky. */
-  const across = mode === 'side' ? Math.max(size.z, size.x) : Math.max(size.x, size.z);
-  const vHalf = (camera.fov / 2) * Math.PI / 180;
-  const hHalf = Math.atan(Math.tan(vHalf) * (innerWidth / innerHeight));
-  const d = Math.max((across / 2) / Math.tan(hHalf) * 1.08, (size.y / 2) / Math.tan(vHalf) * 1.8);
-  const ty = Math.max(centre.y, size.y * 0.55);
-  const P = {
-    side: [d, ty * 1.15, 0.001],
-    front: [0.001, ty, d],
-    rear: [0.001, ty, -d],
-    front34: [d * 0.70, ty + d * 0.32, d * 0.66],
-    rear34: [-d * 0.70, ty + d * 0.32, -d * 0.66],
-    top: [0.01, d * 1.05, 0.02],
-  }[mode] || [d, ty, 0.001];
-  camera.position.set(centre.x + P[0], P[1], centre.z + P[2]);
-  camera.lookAt(centre.x, ty * 0.9, centre.z);
+  const target = new THREE.Vector3(centre.x, Math.max(size.y * 0.42, 0.6), centre.z);
+
+  const DIR = {
+    side: [1, 0.10, 0.001],
+    front: [0.001, 0.10, 1],
+    rear: [0.001, 0.10, -1],
+    front34: [0.70, 0.34, 0.66],
+    rear34: [-0.70, 0.34, -0.66],
+    top: [0.01, 1.0, 0.02],
+  }[mode] || [1, 0.10, 0.001];
+  const dir = new THREE.Vector3(...DIR).normalize();
+
+  const corners = [];
+  for (const { obj } of cars) {
+    const b = new THREE.Box3().setFromObject(obj);
+    for (const x of [b.min.x, b.max.x]) {
+      for (const y of [b.min.y, b.max.y]) {
+        for (const z of [b.min.z, b.max.z]) corners.push(new THREE.Vector3(x, y, z));
+      }
+    }
+  }
+
+  let d = Math.max(size.x, size.z, size.y) * 1.2 + 4;
+  for (let i = 0; i < 10; i++) {
+    camera.position.copy(target).addScaledVector(dir, d);
+    camera.lookAt(target);
+    camera.updateMatrixWorld(true);
+    camera.updateProjectionMatrix();
+    let worst = 0;
+    const v = new THREE.Vector3();
+    for (const c of corners) {
+      v.copy(c).project(camera);
+      worst = Math.max(worst, Math.abs(v.x), Math.abs(v.y));
+    }
+    if (worst < 0.94 && worst > 0.80) break;
+    d *= worst / 0.90;
+  }
+  camera.position.copy(target).addScaledVector(dir, d);
+  camera.lookAt(target);
 
   // name tags, so a contact sheet is readable
   if (layout !== 'stack') {

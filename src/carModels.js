@@ -36,13 +36,23 @@ import {
 } from './carFit.js';
 
 import url930 from './assets/models/car-930.glb';
-import urlPack from './assets/models/car-generic-pack.glb';
+import urlSedan10 from './assets/models/car-sedan10.glb';
+import urlCoupe07 from './assets/models/car-coupe07.glb';
+import urlHatch11 from './assets/models/car-hatch11.glb';
+import urlLcv07 from './assets/models/car-lcv07.glb';
+import urlWagonEu from './assets/models/car-wagon-eu.glb';
+import urlSuv10 from './assets/models/car-suv10.glb';
 
 
 /* ------------------------------------------------------------- the sources */
 const FILES = {
   p930: url930,
-  pack: urlPack,
+  sedan10: urlSedan10,
+  coupe07: urlCoupe07,
+  hatch11: urlHatch11,
+  lcv07: urlLcv07,
+  wagonEu: urlWagonEu,
+  suv10: urlSuv10,
 };
 
 /**
@@ -81,45 +91,155 @@ const RECIPE = {
   },
 };
 
-/* Bodies available in the generic pack, by the pack's own node names. Kept
-   separate from RECIPE because they all share one file and one fitting path.
+/* --------------------------------------------------- the fictional marques
 
-   Node names as GLTFLoader reports them: it replaces spaces with underscores,
-   so the pack's "Sedan Body" arrives as "Sedan_Body_Body_0". The scene is
-   flat — no per-car grouping — and the pack merges by material, so a name has
-   to be matched exactly or `Compact_Body` also selects `Compact_Body_Glass_0`,
-   which is not the compact's glass at all but every window in the pack, a
-   single 16-metre-wide mesh named after whichever car happened to be first. */
-const PACK = {
-  taxi: 'Sedan_Body_Body_0',
-  kombi: 'Wagon_Body_Body_0',
-  hatch: 'Compact_Body_Body_0',
-  van: 'minivan_body_Body_0',
+   Daniel Zhabotinsky's catalogue is the find that made the rest of the fleet
+   possible: mid-poly, consistently built, and drawn as *invented* marques, so
+   there is no badge to strip and no trade dress to worry about. His models
+   share a material vocabulary — `*_body` is the paint, `UCB_GLASS*`/`glass` is
+   the glazing, `*_INTERIOR`/`void` is the cabin, `GENERIC_BADGES` and
+   `Numberplates` are exactly what they say — which is why the recipes below
+   look so much like each other.
+
+   Obtained from the Objaverse mirror; licence, author and Sketchfab URL are
+   embedded in each file's `asset.extras` and recorded in CREDITS.md.        */
+const ZHAB = {
+  /* Draw carFactory's wheels, not the model's. Three reasons: the coupe's
+     front wheels are modelled mid-steer, so bolting them on gives a car that
+     corners in the showroom; the rig's revolved wheels carry the per-marque
+     spoke count and caliper colour, which is most of what makes the fleet look
+     like one fleet; and they cost one material instead of two. The model's
+     wheels are still measured — they are what the wheelbase and the arch
+     radius come from — they are simply not drawn. */
+  ownWheels: true,
+  paintMat: [/_body$/i, /^body$/i, /bodycolou?r/i],
+  glassMat: [/^glass$/i, /_glass$/i, /GLASS_CLEAN/i],
+  /* Badges and plates go on principle even where the marque is invented: the
+     plates are the modeller's, and we fit a German one over the top. */
+  strip: [/BADGE/i, /Numberplate/i],
+  stripNode: [/numberplate/i, /licenc?eplate/i, /badge/i],
+  coat: [],
 };
-for (const [id, node] of Object.entries(PACK)) {
-  RECIPE[id] = {
-    file: 'pack', pick: node,
-    strip: [/^Cylinder001/i],
-    /* The pack's wheels are correctly mounted in the arches — but merged by
-       design, so one mesh holds every instance of "wheel A" across the whole
-       pack, which for the saloon and the estate means eight wheels belonging
-       to two different cars. They are clipped to each body's own footprint
-       before being measured, and then used only for measurement: carFactory's
-       revolved wheels have proper spokes and calipers and cost less. */
-    ownWheels: true,
-    coat: [],
-    wheelMat: [/^wheel/i, /^wheek/i],
-    paintMat: [/^Body/i],
-    // the pack's glass arrives on an auto-named palette material
-    glassMat: [/glass/i, /PaletteMaterial/i],
-  };
-}
+
+RECIPE.m5 = {
+  ...ZHAB,
+  file: 'sedan10',
+  /* The rims share `solar_bottom` with the headlight housings and the plastic
+     trim, so here they can only be found by node name. */
+  wheelMat: [],
+  wheelNode: [/^wheels?[_\d]/i],
+  paintMat: [/^solar_body$/i],
+  glassMat: [/^solar_glass$/i],
+};
+
+RECIPE.amg = {
+  ...ZHAB,
+  file: 'coupe07',
+  wheelMat: [/^rimstock/i],
+  wheelNode: [/^wheel_\d/i],
+  paintMat: [/^body$/i],
+  glassMat: [/^glass$/i],
+};
+
+/* The estate.
+
+   The one body style the fictional-marque catalogue could not supply: its only
+   trademark-free estates are 1980s American station wagons, whose wheelbase is
+   so short relative to their length that scaling on the wheelbase overshoots a
+   modern estate by 15%. Anserkon's is a modern European one, and reachable
+   through the same mirror.
+
+   It arrives with its materials called `.001`, `.002`, `material`, `Material`
+   and its node names in Cyrillic that survives neither a terminal nor a regex
+   typed by hand, so `dev/rename-glb.mjs` renames them once, offline, and the
+   renamed file is what is committed. Encoding mojibake in a recipe would work
+   until somebody opened the file. */
+RECIPE.rs6 = {
+  ...ZHAB,
+  file: 'wagonEu',
+  wheelMat: [],
+  wheelNode: [/^wheels_[abc]$/i],
+  paintMat: [/^wagon_paint$/i],
+  glassMat: [/^wagon_glass$/i],
+  strip: [/^wagon_plate$/i],
+  stripNode: [],
+};
+RECIPE.zivi_touring = { ...RECIPE.rs6 };
+RECIPE.zivi_avant = { ...RECIPE.rs6 };
+RECIPE.kombi = { ...RECIPE.rs6 };
+
+/* The Zivilstreifen.
+
+   An unmarked patrol car is an ordinary saloon or estate — that is the whole
+   point of one — so they share bodies with the traffic and the player's cars
+   rather than having anything special of their own. The earlier note in
+   HANDOFF.md said the pack did not fit them; that was read off the broken
+   wheel measurement fixed in Phase A.
+
+   `zivi_limo` reuses the sedan the `m5` is built from. That is not laziness:
+   it is the same file already in the bundle, so the second template costs no
+   bytes and shares its textures on the GPU, and an anonymous silver saloon
+   that looks like ordinary traffic until the blues come on is exactly the
+   brief. The player's car is a different colour and is in front of you. */
+RECIPE.zivi_limo = { ...RECIPE.m5 };
+RECIPE.zivi_kompakt = {
+  ...ZHAB,
+  file: 'hatch11',
+  /* One material for the whole body, wheels included, so node names are the
+     only way to find them. */
+  wheelMat: [],
+  /* `\b` does not match before an underscore — `_` is a word character — so
+     `^wheel_fl\b` never fired and the car came out scaled on length. */
+  wheelNode: [/^wheel_(fl|fr|rl|rr)_/i, /^wheel_[0-9]/i],
+  paintMat: [/MODERNHATCH_body/i],
+  glassMat: [/^GLASS$/i],
+};
+RECIPE.messwagen = {
+  ...ZHAB,
+  file: 'lcv07',
+  wheelMat: [/^TIRE$/i, /^material$/i],
+  wheelNode: [/^wheel_0/i],
+  paintMat: [/^BODY$/i],
+  glassMat: [/^GLASS$/i],
+};
+
+/* Traffic rides on the same two files as the Zivilstreifen. They are already
+   in the bundle, so a second template costs no bytes and shares its textures
+   on the GPU — and an unmarked patrol car that is indistinguishable from the
+   hatchback beside it is the entire point of an unmarked patrol car. */
+RECIPE.hatch = { ...RECIPE.zivi_kompakt };
+RECIPE.van = { ...RECIPE.messwagen };
+
+/* Traffic.
+
+   The generic passenger-car pack is gone. It was two thousand seven hundred
+   triangles a car next to a thirty-nine thousand triangle 911, and its bodies
+   arrive with their colour baked into the material, so tinting one blue got a
+   dark green car — every saloon in the traffic would have been the same shade.
+   Dropping it also takes 1 MB out of the bundle and leaves one fewer visual
+   style on the road.
+
+   What is left is four modern shapes that all tint properly: an estate, a
+   hatchback, an SUV and a box van. `taxi` keeps its name and its rig — the
+   name is never shown for traffic — but it is now the SUV, because a fleet of
+   saloons, estates and hatchbacks with nothing tall in it does not look like a
+   motorway. */
+RECIPE.taxi = {
+  ...ZHAB,
+  file: 'suv10',
+  /* `dust_bottom` is shared between the rims, the light housings and the
+     underbody, so the wheels are found by node name. */
+  wheelMat: [],
+  wheelNode: [/^wheels?[_\d]/i],
+  paintMat: [/^dust_body$/i],
+  glassMat: [/^dust_glass$/i],
+};
 
 /* ------------------------------------------------------------------ state */
 const _templates = new Map();      // car id -> fitted THREE.Group template
 let _enabled = true;
 
-const matches = (name, list) => list.some(re => re.test(name || ''));
+const matches = (name, list) => !!list && list.some(re => re.test(name || ''));
 
 /* ------------------------------------------------------------ geometry ops */
 
@@ -270,12 +390,19 @@ function fitTemplate(id, gltfScene, envMap) {
   gltfScene.traverse((o) => {
     if (!o.isMesh) return;
     const matName = o.material ? o.material.name : '';
-    if (matches(matName, rec.strip)) { roles.strip++; return; }
-    if (rec.coat.length && matches(matName, rec.coat)) { roles.strip++; return; }
+    const nodeName = o.name || '';
+    if (matches(matName, rec.strip) || matches(nodeName, rec.stripNode)) { roles.strip++; return; }
+    if (matches(matName, rec.coat)) { roles.strip++; return; }
 
-    /* Wheels are identified by material, never by node name. The pack has a
-       node called `Wheel_E_Body_0` which is a minibus. */
-    if (matches(matName, rec.wheelMat)) { wheelEntries.push(o); return; }
+    /* Wheels go by material where the material belongs only to them. Where it
+       does not — Kiri's rims share `solar_bottom` with the headlight housings
+       and the plastic trim — the recipe names the nodes instead. Node matching
+       is opt-in per model and never on by default: the generic pack has a node
+       called `Wheel_E_Body_0` which is a minibus, and trusting the name there
+       put a bus in the wheel set and a 1.48 m wheelbase on a 4.4 m car. */
+    if (matches(matName, rec.wheelMat) || matches(nodeName, rec.wheelNode)) {
+      wheelEntries.push(o); return;
+    }
 
     if (picked) {
       let keep = false;
@@ -486,17 +613,34 @@ function fitTemplate(id, gltfScene, envMap) {
      wheels — is measured off the body rather than off the rig. Width is taken
      below the waist: the mirrors are 25 cm wider than the car and a wheel
      lined up with them hangs outside the arch. */
+  /* The model's own wheel radius, per axle. carFactory's wheels are the ones
+     we draw — they are consistent across the fleet, they carry the coloured
+     calipers, and unlike some models' they are not frozen mid-steer — but they
+     have to be the size of the hole they go in, and the rig's nominal radius
+     was drawn for the procedural body. A 3 cm error here is an empty arch. */
+  const radiusOf = (keys) => {
+    if (!corners) return null;
+    const c = keys.map(k => corners[k]).filter(Boolean);
+    if (!c.length) return null;
+    return c.reduce((t, w) => t + (w.yhi - w.ylo) / 2, 0) / c.length;
+  };
+  const modelRF = radiusOf(['LF', 'RF']);
+  const modelRR = radiusOf(['LR', 'RR']);
+
   const env = envelopeOf(roles.body);
   const sill = env.halfWidth;
   const archHalf = (z) => {
     const w = halfWidthAt(roles.body, z, Math.max(0.25, wheelR * 0.9), env.waist);
     return w > sill * 0.5 ? w : sill;
   };
+  const sane = (r, fallback) => (r && r > fallback * 0.55 && r < fallback * 1.7 ? r : fallback);
   const bounds = {
     halfWidth: sill,
     wideHalf: env.wideHalf,
     halfWidthF: archHalf(spec.axleF),
     halfWidthR: archHalf(spec.axleR),
+    wheelRF: sane(modelRF, spec.wheelRF),
+    wheelRR: sane(modelRR, spec.wheelRR),
     nose: env.nose,
     tail: env.tail,
     top: env.top,
@@ -511,6 +655,8 @@ function fitTemplate(id, gltfScene, envMap) {
     fit: {
       nose, noseConf: +ns.conf.toFixed(3), yaw: +(yaw * 180 / Math.PI).toFixed(1),
       wheelbase: +(modelWB * scale).toFixed(3), rigWheelbase: +rigWB.toFixed(3),
+      wheelRF: +bounds.wheelRF.toFixed(3), wheelRR: +bounds.wheelRR.toFixed(3),
+      rigWheelRF: spec.wheelRF, rigWheelRR: spec.wheelRR,
       length: +env.length.toFixed(3), width: +env.width.toFixed(3),
       height: +env.height.toFixed(3),
       notes,
@@ -546,9 +692,15 @@ function assemble(id, tpl, opts) {
        what we wanted from a pack; carFactory's own revolved wheels are good
        now, so use those and mount them on the rig where they belong. */
     const bnd = tpl.bounds || {};
+    /* Fill the arch the model actually has, not the one the rig imagined. The
+       spec is cloned rather than mutated because CARS is shared and the
+       procedural path still wants the original numbers. */
+    const wspec = (bnd.wheelRF || bnd.wheelRR)
+      ? { ...spec, wheelRF: bnd.wheelRF ?? spec.wheelRF, wheelRR: bnd.wheelRR ?? spec.wheelRR }
+      : spec;
     for (const [front, zAxle, track] of [[true, spec.axleF, spec.trackF], [false, spec.axleR, spec.trackR]]) {
       for (const sx of [-1, 1]) {
-        const w = buildWheel(spec, front, tpl.wheelTier || 'lo');
+        const w = buildWheel(wspec, front, tpl.wheelTier || 'lo');
         const ww = front ? spec.wheelWF : spec.wheelWR;
         /* The tyre's outer wall goes just inside the arch lip, measured at this
            axle rather than at the widest point of the car. Bolting wheels to
@@ -559,7 +711,7 @@ function assemble(id, tpl, opts) {
         const x = arch > 0.4
           ? Math.max(arch * 0.55, Math.min(track / 2, arch - ww * 0.5 - 0.02))
           : track / 2;
-        w.position.set(sx * x, front ? spec.wheelRF : spec.wheelRR, zAxle);
+        w.position.set(sx * x, front ? wspec.wheelRF : wspec.wheelRR, zAxle);
         w.userData.front = front;
         g.add(w); wheels.push(w);
       }

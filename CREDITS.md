@@ -10,6 +10,38 @@ The in-game attribution required by CC BY is rendered in the car-select panel
 
 ## 3D models
 
+### How these were obtained, and why that is legitimate
+
+Sketchfab's own download endpoint needs OAuth, which made it look like a dead
+end. It is not the only place its files exist. **Objaverse 1.0** — a public
+research dataset published by the Allen Institute for AI on HuggingFace — is a
+December 2022 snapshot of CC-licensed Sketchfab models, served without an
+account, a token or a referrer:
+
+```
+https://huggingface.co/datasets/allenai/objaverse/resolve/main/glbs/<shard>/<uid>.glb
+```
+
+(the shard for a uid comes from `object-paths.json.gz` in the same dataset).
+
+The files are Sketchfab's own glTF exports, so each one carries the author, the
+licence and the original model URL inside `asset.extras`, written by Sketchfab's
+exporter. That is the evidence quoted below, and it is read **out of the file we
+actually ship** — run `node dev/glb-licence.mjs src/assets/models/*.glb` to see
+it. A CC BY grant is irrevocable and travels with the work, so redistribution
+through the mirror is legitimate and so is our use, provided we credit.
+
+Two consequences worth knowing:
+
+* The snapshot is from **December 2022**. Anything uploaded to Sketchfab after
+  that is not in it.
+* Daniel Zhabotinsky later renamed many of his models to invented marques. The
+  2022 snapshot therefore carries the **original titles**, and some of those
+  originals are recognisable real cars. Titles that name a real vehicle were
+  rejected on trademark grounds regardless of licence — see "Rejected".
+
+### The first two
+
 Both are **CC BY 4.0**: commercial use allowed, attribution required. The
 licence text quoted below is the `license.txt` shipped inside each model's own
 distribution, and the same attribution is embedded in `asset.extras` of the
@@ -38,7 +70,7 @@ GLBs we ship.
   remaining paint material is tinted to the player's chosen colour and given
   our environment map. Net in game: ~124 k triangles.
 
-### Generic passenger car pack — used for traffic (`taxi`, `kombi`, `hatch`, `van`)
+### Generic passenger car pack — no longer shipped
 
 * Author: **Comrade1280** — <https://sketchfab.com/comrade1280>
 * Source: <https://sketchfab.com/3d-models/generic-passenger-car-pack-20f9af9b8a404d5cb022ac6fe87f21f5>
@@ -57,6 +89,145 @@ GLBs we ship.
   out beside the bodies rather than mounted on them.
 * This pack carries **no marque badges of any kind** — it is deliberately
   trademark-free, which is why it was chosen for traffic.
+* **Removed in Phase B and no longer in the repository.** Two reasons, neither
+  of them a complaint about the licence: its bodies are 2.7 k triangles next to
+  a 39 k triangle 911, and each one has its colour baked into the material, so
+  tinting a car blue produced a dark green car and every saloon in the traffic
+  would have been the same shade. The entry stays here because the record of
+  what was shipped, and under what terms, should not be edited away.
+
+### Generic sedan 2010 — used for `m5`
+
+* Author: **Daniel Zhabotinsky** — <https://sketchfab.com/DanielZhabotinsky>
+* Source: <https://sketchfab.com/3d-models/generic-sedan-2010-low-poly-model-7fd6e15785fa4aa9bfd6e31eb7c97ba6>
+* Mirror used: <https://huggingface.co/datasets/allenai/objaverse/resolve/main/glbs/000-107/7fd6e15785fa4aa9bfd6e31eb7c97ba6.glb>
+* Licence: **CC BY 4.0**, from the file's own `asset.extras`:
+  > `"license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"`
+  > `"author": "Daniel Zhabotinsky (https://sketchfab.com/DanielZhabotinsky)"`
+* Required credit:
+  > This work is based on "Generic sedan 2010 - Low poly model"
+  > (https://sketchfab.com/3d-models/generic-sedan-2010-low-poly-model-7fd6e15785fa4aa9bfd6e31eb7c97ba6)
+  > by Daniel Zhabotinsky (https://sketchfab.com/DanielZhabotinsky) licensed
+  > under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* Shipped as `src/assets/models/car-sedan10.glb` (215 kB, 12.9 k triangles).
+* **What we changed:** `dev/optimise-model.sh` (textures to 512 px WebP, meshopt),
+  1.32 MB → 215 kB with the geometry untouched. At load time the rims are
+  measured and then not drawn — carFactory's wheels go on instead — and the
+  paint material is tinted to the player's chosen colour.
+* The marque is invented and the model carries **no badge and no plate**.
+
+### '07 Generic Coupe — used for `amg`
+
+* Author: **Daniel Zhabotinsky** — <https://sketchfab.com/DanielZhabotinsky>
+* Source: <https://sketchfab.com/3d-models/07-generic-coupe-low-poly-model-22abe5284d4c4b55920b8462eb24a8c1>
+* Mirror used: <https://huggingface.co/datasets/allenai/objaverse/resolve/main/glbs/000-128/22abe5284d4c4b55920b8462eb24a8c1.glb>
+* Licence: **CC BY 4.0**, from the file's own `asset.extras`:
+  > `"license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"`
+* Required credit:
+  > This work is based on "'07 Generic Coupe - Low poly model"
+  > (https://sketchfab.com/3d-models/07-generic-coupe-low-poly-model-22abe5284d4c4b55920b8462eb24a8c1)
+  > by Daniel Zhabotinsky (https://sketchfab.com/DanielZhabotinsky) licensed
+  > under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* Shipped as `src/assets/models/car-coupe07.glb` (278 kB, 14.9 k triangles).
+* **What we changed:** same optimisation, 2.97 MB → 278 kB. At load time the
+  modeller's `numberplate` mesh is dropped (we fit a German plate) and the
+  model's own wheels are measured but not drawn — they are modelled *mid-steer*,
+  so a car built on them corners while parked.
+* The marque is invented; no badges.
+
+### Modern Hatchback — used for `zivi_kompakt` and `hatch`
+
+* Author: **Daniel Zhabotinsky** — <https://sketchfab.com/DanielZhabotinsky>
+* Source: <https://sketchfab.com/3d-models/modern-hatchback-low-poly-model-055ff8a21b8d4d279debca089e2fafcd>
+* Mirror used: <https://huggingface.co/datasets/allenai/objaverse/resolve/main/glbs/000-125/055ff8a21b8d4d279debca089e2fafcd.glb>
+* Licence: **CC BY 4.0**, from the file's own `asset.extras`:
+  > `"license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"`
+* Required credit:
+  > This work is based on "Modern Hatchback - Low Poly model"
+  > (https://sketchfab.com/3d-models/modern-hatchback-low-poly-model-055ff8a21b8d4d279debca089e2fafcd)
+  > by Daniel Zhabotinsky (https://sketchfab.com/DanielZhabotinsky) licensed
+  > under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* Shipped as `src/assets/models/car-hatch11.glb` (248 kB, 10.1 k triangles).
+* **What we changed:** `dev/optimise-model.sh`, 3.18 MB → 248 kB. Three
+  materials for the whole car, which is why it is cheap to put several on the
+  road at once. Its rims share the body material, so they are found by node
+  name and then not drawn.
+* Invented marque; no badges, no plate.
+
+### Light Commercial Truck '07 — used for `messwagen` and `van`
+
+* Author: **Daniel Zhabotinsky** — <https://sketchfab.com/DanielZhabotinsky>
+* Source: <https://sketchfab.com/3d-models/light-commercial-truck-07-low-poly-model-3be03b6a43aa41898c9ca806b8787052>
+* Mirror used: <https://huggingface.co/datasets/allenai/objaverse/resolve/main/glbs/000-149/3be03b6a43aa41898c9ca806b8787052.glb>
+* Licence: **CC BY 4.0**, from the file's own `asset.extras`.
+* Shipped as `src/assets/models/car-lcv07.glb` (322 kB, 13.3 k triangles).
+* **What we changed:** `dev/optimise-model.sh`, 4.52 MB → 322 kB. The body is a
+  flat untextured material, so it takes the fleet's paint tinting cleanly.
+* Invented marque; no badges.
+
+### Generic USA/EU Station wagon — used for `rs6`, `zivi_touring`, `zivi_avant`, `kombi`
+
+The estate the fictional-marque catalogue could not supply.
+
+* Author: **Anserkon** — <https://sketchfab.com/anserkon>
+* Source: <https://sketchfab.com/3d-models/generic-usaeu-station-wagon-c14f271c9d414b8e8d25e7cec3bb44f5>
+* Mirror used: <https://huggingface.co/datasets/allenai/objaverse/resolve/main/glbs/000-133/c14f271c9d414b8e8d25e7cec3bb44f5.glb>
+* Licence: **CC BY 4.0**, from the file's own `asset.extras`:
+  > `"license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"`
+  > `"author": "Anserkon (https://sketchfab.com/anserkon)"`
+* Required credit:
+  > This work is based on "Generic USA/EU Station wagon"
+  > (https://sketchfab.com/3d-models/generic-usaeu-station-wagon-c14f271c9d414b8e8d25e7cec3bb44f5)
+  > by Anserkon (https://sketchfab.com/anserkon) licensed under CC-BY-4.0
+  > (http://creativecommons.org/licenses/by/4.0/)
+* Shipped as `src/assets/models/car-wagon-eu.glb` (149 kB, 18.5 k triangles).
+* **What we changed:** its materials were named `.001`, `.002`, `material`,
+  `Material` and its node names were Cyrillic, so `dev/rename-glb.mjs` renamed
+  them offline before optimisation — every fitting decision keys off names, and
+  encoding mojibake in a recipe works until somebody opens the file. Then
+  `dev/optimise-model.sh`, 677 kB → 149 kB. At load time the modeller's rear
+  plate quad is dropped and the wheels are measured but not drawn.
+* No badges, no marque in the title, no logo modelled anywhere.
+* **Trade-dress caveat — read this.** The title is generic and the model is
+  clean, but the author's own Sketchfab description says:
+  > "Un-copyrighted VW passat 2010 with basic interior"
+
+  The body is a de-badged Volkswagen Passat B6 Variant. The licence is not in
+  question; the *shape* is recognisable, in the same way the 930 is. This is a
+  deliberate, flagged choice rather than an oversight, and the alternatives were
+  worse:
+
+  | option | trade dress | tintable | detail |
+  |---|---|---|---|
+  | Anserkon estate (**shipped**) | de-badged Passat B6 | yes | 18.5 k tris |
+  | Comrade1280 pack `Wagon Body` | invented, clean | **no** — colour is baked into the texture, so every estate on the road would be the same shade | 4.6 k tris |
+  | Zhabotinsky `Fairheaven SW '84` | invented, clean | yes | 23.6 k tris, but 1980s American, and 15% too long when scaled on the wheelbase |
+
+  Reversing it is a two-line change in the `rs6` recipe in `src/carModels.js`.
+  Daniel Zhabotinsky's *Shvan 92 Traveller* is the model that would settle this
+  properly and is not reachable — see the note above about the 2022 snapshot.
+* Anserkon was identified in the earlier search as one of the best-fitting
+  authors available and written off as unreachable because no mirror existed.
+  Objaverse is that mirror.
+
+### Generic SUV — used for `taxi`
+
+* Author: **Daniel Zhabotinsky** — <https://sketchfab.com/DanielZhabotinsky>
+* Source: <https://sketchfab.com/3d-models/generic-suv-low-poly-model-2866efdfa943484391ef8313768e074d>
+* Mirror used: <https://huggingface.co/datasets/allenai/objaverse/resolve/main/glbs/000-005/2866efdfa943484391ef8313768e074d.glb>
+* Licence: **CC BY 4.0**, from the file's own `asset.extras`.
+* Required credit:
+  > This work is based on "Generic SUV - Low poly model"
+  > (https://sketchfab.com/3d-models/generic-suv-low-poly-model-2866efdfa943484391ef8313768e074d)
+  > by Daniel Zhabotinsky (https://sketchfab.com/DanielZhabotinsky) licensed
+  > under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* Shipped as `src/assets/models/car-suv10.glb` (263 kB, 17.7 k triangles).
+* **What we changed:** `dev/optimise-model.sh`, 1.53 MB → 263 kB. Flat
+  untextured body material, so it tints cleanly.
+* `taxi` keeps its id and its rig, but is now an SUV: traffic made only of
+  saloons, estates and hatchbacks has nothing tall in it and does not read as a
+  motorway.
+* Invented marque; no badges.
 
 ### Provenance note
 
@@ -102,10 +273,15 @@ record exists so nobody has to repeat the search.
 **Structural finding:** Sketchfab's `/v3/models/{uid}/download` endpoint returns
 HTTP 401 without OAuth, so Sketchfab is not directly usable as a source. Its
 *search* API is open, and Sketchfab glTF exports carry `license.txt` plus
-`asset.extras` attribution, so where such an export has been mirrored in a
-public GitHub repository the CC BY grant travels with it and remains valid
-regardless of the host repository's own licence. That is how both models above
-were obtained.
+`asset.extras` attribution, so wherever such an export has been mirrored the
+CC BY grant travels with it and remains valid regardless of the host's own
+licence.
+
+**The mirror that solved it:** AllenAI's **Objaverse 1.0** on HuggingFace, a
+December 2022 snapshot of CC-licensed Sketchfab models, fetchable by uid with
+no account. Described at the top of this file. This is what turned "no usable
+realistic car models exist" into a catalogue of them, and it is the single most
+useful thing to know when the fleet next needs extending.
 
 | Source | Licence as actually stated | Verdict |
 |---|---|---|
@@ -122,7 +298,8 @@ were obtained.
 | Mercedes-Benz AMG CLS, Audi A7 Quattro | Was CC BY | Both now 404 on Sketchfab — taken down. |
 | Porsche 911 Carrera 4S (Lionsharp) | **CC BY-SA** | Rejected: share-alike. Note `Tresjs/tres` ships tempting pre-compacted `porsche-911.glb` files — triangle counts confirm these are the ShareAlike Carrera 4S, **not** the CC BY 930. Do not use them. |
 | Mercedes E-Class W212 (`Peter_D`), BMW M3 E30 (`Bexxie`) | CC BY 4.0, provenance good | Genuinely usable. Not used here only because neither fits a super-saloon, fast estate or four-door coupé well. Real options if the roster changes. |
-| `mmcworks`, `mk2design`, `anserkon` generic sedans/coupés/estates | CC BY, excellent provenance and fit | **Unusable: no public mirror exists**, and Sketchfab needs OAuth to download. The best-fit authors found. |
+| `mmcworks`, `mk2design`, `anserkon` generic sedans/coupés/estates | CC BY, excellent provenance and fit | Not needed in the end — Objaverse made Zhabotinsky's catalogue reachable, which fits better. |
+| Zhabotinsky models whose 2022 title names a real car — Mazda Cosmo AP, Smart ForTwo w451, Ford Mustang SVT Cobra R, DMC-12, VW Corrado VR6, Toyota AE86, Datsun 510 Bluebird, Jeep CJ6, Ford F700, ZAZ 968, Opel Speedster, Chaparral 2J, VW Golf | CC BY 4.0, provenance excellent | **Rejected on trademark, not licence.** He has since renamed these to invented marques, but the shape is still the shape. Only his generically-titled models are used. |
 | Poly Pizza branded realistic cars | CC BY 3.0 via the Google Poly archive; chain is real | Rejected on trademarks: Nissan GTR, Ferrari F40 etc. are marque names *and* recognisable trade dress. |
 | TurboSquid / CGTrader "free" | Royalty-free terms require the model be **non-extractable** — "proprietary formats that cannot be extracted, exported, or decompiled" | Rejected, and specifically incompatible with a browser game: serving a `.glb` over HTTP is the prohibited case. |
 | Free3D, Pixabay 3D | Per-model "personal use"; Pixabay forbids standalone redistribution | Rejected. |
@@ -130,7 +307,14 @@ were obtained.
 | Blender BMW27 (Mike Pan) | CC BY-SA | Rejected: copyleft, badged, and a render scene rather than a game asset. |
 | Poly Haven, ambientCG | CC0 | No vehicles. |
 
-**Gaps that remain.** There is no credibly-licensed, well-authored, high-detail
-**fast estate** or **four-door coupé** available. Every candidate for those two
-body styles failed the provenance check. `m5`, `rs6` and `amg` therefore still
-use the procedural bodies, and will until a legitimate model appears.
+**Gaps that remain.** None for the cars. Every vehicle in `CARS` is now on a
+licensed model; only the articulated lorry is still procedural.
+
+The estate was the last gap and the hardest. Daniel Zhabotinsky has exactly the
+right one — *Shvan 92 Traveller* — but his catalogue is 133 models of which
+only 47 are in the December 2022 Objaverse snapshot, and the Traveller is not
+one of them; nor is *Urban '10 Cop Enforcer*. Both were uploaded later. His only
+mirrored estates are 1980s American station wagons, whose wheelbase is short
+enough relative to their length that scaling on the wheelbase overshoots a
+modern estate by 15%, and whose styling would not sit next to a modern coupe.
+Anserkon's *Generic USA/EU Station wagon* is mirrored, modern, and fits.

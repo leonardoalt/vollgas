@@ -24,10 +24,50 @@ export const ATTRIBUTIONS = [
     licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
   },
   {
-    title: 'Generic passenger car pack',
-    author: 'Comrade1280',
-    authorUrl: 'https://sketchfab.com/comrade1280',
-    source: 'https://sketchfab.com/3d-models/generic-passenger-car-pack-20f9af9b8a404d5cb022ac6fe87f21f5',
+    title: 'Generic sedan 2010',
+    author: 'Daniel Zhabotinsky',
+    authorUrl: 'https://sketchfab.com/DanielZhabotinsky',
+    source: 'https://sketchfab.com/3d-models/generic-sedan-2010-low-poly-model-7fd6e15785fa4aa9bfd6e31eb7c97ba6',
+    licence: 'CC BY 4.0',
+    licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
+  },
+  {
+    title: "'07 Generic Coupe",
+    author: 'Daniel Zhabotinsky',
+    authorUrl: 'https://sketchfab.com/DanielZhabotinsky',
+    source: 'https://sketchfab.com/3d-models/07-generic-coupe-low-poly-model-22abe5284d4c4b55920b8462eb24a8c1',
+    licence: 'CC BY 4.0',
+    licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
+  },
+  {
+    title: 'Modern Hatchback',
+    author: 'Daniel Zhabotinsky',
+    authorUrl: 'https://sketchfab.com/DanielZhabotinsky',
+    source: 'https://sketchfab.com/3d-models/modern-hatchback-low-poly-model-055ff8a21b8d4d279debca089e2fafcd',
+    licence: 'CC BY 4.0',
+    licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
+  },
+  {
+    title: "Light Commercial Truck '07",
+    author: 'Daniel Zhabotinsky',
+    authorUrl: 'https://sketchfab.com/DanielZhabotinsky',
+    source: 'https://sketchfab.com/3d-models/light-commercial-truck-07-low-poly-model-3be03b6a43aa41898c9ca806b8787052',
+    licence: 'CC BY 4.0',
+    licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
+  },
+  {
+    title: 'Generic SUV',
+    author: 'Daniel Zhabotinsky',
+    authorUrl: 'https://sketchfab.com/DanielZhabotinsky',
+    source: 'https://sketchfab.com/3d-models/generic-suv-low-poly-model-2866efdfa943484391ef8313768e074d',
+    licence: 'CC BY 4.0',
+    licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
+  },
+  {
+    title: 'Generic USA/EU Station wagon',
+    author: 'Anserkon',
+    authorUrl: 'https://sketchfab.com/anserkon',
+    source: 'https://sketchfab.com/3d-models/generic-usaeu-station-wagon-c14f271c9d414b8e8d25e7cec3bb44f5',
     licence: 'CC BY 4.0',
     licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
   },
@@ -53,8 +93,19 @@ export function mountCredits(container) {
     container.appendChild(el);
   }
   const a = (href, text) => `<a href="${href}" target="_blank" rel="noopener" style="${LINK}">${text}</a>`;
+
+  /* Grouped by author. One model per author was a readable line; a dozen is a
+     paragraph of repeated names. CC BY asks for the author, the title and the
+     licence — grouping keeps all three and stays legible. */
+  const byAuthor = [];
+  for (const x of ATTRIBUTIONS) {
+    let g = byAuthor.find(q => q.author === x.author && q.licence === x.licence);
+    if (!g) { g = { ...x, titles: [] }; byAuthor.push(g); }
+    g.titles.push(x);
+  }
   el.innerHTML = (lang === 'en' ? 'Car models: ' : 'Fahrzeugmodelle: ')
-    + ATTRIBUTIONS.map(x =>
-      `${a(x.source, x.title)} — ${a(x.authorUrl, x.author)}, ${a(x.licenceUrl, x.licence)}`
+    + byAuthor.map(g =>
+      `${g.titles.map(t => a(t.source, t.title)).join(', ')} — `
+      + `${a(g.authorUrl, g.author)}, ${a(g.licenceUrl, g.licence)}`
     ).join(' · ');
 }
