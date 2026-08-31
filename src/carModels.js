@@ -84,16 +84,27 @@ const PACK = {
   kombi: 'Wagon_Body',
   hatch: 'Compact_Body',
   van: 'minivan_body',
+  /* The Zivilstreifen deliberately stay on the procedural bodies. Putting them
+     on the pack saloon and estate was tempting — anonymous fleet cars that
+     blend into the traffic is exactly the brief, and it saved 222k triangles
+     and 264 draw calls — but the rig's wheelbase-to-length ratio for those four
+     cars does not match the pack's, so with our wheels bolted to the rig's
+     axles they sat visibly outside the arches. A patrol car in the mirror is
+     the last thing that should look broken. */
 };
 for (const [id, node] of Object.entries(PACK)) {
   RECIPE[id] = {
     file: 'pack', pickNode: node, wheelNode: /^Wheel_/i,
     strip: [/^Cylinder001/i],
+    /* Auto-yaw squares the body up but cannot tell a nose from a tail — the
+       footprint is the same either way. The pack's bodies all end up facing
+       the same direction, and it is the wrong one, so turn them all round. */
+    yaw: Math.PI,
     /* The pack's wheel designs are laid out in a row beside the bodies rather
        than fitted to any of them, so never trust their positions — always bolt
        them to the rig's own track and axles. */
     rigWheels: true, ownWheels: true,
-    coat: [], yaw: 0,
+    coat: [],
     wheelMat: [/wheel/i, /wheek/i],
     paintMat: [/^Body/i],
     // the pack's glass arrives on an auto-named palette material
@@ -205,6 +216,47 @@ function splitQuadrants(geo) {
     out[k] = g;
   }
   return out;
+}
+
+/**
+ * The yaw that squares a body up with the Z axis.
+ *
+ * An asset pack does not lay its models out in a neat row facing the same way.
+ * This one arranges ten cars in a ring, each rotated to face outwards, so
+ * "the node's bounding box" is a diagonal smear: the estate measured 4.13 m
+ * wide and 4.70 m long, and everything downstream — scale, wheel placement,
+ * plate position — was computed from that nonsense. The saloon happened to be
+ * axis-aligned, which is why some cars fitted and others did not.
+ *
+ * A car is much longer than it is wide, so the correct orientation is simply
+ * the one whose footprint has the smallest area. Sample yaw over 180 degrees,
+ * take the minimum, then rotate the long axis onto Z.
+ */
+function principalYaw(geos) {
+  const xs = [], zs = [];
+  for (const g of geos) {
+    const pos = g.attributes.position;
+    // a few hundred points is plenty to find an axis
+    const step = Math.max(1, Math.floor(pos.count / 400));
+    for (let i = 0; i < pos.count; i += step) { xs.push(pos.getX(i)); zs.push(pos.getZ(i)); }
+  }
+  if (xs.length < 8) return 0;
+  let best = 0, bestArea = Infinity, bestLongX = false;
+  for (let d = 0; d < 90; d++) {
+    const a = (d * Math.PI) / 180, c = Math.cos(a), si = Math.sin(a);
+    let lo0 = Infinity, hi0 = -Infinity, lo1 = Infinity, hi1 = -Infinity;
+    for (let i = 0; i < xs.length; i++) {
+      const u = xs[i] * c - zs[i] * si;
+      const v = xs[i] * si + zs[i] * c;
+      if (u < lo0) lo0 = u; if (u > hi0) hi0 = u;
+      if (v < lo1) lo1 = v; if (v > hi1) hi1 = v;
+    }
+    const w = hi0 - lo0, l = hi1 - lo1;
+    const area = w * l;
+    if (area < bestArea) { bestArea = area; best = a; bestLongX = w > l; }
+  }
+  // put the long axis on Z
+  return bestLongX ? best + Math.PI / 2 : best;
 }
 
 function bboxOf(geos) {
@@ -322,7 +374,7 @@ function fitTemplate(id, gltfScene, envMap) {
       if (d < bestD) { bestD = d; chosen = meshes; }
     }
   }
-  if (chosen && !rec.ownWheels) {
+  if (chosen) {
     for (const o of chosen) {
       const g = bakeWorld(o);
       if (!wheelMats.has(o.material)) wheelMats.set(o.material, []);
@@ -340,9 +392,25 @@ function fitTemplate(id, gltfScene, envMap) {
   /* 2 — orientation and scale. Wheelbase, not overall length: a car whose
      wheels sit slightly inside the arches still reads fine, one whose wheels
      sit outside them reads as broken. */
-  if (rec.yaw) {
-    const rot = new THREE.Matrix4().makeRotationY(rec.yaw);
+  /* Square the body up with the Z axis before measuring anything. `rec.yaw` is
+     an extra manual turn on top, for the 180-degree ambiguity that no amount of
+     geometry can resolve — a car pointing backwards has exactly the same
+     footprint as one pointing forwards. */
+  const auto = rec.autoYaw === false ? 0 : principalYaw(roles.body);
+  const yaw = auto + (rec.yaw || 0);
+  if (yaw) {
+    const rot = new THREE.Matrix4().makeRotationY(yaw);
     for (const g of [...roles.body, ...roles.wheel]) g.applyMatrix4(rot);
+  }
+  /* Belt and braces: on a nearly square footprint the minimum-area search can
+     still land 90 degrees out, so check the result and turn it if the body is
+     now wider than it is long. Cars are not. */
+  {
+    const b0 = bboxOf(roles.body);
+    if (b0.max.x - b0.min.x > b0.max.z - b0.min.z) {
+      const rot = new THREE.Matrix4().makeRotationY(Math.PI / 2);
+      for (const g of [...roles.body, ...roles.wheel]) g.applyMatrix4(rot);
+    }
   }
 
   const wheelBox = roles.wheel.length ? bboxOf(roles.wheel) : null;
@@ -353,14 +421,13 @@ function fitTemplate(id, gltfScene, envMap) {
   let scale;
   const rigWB = Math.abs(spec.axleF - spec.axleR);
   let quad = null;
-  if (rec.ownWheels) {
-    /* Our own wheels, mounted at the rig's axles, so the body only has to fill
-       the rig's footprint — scale on overall length. This also skips splitting
-       the model's wheel mesh into quadrants, which was the most expensive thing
-       in the whole fitting pass and is now pointless. */
-    scale = dims.length / (full.max.z - full.min.z);
-  } else if (roles.wheel.length) {
-    // measure the model's wheelbase from the split wheel clusters
+  if (roles.wheel.length) {
+
+    /* Measure the model's wheelbase from the split wheel clusters. A pack's
+       wheel set does not always separate into four — it can be one wheel, or a
+       row of four that splits two-and-two — so every corner is optional and a
+       missing one just falls back to scaling on length. Reading `.z` off an
+       absent corner is what made the minivan fail to fit at all. */
     const merged = mergeGeometries(roles.wheel.map(g => g.clone()));
     quad = splitQuadrants(merged);
     const cz = {};
@@ -368,8 +435,14 @@ function fitTemplate(id, gltfScene, envMap) {
       quad[k].computeBoundingBox();
       cz[k] = quad[k].boundingBox.getCenter(new THREE.Vector3()).z;
     }
-    const fz = (cz.LF + cz.RF) / 2, rz = (cz.LR + cz.RR) / 2;
-    const modelWB = Math.abs(fz - rz);
+    const mean = (a, b) => {
+      const v = [];
+      if (cz[a] !== undefined) v.push(cz[a]);
+      if (cz[b] !== undefined) v.push(cz[b]);
+      return v.length ? v.reduce((t, x) => t + x, 0) / v.length : null;
+    };
+    const fz = mean('LF', 'RF'), rz = mean('LR', 'RR');
+    const modelWB = fz !== null && rz !== null ? Math.abs(fz - rz) : 0;
     scale = modelWB > 0.2 ? rigWB / modelWB : dims.length / (full.max.z - full.min.z);
   } else {
     scale = dims.length / (full.max.z - full.min.z);
@@ -382,13 +455,17 @@ function fitTemplate(id, gltfScene, envMap) {
   /* 3 — recentre: wheelbase midpoint on the rig's, tyres on the road. */
   const after = bboxOf([...roles.body, ...roles.wheel]);
   let dz, dy = -after.min.y;
-  if (quad) {
-    const c = {};
+  const wheelMid = (() => {
+    if (!quad) return null;
+    const zs = [];
     for (const k of Object.keys(quad)) {
-      c[k] = quad[k].boundingBox.getCenter(new THREE.Vector3());
+      quad[k].computeBoundingBox();
+      zs.push(quad[k].boundingBox.getCenter(new THREE.Vector3()).z);
     }
-    const fz = (c.LF.z + c.RF.z) / 2, rz = (c.LR.z + c.RR.z) / 2;
-    dz = (spec.axleF + spec.axleR) / 2 - (fz + rz) / 2;
+    return zs.length >= 2 ? (Math.min(...zs) + Math.max(...zs)) / 2 : null;
+  })();
+  if (wheelMid !== null) {
+    dz = (spec.axleF + spec.axleR) / 2 - wheelMid;
   } else {
     dz = -after.getCenter(new THREE.Vector3()).z;
   }
@@ -504,9 +581,23 @@ function fitTemplate(id, gltfScene, envMap) {
     tris += (w.geo.index ? w.geo.index.count : w.geo.attributes.position.count) / 3;
   }
 
+  /* The fitted body's own extents. The rig's track and length were drawn for
+     the procedural bodies, and a model is rarely the same shape: the pack's
+     estate is 1.45 m across where the rig says 1.58, so wheels bolted to the
+     rig's track stood proud of the arches, and plates pinned to the rig's
+     length floated in front of the nose. Everything that has to touch the body
+     is measured off the body. */
+  const fitted = bboxOf(roles.body);
+  const bounds = {
+    halfWidth: Math.min(fitted.max.x, -fitted.min.x),
+    nose: fitted.max.z,
+    tail: fitted.min.z,
+    top: fitted.max.y,
+  };
+
   const wheelTier = ['turbo', 'm5', 'rs6', 'amg'].includes(id) ? 'hi'
     : (id.startsWith('zivi') || id === 'messwagen') ? 'mid' : 'lo';
-  return { root, wheelTemplates, paintMat, scale, wheelTier,
+  return { root, wheelTemplates, paintMat, scale, wheelTier, bounds,
     tris: Math.round(tris), stripped: roles.strip };
 }
 
@@ -537,10 +628,14 @@ function assemble(id, tpl, opts) {
        outside it, which looks far worse than no model at all. The bodies are
        what we wanted from a pack; carFactory's own revolved wheels are good
        now, so use those and mount them on the rig where they belong. */
+    const hw = tpl.bounds ? tpl.bounds.halfWidth : 0;
     for (const [front, zAxle, track] of [[true, spec.axleF, spec.trackF], [false, spec.axleR, spec.trackR]]) {
       for (const sx of [-1, 1]) {
         const w = buildWheel(spec, front, tpl.wheelTier || 'lo');
-        w.position.set(sx * track / 2, front ? spec.wheelRF : spec.wheelRR, zAxle);
+        const ww = front ? spec.wheelWF : spec.wheelWR;
+        // tuck the wheel just inside the body's own flank, not the rig's track
+        const x = hw > 0.4 ? Math.min(track / 2, hw - ww * 0.42) : track / 2;
+        w.position.set(sx * x, front ? spec.wheelRF : spec.wheelRR, zAxle);
         w.userData.front = front;
         g.add(w); wheels.push(w);
       }
@@ -568,7 +663,7 @@ function assemble(id, tpl, opts) {
 
   finishCar(g, {
     id, spec, dims, wheels, paintMat: paintMat || MAT.body(opts.paint ?? 0x8b9095, null),
-    headMat, tailMat, tier: 'model', opts,
+    headMat, tailMat, tier: 'model', opts, bounds: tpl.bounds,
   });
   g.userData.model = true;
   return g;

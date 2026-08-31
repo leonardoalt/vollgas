@@ -538,6 +538,15 @@ function wheelGeoms(radius, width, spokes, tier) {
   cap.rotateY(Math.PI / 2); cap.translate(0.37 * W, 0, 0);
   rim.push(cap);
 
+  /* A Sattelzug has twenty-two wheels, and at two meshes each that was 44 draw
+     calls per truck before anything else was drawn. Draw calls cost CPU every
+     frame; a black rim inside a black tyre at fifty metres costs nothing to
+     lose. So the truck tier gets one mesh per wheel. */
+  if (tier === 'truck') {
+    const res0 = { tyre: mergeGeometries([tyre, ...rim]) };
+    _wheelCache.set(key, res0);
+    return res0;
+  }
   const res = { tyre, rim: mergeGeometries(rim) };
 
   // ---- polished lip ring and lug bolts: player cars only
@@ -584,7 +593,7 @@ export function buildWheel(spec, front, tier = 'lo') {
   const geo = wheelGeoms(r, w, spec.spokes || 5, tier);
   const spin = new THREE.Group();
   spin.add(new THREE.Mesh(geo.tyre, MAT.tyre));
-  spin.add(new THREE.Mesh(geo.rim, spec.rimDark ? MAT.rimDark : MAT.rim));
+  if (geo.rim) spin.add(new THREE.Mesh(geo.rim, spec.rimDark ? MAT.rimDark : MAT.rim));
   if (geo.bright) spin.add(new THREE.Mesh(geo.bright, MAT.rimLip));
   g.add(spin);
   if (geo.disc) g.add(new THREE.Mesh(geo.disc, MAT.disc));
@@ -1288,17 +1297,25 @@ export function buildCar(id, opts = {}) {
  */
 export function finishCar(g, ctx) {
   const { id, spec, dims, wheels, paintMat, headMat, tailMat, tier, opts } = ctx;
+  /* A loaded body is rarely exactly the rig's size, so anything that has to sit
+     *on* the bodywork uses the body's measured extents when we have them and
+     the rig's nominal dimensions otherwise. */
+  const b = ctx.bounds;
+  const nose = b ? b.nose : dims.length / 2;
+  const tail = b ? b.tail : -dims.length / 2;
+  const bodyW = b ? b.halfWidth * 2 : dims.width;
+
   // ---- plates, front and rear, in one mesh
   const plateTxt = opts.plate || spec.plate || 'S AB 81';
-  const pw = Math.min(0.52, dims.width * 0.30);
+  const pw = Math.min(0.52, bodyW * 0.30);
   g.add(platePair(plateTxt, pw,
-    dims.height * 0.245, dims.length / 2 + 0.008,
-    dims.height * 0.30, -dims.length / 2 - 0.008));
+    dims.height * 0.245, nose + 0.008,
+    dims.height * 0.30, tail - 0.008));
 
   // ---- fake contact shadow, car-shaped rather than a circle in a rectangle
-  const sh = new THREE.Mesh(new THREE.PlaneGeometry(dims.width * 2.05, dims.length * 1.34), MAT.shadow);
+  const sh = new THREE.Mesh(new THREE.PlaneGeometry(bodyW * 2.05, (nose - tail) * 1.34), MAT.shadow);
   sh.rotation.x = -Math.PI / 2;
-  sh.position.y = 0.015;
+  sh.position.set(0, 0.015, (nose + tail) / 2);
   sh.renderOrder = -1;
   g.add(sh);
 
@@ -1306,23 +1323,23 @@ export function finishCar(g, ctx) {
   const blues = [];
   let led = null;
   if (opts.police) {
-    const H = dims.height, hw = dims.width / 2, L = dims.length;
+    const H = dims.height, hw = bodyW / 2, L = nose - tail;
     const mkBlue = (x, y, z, w, h, ry = 0) => {
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.045), MAT.blue.clone());
       m.position.set(x, y, z); m.rotation.y = ry;
       g.add(m); blues.push(m); return m;
     };
     // front: two strips tucked in behind the radiator grille
-    mkBlue(-hw * 0.34, H * 0.455, L / 2 + 0.006, hw * 0.32, H * 0.060);
-    mkBlue(hw * 0.34, H * 0.455, L / 2 + 0.006, hw * 0.32, H * 0.060);
+    mkBlue(-hw * 0.34, H * 0.455, nose + 0.006, hw * 0.32, H * 0.060);
+    mkBlue(hw * 0.34, H * 0.455, nose + 0.006, hw * 0.32, H * 0.060);
     // rear: on the parcel shelf, shining out through the back glass
-    const lz = -L / 2 + L * (spec.ledZ ?? 0.30);
+    const lz = tail + L * (spec.ledZ ?? 0.30);
     const ly = H * (spec.ledY ?? 0.80);
     mkBlue(-hw * 0.40, ly, lz, hw * 0.34, H * 0.045);
     mkBlue(hw * 0.40, ly, lz, hw * 0.34, H * 0.045);
     // side repeaters in the mirrors
-    mkBlue(-hw - 0.02, H * spec.mirrorY + 0.03, spec.mirrorZ * L - L / 2, 0.05, 0.03, Math.PI / 2);
-    mkBlue(hw + 0.02, H * spec.mirrorY + 0.03, spec.mirrorZ * L - L / 2, 0.05, 0.03, Math.PI / 2);
+    mkBlue(-hw - 0.02, H * spec.mirrorY + 0.03, tail + spec.mirrorZ * L, 0.05, 0.03, Math.PI / 2);
+    mkBlue(hw + 0.02, H * spec.mirrorY + 0.03, tail + spec.mirrorZ * L, 0.05, 0.03, Math.PI / 2);
 
     // rear-window LED matrix: STOP POLIZEI
     const off = ledTex('STOP POLIZEI', false), on = ledTex('STOP POLIZEI', true);
@@ -1344,8 +1361,8 @@ export function finishCar(g, ctx) {
   if (opts.glow !== false) {
     for (const s of [-1, 1]) {
       const sp = new THREE.Sprite(MAT.glow.clone());
-      sp.scale.setScalar(dims.width * 0.62);
-      sp.position.set(s * dims.width * 0.30, spec.lightY * dims.height, dims.length / 2 + 0.05);
+      sp.scale.setScalar(bodyW * 0.62);
+      sp.position.set(s * bodyW * 0.30, spec.lightY * dims.height, nose + 0.05);
       sp.visible = false;
       g.add(sp); glows.push(sp);
     }

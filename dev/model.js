@@ -80,7 +80,12 @@ const label = document.getElementById('lbl');
   ids.forEach((id, i) => {
     const spec = CARS[id];
     const paint = spec.paints ? spec.paints[0].c : 0x9aa0a6;
-    const c = buildCar(id, { paint, glow: false });
+    const police = id.startsWith('zivi') || id === 'messwagen';
+    const c = buildCar(id, { paint: police ? 0x8f9498 : paint, glow: false, police });
+    if (police) {
+      c.userData.blues.forEach(b => { b.material.emissiveIntensity = 7; });
+      if (c.userData.led) c.userData.led.material.map = c.userData.led.userData.on;
+    }
     if (ids.length > 1) c.position.z = i * 6.2 - (ids.length - 1) * 3.1;
     scene.add(c); cars.push(c);
   });
