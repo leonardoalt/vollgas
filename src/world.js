@@ -7,7 +7,10 @@
    away, and merged down to a handful of meshes per chunk.
    ========================================================================== */
 import * as THREE from 'three';
-import { SEG, LENGTH, SECTIONS, GEO, BIOME, sample, sectionAt, rng } from './track.js';
+import {
+  SEG, LENGTH, SECTIONS, GEO, BIOME, sample, sectionAt, rng,
+  ENTRY_LEN, entryRamp, outerBarrier,
+} from './track.js';
 import {
   asphaltTex, skyTex, facadeTex, signLimit, signEndAll, signAdvice,
   signAusfahrt, signGantry, signRast, signBaustelle, signKm, signTunnel,
@@ -15,6 +18,8 @@ import {
 import { buildTerrain, buildVegetation, buildLandmarks } from './scenery.js';
 
 const CHUNK = 512;                    // metres per road chunk
+/** True where the entry slip road still has usable width. */
+const rampAt = (s) => { const e = entryRamp(s); return !!e && e.width > 0.5; };
 /* Where the sun sits relative to the car. Late-afternoon, over your shoulder. */
 const SUN_OFFSET = new THREE.Vector3(-165, 225, 250);
 const CROSSFALL = 0.025;              // 2.5 %, drains to the outside
@@ -154,7 +159,7 @@ function gantry(mats, texObj, widthM, s) {
 /* ====================================================== road chunk builder */
 /** Stretches of the right-hand verge where the barrier must be left out. */
 function barrierGaps() {
-  const gaps = [];
+  const gaps = [[-20, ENTRY_LEN + 50]];      // the Auffahrt at Zuffenhausen
   for (const sec of SECTIONS) {
     if (sec.exit) gaps.push([sec.km * 1000 - 80, sec.km * 1000 + 260]);
     if (sec.rest) gaps.push([sec.km * 1000 - 140, sec.km * 1000 + 320]);
@@ -193,6 +198,9 @@ function buildRoadChunks(mats) {
       for (const [off, w, dashed] of lines) {
         if (dashed) continue;
         for (const sign of [1, -1]) {
+          // alongside the acceleration lane this boundary must be crossable,
+          // so it is drawn as a broken wide line further down instead
+          if (sign > 0 && off === GEO.kerbOut && rampAt(s)) continue;
           const u = sign * off;
           ribbon(mesher, s, s2, u - w / 2, u + w / 2, 0.015);
         }
@@ -222,6 +230,14 @@ function buildRoadChunks(mats) {
       const mesher = sec.works ? markY : markW;
       const e = Math.min(s + 6, LENGTH - 0.01);
       for (const sign of [1, -1]) ribbon(mesher, s, e, sign * off - w / 2, sign * off + w / 2, 0.015);
+    }
+
+    // broken wide line between the acceleration lane and the through lanes
+    for (let s = Math.ceil(c0 / 12) * 12; s < Math.min(c1, ENTRY_LEN); s += 12) {
+      if (!rampAt(s)) continue;
+      const e = Math.min(s + 6, ENTRY_LEN, c1);
+      if (e <= s) continue;
+      ribbon(markW, s, e, GEO.kerbOut - 0.15, GEO.kerbOut + 0.15, 0.022);
     }
 
     const add = (m, mat, name) => {
@@ -258,7 +274,9 @@ function buildDelineators(mats) {
   let k = 0;
   for (let s = 25; s < LENGTH; s += 50) {
     for (const sign of [1, -1]) {
-      const u = sign * (GEO.pavedOut + 1.15);
+      // on the right the posts sit outside the barrier line, which is pushed
+      // out around the Auffahrt — otherwise the ramp runs straight over them
+      const u = sign > 0 ? outerBarrier(s) + 0.7 : -(GEO.pavedOut + 1.15);
       const p = roadPt(s, u);
       const c = sample(s);
       q.setFromAxisAngle(up, c.head);
@@ -447,7 +465,7 @@ function buildNoiseWalls(mats) {
   for (const sec of SECTIONS) {
     if (sec.biome !== BIOME.URBAN) continue;
     const i = SECTIONS.indexOf(sec);
-    const s0 = sec.km * 1000 + 60;
+    const s0 = Math.max(sec.km * 1000 + 60, sec === SECTIONS[0] ? ENTRY_LEN + 25 : 0);
     const s1 = (SECTIONS[i + 1] ? SECTIONS[i + 1].km * 1000 : LENGTH) - 60;
     if (sec.tunnel) continue;
     const m = new Mesher();
@@ -586,6 +604,7 @@ function buildRamps(mats) {
   const group = new THREE.Group();
   for (const sec of SECTIONS) {
     if (!sec.exit) continue;
+    if (sec === SECTIONS[0]) continue;        // km 0 is the entry slip road
     const s0 = sec.km * 1000 - 60, s1 = s0 + 300;
     const m = new Mesher();
     for (let s = s0; s < s1; s += SEG) {
@@ -601,6 +620,41 @@ function buildRamps(mats) {
     mesh.matrixAutoUpdate = false; mesh.receiveShadow = true;
     group.add(mesh);
   }
+  return group;
+}
+
+/** The Auffahrt you start on: a slip road tapering into the right-hand lane. */
+function buildEntryRamp(mats) {
+  const group = new THREE.Group();
+  const road = new Mesher(), mark = new Mesher();
+  /* The carriageway drains outwards at 2.5 %, so out at the slip road the road
+     surface has fallen ~31 cm while the flat mown verge sits at a fixed −30 cm.
+     That leaves the ramp about a centimetre *under* the grass and the terrain
+     pokes through it. Lift the ramp clear of the verge. */
+  const LIFT = 0.07;
+  for (let s = 0; s < ENTRY_LEN; s += SEG) {
+    const s2 = Math.min(ENTRY_LEN, s + SEG);
+    const a = entryRamp(s), b = entryRamp(s2);
+    if (!a || !b) continue;
+    road.quad(lift(roadPt(s, a.inner), LIFT), lift(roadPt(s, a.outer), LIFT),
+      lift(roadPt(s2, b.outer), LIFT), lift(roadPt(s2, b.inner), LIFT),
+      0, s / 7, 1.4, s2 / 7);
+    // solid edge line down the outer side of the ramp
+    if (a.width > 0.5) {
+      const w0 = 0.28;
+      mark.quad(lift(roadPt(s, a.outer - w0), LIFT + 0.015), lift(roadPt(s, a.outer), LIFT + 0.015),
+        lift(roadPt(s2, b.outer), LIFT + 0.015), lift(roadPt(s2, b.outer - w0), LIFT + 0.015));
+    }
+  }
+  const rm = new THREE.Mesh(road.geo(), mats.asphalt);
+  rm.matrixAutoUpdate = false; rm.receiveShadow = true;
+  group.add(rm);
+  if (!mark.empty) {
+    const mm = new THREE.Mesh(mark.geo(), mats.markWhite);
+    mm.matrixAutoUpdate = false;
+    group.add(mm);
+  }
+  // Leitbaken-free verge: just a couple of delineators along the ramp edge
   return group;
 }
 
@@ -659,6 +713,7 @@ export function buildWorld(scene, renderer, onProgress = () => {}) {
   scene.add(buildRoadworks(mats));
   scene.add(buildRestArea(mats));
   scene.add(buildRamps(mats));
+  scene.add(buildEntryRamp(mats));
   onProgress('Gelände');
   scene.add(buildTerrain());
   onProgress('Schwarzwald');

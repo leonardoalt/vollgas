@@ -392,6 +392,20 @@ export function shadowTex() {
   });
 }
 
+/** Additive glow blob, used to make a headlamp flash actually visible. */
+export function glowTex() {
+  return cached('glow', () => {
+    const S = 128, c = canvas(S, S), ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+    g.addColorStop(0.00, 'rgba(255,252,236,1)');
+    g.addColorStop(0.22, 'rgba(255,246,214,.72)');
+    g.addColorStop(0.55, 'rgba(255,240,190,.20)');
+    g.addColorStop(1.00, 'rgba(255,235,170,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, S, S);
+    return finish(c);
+  });
+}
+
 /** Billboard for distant spruce — Schwarzwald filler. */
 export function spruceTex() {
   return cached('spruce', () => {

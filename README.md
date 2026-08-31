@@ -4,11 +4,12 @@ A browser racing game on the **Bundesautobahn 81, Stuttgart → Singen (Bodensee
 built with Three.js and no art assets — every mesh, texture and sign is generated
 at load time.
 
-You race three rivals to the Bodensee. The catch is that a third of the route is
-posted, and the posted bits are watched: unmarked patrol cars run in the traffic
-stream taking **ProViDa** video measurements, and mobile **Blitzer** vans sit in
-the hard shoulder. Going fast where it is legal is free. Going fast where it is
-not is how you win — and how you end up with a Bußgeldbescheid.
+It is a **time trial** against your own best. You join the A81 from the slip road
+at Zuffenhausen and run to the Bodensee. The catch is that a third of the route
+is posted, and the posted bits are watched: unmarked patrol cars run in the
+traffic stream taking **ProViDa** video measurements, and mobile **Blitzer** vans
+sit in the hard shoulder. Going fast where it is legal is free. Going fast where
+it is not is how you take time out — and how you end up with a Bußgeldbescheid.
 
 ```bash
 npm install
@@ -43,7 +44,7 @@ place names, speed regime and landmarks:
 
 | km | Section | Limit | |
 |---|---|---|---|
-| 0.0 | Stuttgart-Zuffenhausen | 100 | Porsche works alongside the road |
+| 0.0 | Stuttgart-Zuffenhausen | 100 | you start on the Auffahrt; Porsche works alongside |
 | 2.4 | Engelbergbasistunnel | 100 | bored tunnel, lit crown, dimmed inside |
 | 5.1 | Sindelfingen-Ost | 120 | Mercedes plant |
 | 6.6 | Böblingen-Hulb | **frei** | *Ende aller Streckenverbote* |
@@ -83,7 +84,17 @@ measurement, which needs a **sustained follow** to be valid:
 
 The ProViDa panel shows the live gap, and the **rear-view mirror** at the top of
 the screen is how you actually see who is back there — its surround turns red
-while you are being measured.
+while you are being measured. A measurement is only valid inside 190 m, which is
+also the radar range: whenever that bar is filling, the car doing it is on your
+screen.
+
+Let it complete and the pursuit starts. If they hold you, both of you pull onto
+the hard shoulder, they stop behind you, and the run is over.
+
+Nobody flashes you about an unmarked car — oncoming drivers cannot spot one
+either. The Lichthupe only ever warns about cameras, and there is deliberately
+**no message** when it happens: the headlights coming at you are the warning, and
+spelling it out gives the game away.
 
 **Mobile speed cameras.** Unmarked vans parked in the Seitenstreifen, clustered
 where limits start and through the roadworks. No in-car warning — radar detectors
@@ -151,13 +162,19 @@ src/
 dev/             headless harnesses (see below)
 ```
 
+### Time trial
+
+Best time is stored per car in `localStorage` and shown live in the HUD, so the
+stage is run against your own previous lap rather than an AI field.
+
 ### Alerts
 
 Alerts run down a column on the left, never across the middle — a burst of fines
 stacked centre-screen buries the car exactly when you most need to see it. Each
 alert also carries a category key: a second alert with a key already on screen
-replaces it in place and counts the repeat, so three speed cameras in a row are
-one growing row (`GEBLITZT ×3 · 840 €`) rather than three.
+replaces that row in place, so three speed cameras in a row are one row that
+updates rather than three that stack. Running totals live in the panel
+top-right, which is where you look for them anyway.
 
 ### Rear-view mirror
 
@@ -207,7 +224,8 @@ bench; `dev/world.html?km=12&view=drive|cockpit|air|sign` is a world bench.
 ## Known limits
 
 - Two lanes per direction throughout; the real A81 widens to three near Stuttgart.
-- Rivals are enforced against only by the speed cameras, not by ProViDa.
+- Rival racers exist in `vehicles.js` but are switched off (`RIVALS` in
+  `game.js`); the stage is currently a time trial.
 - The Engelbergtunnel is modelled as a single bore over your carriageway, and
   there is no hillside over it — you drive into a portal standing in open ground.
 - Slip roads are visual — you cannot actually leave the Autobahn.

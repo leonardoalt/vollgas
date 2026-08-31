@@ -13,7 +13,7 @@
    ========================================================================== */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { plateTex, ledTex, shadowTex } from './textures.js';
+import { plateTex, ledTex, shadowTex, glowTex } from './textures.js';
 
 /* ------------------------------------------------------------- materials */
 const MAT = {};
@@ -43,6 +43,10 @@ export function initMaterials(envMap) {
   MAT.shadow = new THREE.MeshBasicMaterial({ map: shadowTex(), transparent: true, depthWrite: false, opacity: 0.85 });
   MAT.interior = new THREE.MeshStandardMaterial({ color: 0x0c0e11, roughness: 0.9, metalness: 0 });
   MAT.liner = new THREE.MeshStandardMaterial({ color: 0x0f1114, roughness: 0.95, metalness: 0, side: THREE.DoubleSide });
+  MAT.glow = new THREE.SpriteMaterial({
+    map: glowTex(), blending: THREE.AdditiveBlending, transparent: true,
+    depthWrite: false, opacity: 0,
+  });
   return MAT;
 }
 export { MAT };
@@ -890,8 +894,22 @@ export function buildCar(id, opts = {}) {
     g.add(lm); led = lm;
   }
 
+  /* Headlamp glow. A Lichthupe has to be legible from hundreds of metres in
+     daylight, and cranking a small emissive box does not do it — these
+     additive sprites do. They stay at zero opacity until something flashes. */
+  const glows = [];
+  if (opts.glow !== false) {
+    for (const s of [-1, 1]) {
+      const sp = new THREE.Sprite(MAT.glow.clone());
+      sp.scale.setScalar(dims.width * 0.62);
+      sp.position.set(s * dims.width * 0.30, spec.lightY * dims.height, dims.length / 2 + 0.05);
+      sp.visible = false;
+      g.add(sp); glows.push(sp);
+    }
+  }
+
   g.userData = {
-    id, spec, dims, wheels, blues, led,
+    id, spec, dims, wheels, blues, led, glows,
     paintMat, headMat, tailMat,
     halfLen: dims.length / 2, halfWid: dims.width / 2,
   };

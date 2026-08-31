@@ -20,7 +20,7 @@
    ========================================================================== */
 import { LENGTH, LANES, GEO, SECTIONS, limitAt, sectionAt, sample, toWorld } from './track.js';
 import { buildCar, CARS, randomPlate } from './carFactory.js';
-import { TrafficCar } from './vehicles.js';
+import { TrafficCar, FLASH_DUR } from './vehicles.js';
 
 const KMH = 3.6;
 
@@ -39,6 +39,16 @@ export function penaltyFor(excessKmh) {
   return { excess: e, fine: 700, points: 2, ban: 3 };
 }
 
+/* Measurement ranges.
+   The bar only *fills* while the patrol car is close enough to see, so the
+   mechanic is always legible. But opening a gap does not void the measurement
+   outright — it pauses it, and they keep coming. Only a sustained gap loses
+   them, which means flooring it buys you time rather than an escape. */
+const MEASURE_FILL_GAP = 130;    // bar accumulates only inside this
+const MEASURE_LOSE_GAP = 300;    // beyond this you are getting away
+const MEASURE_LOSE_TIME = 3.5;   // ...but you have to hold it this long
+const PURSUE_MAX_GAP = 520;      // they do not give up on a pursuit easily
+
 const ZIVI_TYPES = ['zivi_touring', 'zivi_limo', 'zivi_kompakt', 'zivi_avant'];
 /* Deliberately dull fleet colours — the whole point is that you don't spot
    them until they are already behind you. */
@@ -49,6 +59,7 @@ export const COP_STATE = {
   CRUISE: 'cruise',      // blending in
   MEASURE: 'measure',    // ProViDa running
   PURSUE: 'pursue',      // blue lights, STOP POLIZEI
+  STOP: 'stop',          // both of you pulling onto the hard shoulder
   DONE: 'done',          // gave up / handled
 };
 
@@ -155,7 +166,7 @@ export class Enforcement {
     z.psi = 0;
     z.state = COP_STATE.CRUISE;
     z.warned = false;
-    z.measure = 0; z.measurePeak = 0; z.pursueClose = 0; z.cooldown = 0; z.grace = 0;
+    z.measure = 0; z.measurePeak = 0; z.pursueClose = 0; z.cooldown = 0; z.grace = 0; z.lostT = 0;
     z.setLights(false);
   }
 
@@ -211,6 +222,7 @@ export class Enforcement {
           z.state = COP_STATE.MEASURE;
           z.measure = 0;
           z.grace = 2.2;                 // time to pull out and settle in behind
+          z.lostT = 0;
           z.measurePeak = pKmh;
           this.events.push({ type: 'measure-start', cop: z });
         }
@@ -224,9 +236,11 @@ export class Enforcement {
         z.measurePeak = Math.max(z.measurePeak, pKmh);
         const restricted = zLim !== Infinity;
         const stillOver = restricted && pKmh > zLim + 11;
-        const inRange = gap > -25 && gap < 340;
-        if (!inRange && z.grace <= 0) {
-          // out-measured: either you pulled clear or they lost you in traffic
+        const tooFar = gap > MEASURE_LOSE_GAP || gap < -25;
+        z.lostT = Math.max(0, (z.lostT || 0) + (tooFar ? dt : -dt * 0.6));
+        const canFill = gap > -25 && gap < MEASURE_FILL_GAP;
+        if (z.lostT > MEASURE_LOSE_TIME && z.grace <= 0) {
+          // held a big gap long enough: they cannot make the measurement stand
           z.state = COP_STATE.DONE; z.cooldown = 6;
           z.measure = 0;
           this.events.push({ type: 'measure-lost', cop: z });
@@ -241,8 +255,8 @@ export class Enforcement {
             z.state = COP_STATE.DONE; z.cooldown = 8;
             this.events.push({ type: 'measure-abort', cop: z });
           }
-        } else if (z.grace <= 0) {
-          // a valid ProViDa measurement needs a sustained follow
+        } else if (z.grace <= 0 && canFill) {
+          // a valid ProViDa measurement needs a sustained follow, up close
           z.measure += dt / 4.2;
           if (z.measure >= 1) {
             const p = penaltyFor(z.measurePeak - zLim);
@@ -259,16 +273,16 @@ export class Enforcement {
       if (z.state === COP_STATE.PURSUE) {
         const gap = player.s - z.s;
         z.strobe(dt);
-        if (gap > 460 || gap < -160) {
+        if (gap > PURSUE_MAX_GAP || gap < -160) {
           z.state = COP_STATE.DONE; z.cooldown = 14;
           z.setLights(false);
           this.events.push({ type: 'escaped', cop: z });
         } else if (gap < 34 && player.v < z.v + 3) {
           z.pursueClose += dt;
           if (z.pursueClose > 4.5 || player.v * KMH < 25) {
-            z.state = COP_STATE.DONE; z.cooldown = 22;
-            z.setLights(false);
-            player.stoppedT = 20;
+            // they do not just drive off — they pull in behind you and stop
+            z.state = COP_STATE.STOP;
+            player.stoppedT = 999;                 // held until the run ends
             this.events.push({ type: 'stopped', cop: z });
           }
         } else {
@@ -278,7 +292,11 @@ export class Enforcement {
       }
 
       // --- driving behaviour by state
-      if (z.state === COP_STATE.MEASURE || z.state === COP_STATE.PURSUE) {
+      if (z.state === COP_STATE.STOP) {
+        z.strobe(dt);
+        this._pullOver(dt, z, player, ctx);
+        active = z;
+      } else if (z.state === COP_STATE.MEASURE || z.state === COP_STATE.PURSUE) {
         this._chase(dt, z, player, ctx);
       } else {
         const lim2 = limitAt(z.s);
@@ -322,34 +340,57 @@ export class Enforcement {
     z.headlights = true;
   }
 
+  /** Follow the player onto the hard shoulder and come to a stop behind them. */
+  _pullOver(dt, z, player, ctx) {
+    const gap = player.s - z.s;
+    const targetU = GEO.kerbOut + GEO.shoulder * 0.5;
+    const err = targetU - z.u;
+    const arrived = Math.abs(err) < 0.9;
+    // same reason as the player: keep rolling until actually on the shoulder
+    let wantV = arrived ? (player.v < 1.2 ? 0 : 3) : 8;
+    if (gap < 9) wantV = Math.min(wantV, Math.max(0, player.v));
+    let thr = 0, brake = 0;
+    if (z.v > wantV + 0.3) brake = Math.min(1, 0.2 + (z.v - wantV) * 0.10);
+    else if (z.v < wantV - 0.3) thr = 0.34;
+    z.stepLong(dt, thr, brake, ctx);
+    z.stepLat(dt, Math.max(-0.6, Math.min(0.6, err * 0.28)), ctx);
+    if (z.v < 0.3) z.v = 0;
+    z.headlights = true;
+  }
+
   /**
    * The only legal early-warning system on a German motorway: someone coming
    * the other way flicks their headlights at you.
    */
+  /**
+   * The only legal early-warning system on a German motorway: someone coming
+   * the other way flicks their headlights at you.
+   *
+   * Only mobile cameras get warned about. Nobody flashes you about an unmarked
+   * patrol car, for the simple reason that oncoming drivers cannot spot one
+   * either — that is the whole point of a Zivilstreife.
+   */
   _warn(dt, player, traffic) {
     this._warnT = (this._warnT || 0) - dt;
     if (this._warnT > 0) return;
-    this._warnT = 0.7;
-    /* One warning per hazard. Oncoming drivers flash you once as you close on
-       something; they don't strobe at you for a kilometre. */
+    this._warnT = 0.6;
+    // inside a tunnel bore there is no oncoming carriageway to flash at you
+    if (sectionAt(player.s).tunnel) return;
+
     let threat = null;
     for (const cam of this.cameras) {
       const rel = cam.s - player.s;
-      if (rel > 260 && rel < 1400 && !cam.warned) { cam.warned = true; threat = { kind: 'blitzer', rel, obj: cam }; break; }
-      if (rel < -60) cam.warned = false;
-    }
-    if (!threat) {
-      for (const z of this.cops) {
-        const rel = z.s - player.s;
-        if (rel > 260 && rel < 1100 && z.state === COP_STATE.CRUISE && !z.warned) {
-          z.warned = true; threat = { kind: 'zivi', rel, obj: z }; break;
-        }
-      }
+      if (rel < -60) { cam.warned = false; continue; }
+      // far enough out to be useful: 550 m is ~8 s at 250 km/h
+      if (rel > 550 && rel < 1700 && !cam.warned) { threat = { kind: 'blitzer', rel, obj: cam }; break; }
     }
     if (!threat) return;
-    const flashers = traffic.oncomingFlashers(player.s, 30, 260);
+
+    const flashers = traffic.oncomingFlashers(player.s, 40, 320);
+    // nobody coming the other way right now — keep the warning pending
     if (!flashers.length) return;
-    for (const f of flashers) f.flashT = 0.75;
+    threat.obj.warned = true;
+    for (const f of flashers) f.flashT = FLASH_DUR;
     this.events.push({ type: 'lichthupe', threat });
   }
 

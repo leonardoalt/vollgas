@@ -39,7 +39,7 @@ const info = await page.evaluate(async () => {
   return {
     rows: [...document.querySelectorAll('#hud-alerts .alert')].map(e => e.textContent.trim()),
     domRows: document.querySelectorAll('#hud-alerts .alert').length,
-    keys: g.hud.alerts.map(a => a.key + (a.reps > 1 ? '×' + a.reps : '')),
+    keys: g.hud.alerts.map(a => a.key),
     rect: (() => { const r = document.getElementById('hud-alerts').getBoundingClientRect();
       return { left: Math.round(r.left), top: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) }; })(),
   };
@@ -49,6 +49,10 @@ await page.screenshot({ path: out });
 console.log('alert box:', JSON.stringify(info.rect));
 console.log('keys     :', info.keys.join(', '));
 info.rows.forEach(r => console.log('  •', r.replace(/\s+/g, ' ')));
-console.log('rows:', info.rows.length, '| centre of screen clear:', info.rect.left + info.rect.w < 420 ? 'YES' : 'NO');
+const flashRows = info.rows.filter(r => /GEBLITZT|CAMERA/i.test(r)).length;
+const hasCount = info.rows.some(r => /×\d/.test(r));
+console.log('rows:', info.rows.length, '| centre clear:', info.rect.left + info.rect.w < 420 ? 'YES' : 'NO');
+console.log('3 camera hits -> 1 row :', flashRows === 1 ? 'PASS' : 'FAIL (' + flashRows + ')');
+console.log('no ×N counters shown   :', hasCount ? 'FAIL' : 'PASS');
 console.log(errs.length ? errs.join('\n') : 'no page errors');
 await browser.close();

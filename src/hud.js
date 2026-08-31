@@ -1,7 +1,7 @@
 /* ==========================================================================
    hud.js — instrument cluster, rear-space radar and the DOM overlays.
    ========================================================================== */
-import { LENGTH, GEO, sectionAt } from './track.js';
+import { LENGTH, GEO, sectionAt, entryRamp } from './track.js';
 import { t, lang } from './i18n.js';
 
 const DIN = '"Roboto Condensed","Arial Narrow",Helvetica,Arial,sans-serif';
@@ -11,7 +11,7 @@ export class Hud {
   constructor() {
     this.el = {
       hud: $('hud'), section: $('hud-section-name'), sub: $('hud-section-sub'),
-      time: $('hud-time'), pos: $('hud-pos'), dist: $('hud-dist'), vmax: $('hud-vmax'),
+      time: $('hud-time'), best: $('hud-best'), dist: $('hud-dist'), vmax: $('hud-vmax'),
       progFill: $('hud-progress-fill'), progMe: $('hud-progress-me'),
       limit: $('hud-limit'), fine: $('hud-fine'), points: $('hud-points'), damage: $('hud-damage'),
       alerts: $('hud-alerts'), provida: $('hud-provida'), pvFill: document.querySelector('.pv-fill'),
@@ -31,30 +31,28 @@ export class Hud {
 
   /* ------------------------------------------------------------- alerts
      Each alert carries a category key. A new alert with a key already on
-     screen replaces it in place and counts the repeat, so a burst of fines
-     is one growing row rather than a stack that buries the road. */
-  alert(text, sub = '', kind = 'warn', ttl = 3.4, key = null, showReps = true) {
+     screen replaces that row in place, so a burst of fines never stacks up
+     and buries the road. The running totals live in the panel top-right. */
+  alert(text, sub = '', kind = 'warn', ttl = 3.4, key = null) {
     const k = key || text;
     const existing = this.alerts.find(a => a.key === k);
     if (existing) {
       existing.t = 0;
-      existing.reps++;
       existing.el.className = 'alert ' + kind;
-      existing.el.innerHTML = this._alertHtml(text, sub, showReps ? existing.reps : 1);
+      existing.el.innerHTML = this._alertHtml(text, sub);
       return existing;
     }
     const div = document.createElement('div');
     div.className = 'alert ' + kind;
-    div.innerHTML = this._alertHtml(text, sub, 1);
+    div.innerHTML = this._alertHtml(text, sub);
     this.el.alerts.appendChild(div);
-    const entry = { el: div, t: 0, ttl, text, key: k, reps: 1 };
+    const entry = { el: div, t: 0, ttl, text, key: k };
     this.alerts.push(entry);
     while (this.alerts.length > 4) this._killAlert(this.alerts[0]);
     return entry;
   }
-  _alertHtml(text, sub, reps) {
-    const rep = reps > 1 ? `<span class="rep">\u00d7${reps}</span>` : '';
-    return `<div>${text}${rep}${sub ? `<small>${sub}</small>` : ''}</div>`;
+  _alertHtml(text, sub) {
+    return `<div>${text}${sub ? `<small>${sub}</small>` : ''}</div>`;
   }
   _killAlert(a) {
     a.el.classList.add('fade');
@@ -116,7 +114,8 @@ export class Hud {
     const secs = Math.max(0, st.raceTime);
     const mm = Math.floor(secs / 60), ss = (secs - mm * 60);
     e.time.textContent = `${mm}:${ss.toFixed(1).padStart(4, '0')}`;
-    e.pos.textContent = `${st.place}/${st.fieldSize}`;
+    e.best.textContent = st.best == null ? t('res.none')
+      : `${Math.floor(st.best / 60)}:${(st.best % 60).toFixed(1).padStart(4, '0')}`;
     const left = Math.max(0, (LENGTH - st.s) / 1000);
     e.dist.textContent = left < 1 ? `${Math.round(left * 1000)} m` : `${left.toFixed(1)} km`;
     e.vmax.textContent = Math.round(st.vmaxSeen);
@@ -138,7 +137,7 @@ export class Hud {
       const gap = Math.max(0, Math.round(st.providaGap));
       e.pvHead.innerHTML =
         `<span class="pv-dot"></span> P R O V I D A &nbsp;·&nbsp; ${t('pv.head')} &nbsp;·&nbsp; ${gap} m`;
-      e.pvSub.textContent = t(gap > 240 ? 'pv.far' : 'pv.close');
+      e.pvSub.textContent = t(gap > 130 ? 'pv.far' : 'pv.close');
     }
     e.vignette.classList.toggle('on', st.pursuit || st.damage > 80);
   }
@@ -245,9 +244,12 @@ export class Hud {
   drawRadar(st) {
     const c = this.rctx, W = this.radar.width, H = this.radar.height;
     c.clearRect(0, 0, W, H);
-    const RANGE = 170;                       // metres shown fore and aft
-    // only our own carriageway is worth the pixels
-    const U0 = GEO.pavedIn - 1.6, U1 = GEO.pavedOut + 1.6;
+    const RANGE = 200;                       // metres fore and aft; matches ProViDa range
+    // only our own carriageway is worth the pixels — plus the slip road while
+    // we are still on it, so our own blip is not clipped off the edge
+    const ramp = entryRamp(st.s);
+    const U0 = GEO.pavedIn - 1.6;
+    const U1 = Math.max(GEO.pavedOut + 1.6, ramp ? ramp.outer + 1.2 : 0);
     const sx = (u) => ((u - U0) / (U1 - U0)) * W;
     const sy = (ds) => H / 2 - (ds / (RANGE * 2)) * H;
 
@@ -283,7 +285,7 @@ export class Hud {
       if (Math.abs(ds) > RANGE || o.u < U0 - 3 || o.u > U1 + 3) continue;
       let col = 'rgba(215,220,226,.72)';
       let glow = null;
-      if (o.kind === 'rival') col = '#5fb2ff';
+      if (o.kind === 'rival') col = '#5fb2ff';   // unused while RIVALS is off
       if (o.kind === 'police' && o.hot) { col = '#ff4438'; glow = '#ff4438'; }
       blip(o.u, ds, o.halfLen * 2, o.halfWid * 2, col, glow);
     }
@@ -294,7 +296,7 @@ export class Hud {
     c.fillStyle = 'rgba(255,255,255,.28)';
     c.font = `400 9px ${DIN}`;
     c.textAlign = 'left';
-    c.fillText('+150 m', 4, 12);
-    c.fillText('-150 m', 4, H - 6);
+    c.fillText(`+${RANGE} m`, 4, 12);
+    c.fillText(`-${RANGE} m`, 4, H - 6);
   }
 }

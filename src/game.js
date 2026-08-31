@@ -11,11 +11,14 @@ import { Enforcement, COP_STATE } from './police.js';
 import { Hud } from './hud.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
-import { LENGTH, LANES, toWorld, rng, STAGE_KM } from './track.js';
-import { t, lang, setLang, toggleLang, applyDom, GLOBALS } from './i18n.js';
+import { LENGTH, LANES, toWorld, rng, STAGE_KM, entryRamp } from './track.js';
+import { t, lang, toggleLang, applyDom, GLOBALS } from './i18n.js';
 
 const KMH = 3.6;
 const $ = (id) => document.getElementById(id);
+
+/* Rivals are switched off: the stage is a time trial against your own best. */
+const RIVALS = false;
 
 const CAM_MODES = [
   { name: 'Verfolgung', dist: 8.4, height: 2.75, look: 46, lookY: 1.55, lag: 7.5, fov: 62, uf: 0.94 },
@@ -214,14 +217,21 @@ export class Game {
     if (this.player) this.teardown();
 
     this.player = new Player(id, spec.paints[this.paintIdx % spec.paints.length].c);
-    this.player.s = 40; this.player.u = LANES[0]; this.player.v = 25;   // rolling start, 90 km/h
+    // join the A81 from the Auffahrt rather than appearing in a running lane
+    this.startS = 30;
+    const ramp = entryRamp(this.startS);
+    this.player.s = this.startS;
+    this.player.u = ramp ? ramp.centre : LANES[1];
+    this.player.v = 17;                        // ~61 km/h up the slip road
     this.player.headlights = true;
     this.scene.add(this.player.mesh);
     this.player.mesh.traverse(o => { if (o.isMesh) o.castShadow = true; });
 
     this.traffic = new Traffic(this.scene, rng);
     this.traffic.build(this.player.s, { same: 12, opp: 10 });
-    this.traffic.addRivals(this.player.s, id);
+    // Time trial: no rival field. The Rival AI is still in vehicles.js — call
+    // traffic.addRivals(this.player.s, id) to put a field back on the road.
+    if (RIVALS) this.traffic.addRivals(this.player.s, id);
 
     this.enf = new Enforcement(this.scene, rng);
     this.enf.build(this.player.s, 4);
@@ -233,6 +243,11 @@ export class Game {
 
     this.raceTime = 0;
     this.countdown = 3.999;
+    this.arrestT = 0;
+    this.endingT = 0;
+    this.endingReason = null;
+    this._warned6 = false;
+    this.best = this.loadBest(id);
     this.hud.countdown(null);
     this.finished = false;
     this.results = null;
@@ -312,46 +327,35 @@ export class Game {
     this.renderer.toneMappingExposure = 1.06 + m * 0.5;
   }
 
-  /* --------------------------------------------------------- race scoring */
-  standings() {
-    const field = [
-      { name: t('res.me'), s: this.player.s, me: true, v: this.player.v, finishT: this.player.finishT },
-      ...this.traffic.rivals.map(r => ({ name: r.name, s: r.s, v: r.v, finishT: r.finished ? r.finishT : null, car: r.spec.name })),
-    ];
-    field.sort((a, b) => b.s - a.s);
-    return field;
+  /* ------------------------------------------------------------ best times */
+  bestKey(id) { return `a81.best.${id}`; }
+  loadBest(id) {
+    try { const v = parseFloat(localStorage.getItem(this.bestKey(id))); return Number.isFinite(v) ? v : null; }
+    catch { return null; }
+  }
+  saveBest(id, secs) {
+    try { localStorage.setItem(this.bestKey(id), String(secs)); } catch { /* ignore */ }
   }
 
+  /* --------------------------------------------------------- race scoring */
   finish() {
     this.finished = true;
-    this.player.finishT = this.raceTime;
-    const field = [
-      { name: t('res.me'), car: CARS[this.carId].name, t: this.raceTime, me: true, s: LENGTH, fines: this.player.fines },
-      ...this.traffic.rivals.map(r => ({
-        name: r.name, car: r.spec.name, s: r.s, fines: r.fines,
-        t: r.finished ? r.finishT : this.raceTime + Math.max(1, (LENGTH - r.s) / Math.max(8, r.v)),
-      })),
-    ];
-    field.sort((a, b) => a.t - b.t);
-    const place = field.findIndex(f => f.me) + 1;
-    this.results = { field, place };
-    this.state = 'results';
-    this.hud.show(false);
-    this.audio.hush();
-    this.showResults();
+    const secs = this.raceTime;
+    this.player.finishT = secs;
+    const prev = this.loadBest(this.carId);
+    const isBest = prev == null || secs < prev;
+    if (isBest) this.saveBest(this.carId, secs);
+    this.results = { time: secs, prev, isBest, dnf: null };
+    this.endRun();
   }
 
   outOfRace(reason) {
     this.finished = true;
-    const field = [
-      { name: t('res.me'), car: CARS[this.carId].name, t: Infinity, me: true, dnf: reason },
-      ...this.traffic.rivals.map(r => ({
-        name: r.name, car: r.spec.name,
-        t: r.finished ? r.finishT : this.raceTime + Math.max(1, (LENGTH - r.s) / Math.max(8, r.v)),
-      })),
-    ];
-    field.sort((a, b) => a.t - b.t);
-    this.results = { field, place: field.length, dnf: reason };
+    this.results = { time: null, prev: this.loadBest(this.carId), isBest: false, dnf: reason };
+    this.endRun();
+  }
+
+  endRun() {
     this.state = 'results';
     this.hud.show(false);
     this.audio.hush();
@@ -361,20 +365,31 @@ export class Game {
   showResults() {
     const r = this.results;
     const p = this.player;
-    $('results-title').textContent = r.dnf ? t('res.over') : t('res.finish');
-    const places = t('res.place');
-    $('results-place').textContent = r.dnf ? r.dnf
-      : t('res.placevmax', { place: places[r.place - 1] || r.place + '.', v: Math.round(p.vmaxSeen) });
-
-    const fmt = (x) => x === Infinity ? '—' : `${Math.floor(x / 60)}:${(x % 60).toFixed(1).padStart(4, '0')}`;
+    const fmt = (x) => (x == null || x === Infinity) ? t('res.none')
+      : `${Math.floor(x / 60)}:${(x % 60).toFixed(1).padStart(4, '0')}`;
     // German writes 320,00 € after the number; English writes €320.00 before it
     const money = (n) => lang === 'de'
       ? `${n.toLocaleString('de-DE')},00 €`
       : `€${n.toLocaleString('en-GB')}.00`;
-    $('results-table').innerHTML =
-      `<tr><th>${t('res.pos')}</th><th>${t('res.driver')}</th><th>${t('res.car')}</th>` +
-      `<th class="n">${t('res.fine')}</th><th class="n">${t('res.time')}</th></tr>` +
-      r.field.map((f, i) => `<tr class="${f.me ? 'me' : ''}"><td>${i + 1}</td><td>${f.name}</td><td>${f.car || ''}</td><td class="n">${f.fines ? money(f.fines) : '—'}</td><td class="n">${fmt(f.t)}</td></tr>`).join('');
+
+    $('results-title').textContent = r.dnf
+      ? (r.dnf === t('dnf.stopped') ? t('res.stopped') : t('res.over'))
+      : t('res.finish');
+    $('results-place').textContent = r.dnf ? r.dnf
+      : (r.isBest ? t('res.newbest') : `${t('res.best.l')} ${fmt(r.prev)}`);
+
+    const avg = r.time ? (LENGTH / 1000) / (r.time / 3600) : null;
+    const rows = [
+      [t('res.time.l'), fmt(r.time)],
+      [t('res.best.l'), fmt(r.isBest ? r.time : r.prev)],
+      [t('res.vmax.l'), `${Math.round(p.vmaxSeen)} km/h`],
+      [t('res.avg.l'), avg ? `${Math.round(avg)} km/h` : t('res.none')],
+      [t('res.fines.l'), money(p.fines)],
+      [t('res.points.l'), String(p.points)],
+      [t('res.damage.l'), `${Math.round(p.damage)} %`],
+    ];
+    $('results-table').innerHTML = rows.map(([k, v], i) =>
+      `<tr class="${i === 0 ? 'me' : ''}"><td>${k}</td><td class="n">${v}</td></tr>`).join('');
 
     const tk = $('results-ticket');
     if (p.tickets.length === 0) {
@@ -429,35 +444,20 @@ export class Game {
           const p = ev.penalty;
           this.hud.blitzFlash();
           this.audio.flash();
-          // a burst of cameras collapses into one row with a running total
-          // ?? not || — raceTime is legitimately 0 during the countdown, and
-          // `0 || -99` reads as "no previous flash", resetting the run every time
-          const now = this.raceTime;
-          if (now - (this._flashT ?? -99) > 12) { this._flashN = 0; this._flashSum = 0; }
-          this._flashT = now;
-          this._flashN = (this._flashN ?? 0) + 1;
-          this._flashSum = (this._flashSum ?? 0) + p.fine;
-          const head = this._flashN > 1
-            ? t('a.flash.multi', { n: this._flashN, fine: this._flashSum })
-            : t('a.flash', { fine: p.fine });
           const sub = t('a.flash.sub', { speed: Math.round(ev.speed), limit: ev.limit })
             + (p.points ? t('a.flash.points', { n: p.points }) : '');
-          // the head already carries the ×N and the running total
-          this.hud.alert(head, sub, 'bad', 5, 'flash', false);
+          this.hud.alert(t('a.flash', { fine: p.fine }), sub, 'bad', 5, 'flash');
           break;
         }
-        case 'lichthupe':
-          this.hud.alert(t('a.warn'),
-            ev.threat.kind === 'blitzer'
-              ? t('a.warn.blitzer', { m: Math.round(ev.threat.rel / 100) * 100 })
-              : t('a.warn.zivi'),
-            'warn', 4, 'warn');
-          break;
+        // 'lichthupe' deliberately shows nothing: the oncoming headlights are
+        // the warning, and spelling it out gives the game away.
         case 'escaped':
           this.hud.alert(t('a.escaped'), t('a.escaped.sub'), 'good', 3.5, 'pursuit');
           break;
         case 'stopped':
           this.hud.alert(t('a.stopped'), t('a.stopped.sub'), 'bad', 8, 'pursuit');
+          this.arrestT = 9.5;               // let the stop play out, then end it
+          this.camMode = 4;                 // pull back so you can see it happen
           break;
       }
     }
@@ -493,9 +493,14 @@ export class Game {
           setTimeout(() => this.hud.countdown(null), 900);
         }
       }
-      // hold a steady 90 km/h until the flag drops
-      const hold = p.v < 25 ? 0.42 : 0.16;
-      p.control(dt, { throttle: hold, brake: 0, steer: inp.steer * 0.5, handbrake: false }, this.traffic);
+      /* Rolling up the slip road: hold slip-road pace and track the ramp
+         automatically, so the countdown is spent approaching the Autobahn and
+         the merge itself is the player's first job. */
+      const hold = p.v < 17 ? 0.45 : 0.13;
+      const ramp = entryRamp(p.s);
+      const wantU = ramp ? ramp.centre : LANES[1];
+      const steer = Math.max(-0.6, Math.min(0.6, (wantU - p.u) * 0.26 - p.psi * 2.0));
+      p.control(dt, { throttle: hold, brake: 0, steer, handbrake: false }, this.traffic);
       p.sync(dt);
     } else {
       this.raceTime += dt;
@@ -524,10 +529,8 @@ export class Game {
     // ---- HUD
     const cop = this.enf.activeCop;
     const copGap = cop ? p.s - cop.s : 0;
-    const field = this.standings();
-    const place = field.findIndex(f => f.me) + 1;
     this.hud.update({
-      s: p.s, raceTime: this.raceTime, place, fieldSize: field.length,
+      s: p.s, raceTime: this.raceTime, best: this.best,
       vmaxSeen: p.vmaxSeen, fines: p.fines, points: p.points, damage: p.damage,
       provida: cop && cop.state === COP_STATE.MEASURE ? cop.measure : 0,
       providaGap: copGap,
@@ -557,9 +560,35 @@ export class Game {
     });
 
     // ---- end conditions
+    if (this.arrestT > 0) {
+      this.arrestT -= dt;
+      const cop = this.enf.activeCop;
+      const bothStopped = p.pulledOver && (!cop || cop.v < 0.6);
+      if (this.arrestT <= 0 || (bothStopped && this.arrestT < 7.0)) {
+        this.outOfRace(t('dnf.stopped'));
+        return;
+      }
+    }
+    // a pending ending: show why, then roll the results
+    if (this.endingT > 0) {
+      this.endingT -= dt;
+      if (this.endingT <= 0) { this.outOfRace(this.endingReason); return; }
+    }
+    // one warning before the licence goes
+    if (p.points >= 6 && p.points < 8 && !this._warned6) {
+      this._warned6 = true;
+      this.hud.alert(t('a.points6'), t('a.points6.sub'), 'bad', 6, 'points');
+    }
     if (p.s >= LENGTH - 8) this.finish();
-    else if (p.damage >= 100 && p.v < 2) this.outOfRace(t('dnf.wreck'));
-    else if (p.points >= 8) this.outOfRace(t('dnf.points'));
+    else if (this.endingT <= 0 && this.arrestT <= 0) {
+      if (p.damage >= 100 && p.v < 2) {
+        this.hud.alert(t('a.wrecked'), t('a.wrecked.sub'), 'bad', 6, 'end');
+        this.endingT = 3.0; this.endingReason = t('dnf.wreck');
+      } else if (p.points >= 8) {
+        this.hud.alert(t('a.revoked'), t('a.revoked.sub'), 'bad', 6, 'end');
+        this.endingT = 3.5; this.endingReason = t('dnf.points');
+      }
+    }
   }
 
   /* ----------------------------------------------------------- main loop */

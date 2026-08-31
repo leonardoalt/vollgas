@@ -21,13 +21,14 @@ const DE = {
   'hud.fine': 'Bußgeld',
   'hud.points': 'Flensburg',
   'hud.damage': 'Schaden',
+  'hud.best': 'Best',
   'hud.rear': 'RÜCKRAUM',
   'hud.dir': 'Richtung Singen (Bodensee)',
   'hud.gear': 'GANG',
 
   'pv.head': 'MESSUNG LÄUFT',
   'pv.close': 'Zivilfahrzeug hinter dir — abbremsen oder abhängen',
-  'pv.far': 'Abstand wächst — dranbleiben und die Messung platzt',
+  'pv.far': 'Zu weit für die Messung — sie bleiben aber dran',
 
   'menu.tagline': 'Stuttgart → Singen (Bodensee) · {km} km · Streckenabschnitte ohne Limit',
   'menu.controls': 'Steuerung',
@@ -36,12 +37,9 @@ const DE = {
   'menu.c3': '<b>Leer</b> Handbremse · <b>C</b> Kamera wechseln',
   'menu.c4': '<b>M</b> Ton · <b>R</b> Neustart · <b>P</b> Pause',
   'menu.police': 'Zivile Streifen & Blitzer',
-  'menu.p1': 'Unauffällige 5er Tourings, E-Klassen und A6 quattro fahren mit — Blaulicht sitzt hinter dem Kühlergrill.',
-  'menu.p2': '<b>ProViDa</b>: hängt sich an dich, misst per Video. Balken voll = Anzeige.',
-  'menu.p3': 'Die Streifen laufen bis 300 — wegfahren allein reicht nicht.',
-  'menu.p4': 'Mobile <b>Blitzer</b>-Transporter stehen im Seitenstreifen.',
-  'menu.p5': '<b>Lichthupe</b> vom Gegenverkehr = Messung voraus. Danke, Kollege.',
-  'menu.p6': 'Auf freien Abschnitten gilt kein Limit — da darf gerannt werden.',
+  'menu.p1': '<b>Zivilstreifen</b> fahren unauffällig mit — Blaulicht hinter dem Grill, bis 300 km/h schnell.',
+  'menu.p2': '<b>ProViDa</b> misst dich per Video von hinten. Abbremsen oder abhängen, sonst Anzeige.',
+  'menu.p3': '<b>Blitzer</b> im Seitenstreifen. Einzige Warnung: <b>Lichthupe</b> vom Gegenverkehr.',
   'menu.start': 'RENNEN STARTEN',
   'menu.again': 'NOCH EINMAL',
 
@@ -73,12 +71,8 @@ const DE = {
   'a.follow': 'STOP POLIZEI — BITTE FOLGEN',
   'a.follow.sub': 'Abhängen oder anhalten',
   'a.flash': 'GEBLITZT · {fine} €',
-  'a.flash.multi': 'GEBLITZT ×{n} · {fine} €',
   'a.flash.sub': '{speed} statt {limit} km/h',
   'a.flash.points': ' · {n} Punkte',
-  'a.warn': 'LICHTHUPE VOM GEGENVERKEHR',
-  'a.warn.blitzer': 'Blitzer in ca. {m} m',
-  'a.warn.zivi': 'Zivilstreife voraus',
   'a.escaped': 'VERFOLGUNG ABGEBROCHEN',
   'a.escaped.sub': 'Sie sind weg',
   'a.stopped': 'VERKEHRSKONTROLLE',
@@ -86,6 +80,25 @@ const DE = {
   'a.crash': 'AUFFAHRUNFALL',
   'a.crash.sub': 'Schaden am Fahrzeug',
 
+  'res.stopped': 'ANGEHALTEN',
+  'res.newbest': 'NEUE BESTZEIT',
+  'res.time.l': 'Zeit',
+  'res.best.l': 'Bestzeit',
+  'res.vmax.l': 'V max',
+  'res.avg.l': 'Ø Tempo',
+  'res.fines.l': 'Bußgeld',
+  'res.points.l': 'Punkte',
+  'res.damage.l': 'Schaden',
+  'res.none': '—',
+  'a.arrest': 'ANHALTEN · RECHTS RANFAHREN',
+  'a.arrest.sub': 'Die Streife bleibt hinter dir stehen',
+  'dnf.stopped': 'Von der Polizei angehalten · Fahrt beendet',
+  'a.points6': 'SECHS PUNKTE IN FLENSBURG',
+  'a.points6.sub': 'Noch zwei — dann ist der Führerschein weg',
+  'a.revoked': 'FAHRERLAUBNIS ENTZOGEN',
+  'a.revoked.sub': 'Acht Punkte in Flensburg · Fahrt beendet',
+  'a.wrecked': 'FAHRZEUG NICHT MEHR FAHRBEREIT',
+  'a.wrecked.sub': 'Der Abschleppdienst ist unterwegs',
   'res.finish': 'ZIEL · SINGEN (BODENSEE)',
   'res.over': 'RENNEN BEENDET',
   'res.place': ['SIEG', 'ZWEITER', 'DRITTER', 'VIERTER'],
@@ -125,13 +138,14 @@ const EN = {
   'hud.fine': 'Fines',
   'hud.points': 'Points',
   'hud.damage': 'Damage',
+  'hud.best': 'Best',
   'hud.rear': 'BEHIND YOU',
   'hud.dir': 'Southbound · Singen (Lake Constance)',
   'hud.gear': 'GEAR',
 
   'pv.head': 'MEASUREMENT RUNNING',
   'pv.close': 'Unmarked car behind you — brake or lose it',
-  'pv.far': 'Gap opening — keep it up and the measurement is void',
+  'pv.far': 'Too far to measure — but they are still on you',
 
   'menu.tagline': 'Stuttgart → Singen (Lake Constance) · {km} km · sections with no speed limit',
   'menu.controls': 'Controls',
@@ -140,12 +154,9 @@ const EN = {
   'menu.c3': '<b>Space</b> handbrake · <b>C</b> change camera',
   'menu.c4': '<b>M</b> sound · <b>R</b> restart · <b>P</b> pause',
   'menu.police': 'Unmarked patrols & speed cameras',
-  'menu.p1': 'Plain 5-series Tourings, E-Klassen and A6 quattros run with the traffic — the blue lights sit behind the grille.',
-  'menu.p2': '<b>ProViDa</b>: it tucks in behind and measures you on video. Bar full = you are reported.',
-  'menu.p3': 'Patrol cars run to 300 — simply driving away is not enough.',
-  'menu.p4': 'Mobile <b>speed camera</b> vans sit in the hard shoulder.',
-  'menu.p5': 'Oncoming drivers <b>flash their headlights</b> to warn you. Your only warning.',
-  'menu.p6': 'On unrestricted sections there is no limit — that is where you run.',
+  'menu.p1': '<b>Unmarked patrols</b> run with the traffic — blue lights behind the grille, good for 300 km/h.',
+  'menu.p2': '<b>ProViDa</b> measures you on video from behind. Brake or lose them, or you are reported.',
+  'menu.p3': '<b>Speed cameras</b> in the hard shoulder. Your only warning: oncoming drivers <b>flashing</b>.',
   'menu.start': 'START THE RACE',
   'menu.again': 'RACE AGAIN',
 
@@ -177,12 +188,8 @@ const EN = {
   'a.follow': 'STOP POLIZEI — FOLLOW US',
   'a.follow.sub': 'Lose them or pull over',
   'a.flash': 'CAMERA · €{fine}',
-  'a.flash.multi': 'CAMERA ×{n} · €{fine}',
   'a.flash.sub': '{speed} in a {limit}',
   'a.flash.points': ' · {n} points',
-  'a.warn': 'ONCOMING DRIVERS FLASHING',
-  'a.warn.blitzer': 'Speed camera in about {m} m',
-  'a.warn.zivi': 'Unmarked patrol ahead',
   'a.escaped': 'PURSUIT BROKEN OFF',
   'a.escaped.sub': 'You are clear',
   'a.stopped': 'TRAFFIC STOP',
@@ -190,6 +197,25 @@ const EN = {
   'a.crash': 'REAR-END COLLISION',
   'a.crash.sub': 'Car damaged',
 
+  'res.stopped': 'PULLED OVER',
+  'res.newbest': 'NEW BEST TIME',
+  'res.time.l': 'Time',
+  'res.best.l': 'Best time',
+  'res.vmax.l': 'Top speed',
+  'res.avg.l': 'Average',
+  'res.fines.l': 'Fines',
+  'res.points.l': 'Points',
+  'res.damage.l': 'Damage',
+  'res.none': '—',
+  'a.arrest': 'PULL OVER NOW',
+  'a.arrest.sub': 'The patrol car is stopping behind you',
+  'dnf.stopped': 'Stopped by the police · run over',
+  'a.points6': 'SIX POINTS ON YOUR LICENCE',
+  'a.points6.sub': 'Two more and it is gone',
+  'a.revoked': 'LICENCE REVOKED',
+  'a.revoked.sub': 'Eight points in Flensburg · run over',
+  'a.wrecked': 'CAR UNDRIVABLE',
+  'a.wrecked.sub': 'The recovery truck is on its way',
   'res.finish': 'FINISH · SINGEN (LAKE CONSTANCE)',
   'res.over': 'RACE OVER',
   'res.place': ['WON', 'SECOND', 'THIRD', 'FOURTH'],
@@ -219,13 +245,14 @@ const EN = {
 const TABLES = { de: DE, en: EN };
 const STORE = 'a81.lang';
 
+/* German is the default: the game is set on a German motorway and the signage
+   is German either way. English is a deliberate choice, not a fallback. */
 function detect() {
   try {
     const saved = localStorage.getItem(STORE);
     if (saved && TABLES[saved]) return saved;
   } catch { /* private mode */ }
-  const nav = (navigator.languages || [navigator.language || 'en']).join(',').toLowerCase();
-  return /\bde\b|de-/.test(nav) ? 'de' : 'en';
+  return 'de';
 }
 
 export let lang = detect();

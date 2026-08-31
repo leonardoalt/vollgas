@@ -10,12 +10,15 @@
    ========================================================================== */
 import * as THREE from 'three';
 import {
-  sample, toWorld, LANES, GEO, LENGTH, sectionAt, limitAt, pavedRange,
+  sample, toWorld, LANES, GEO, LENGTH, sectionAt, limitAt, pavedRange, outerBarrier,
 } from './track.js';
 import { buildCar, buildTruck, CARS, randomPlate } from './carFactory.js';
 
 const G = 9.81;
 const KMH = 3.6;
+/* Lichthupe timing: a ~0.95 s burst of roughly 0.13 s pulses. */
+export const FLASH_DUR = 0.95;
+export const FLASH_PULSE = 0.13;
 
 /* ------------------------------------------------------- drivetrain setup */
 export function derive(perf) {
@@ -130,7 +133,7 @@ export class Vehicle {
     const pr = pavedRange(this.s);
     const au = Math.abs(this.u);
     this.offroad = au > pr.outer + 0.35 || au < pr.inner - 0.1;
-    const railOuter = GEO.pavedOut + 0.45 - 0.16;
+    const railOuter = outerBarrier(this.s) - 0.16;
     const railInner = 1.62 + 0.16;
     this.scrape = 0;
     if (au + this.halfWid * 0.75 > railOuter) {
@@ -169,7 +172,15 @@ export class Vehicle {
       m.userData.tailMat.emissiveIntensity = 0.55 + this.brake * 2.6;
     }
     if (m.userData.headMat) {
-      m.userData.headMat.emissiveIntensity = this.headlights ? 2.2 : 0.5;
+      m.userData.headMat.emissiveIntensity = this.flashOn ? 16 : (this.headlights ? 2.2 : 0.4);
+    }
+    const glows = m.userData.glows;
+    if (glows && glows.length) {
+      const want = this.flashOn ? 1 : (this.headlights ? 0.22 : 0);
+      for (const sp of glows) {
+        sp.visible = want > 0.01;
+        sp.material.opacity = want;
+      }
     }
   }
 }
@@ -188,12 +199,22 @@ export class Player extends Vehicle {
   }
   control(dt, input, ctx) {
     if (this.stoppedT > 0) {
-      // Verkehrskontrolle: pull onto the hard shoulder and wait it out
+      /* Verkehrskontrolle. Keep rolling at walking-out pace until actually on
+         the hard shoulder — lateral movement is v·sin(psi), so a car that
+         brakes to a standstill first can never steer off the carriageway and
+         you end up parked in a live lane. */
       this.stoppedT -= dt;
       const target = GEO.kerbOut + GEO.shoulder * 0.5;
       const err = target - this.u;
-      this.stepLong(dt, 0, this.v > 2 ? 1 : 0, ctx);
-      this.stepLat(dt, Math.max(-0.5, Math.min(0.5, err * 0.22)), ctx);
+      const arrived = Math.abs(err) < 0.7;
+      this.pulledOver = arrived && this.v < 1.5;
+      const wantV = arrived ? 0 : 10;
+      let thr = 0, brk = 0;
+      if (this.v > wantV + 0.5) brk = Math.min(1, 0.18 + (this.v - wantV) * 0.05);
+      else if (this.v < wantV - 0.5) thr = 0.32;
+      this.stepLong(dt, thr, brk, ctx);
+      this.stepLat(dt, Math.max(-0.6, Math.min(0.6, err * 0.30)), ctx);
+      if (this.v < 0.3) this.v = 0;
       return;
     }
     let thr = input.throttle, brk = input.brake;
@@ -229,7 +250,7 @@ export class TrafficCar extends Vehicle {
     this.react = 0.25 + Math.random() * 0.55;
     this.courtesy = Math.random();          // will they move over for you?
     this.flashT = 0;
-    this.lastFlash = 0;
+    this.flashOn = false;
   }
 
   /** simple lane-discipline driver with a car-following model */
@@ -269,9 +290,12 @@ export class TrafficCar extends Vehicle {
     const behind = ctx.fastBehind(this);
     if (behind && this.lane === 0) {
       if (this.courtesy > 0.14 && ctx.laneClear(this, 1, -18, 38)) this.lane = 1;
-      if (this.flashT <= 0 && behind < 90) this.flashT = 0.6;
+      if (this.flashT <= 0 && behind < 90) this.flashT = FLASH_DUR;
     }
     this.flashT = Math.max(0, this.flashT - dt);
+    // on/off pattern across the window, so it reads as flicked headlights
+    this.flashOn = this.flashT > 0 &&
+      Math.floor((FLASH_DUR - this.flashT) / FLASH_PULSE) % 2 === 0;
 
     if (this.v < want - 0.4) { thr = 1; }
     else if (this.v > want + 0.4) { thr = 0; brake = Math.max(brake, Math.min(0.55, (this.v - want) * 0.09)); }
@@ -283,7 +307,7 @@ export class TrafficCar extends Vehicle {
 
     this.stepLong(dt, thr, brake, ctx);
     this.stepLat(dt, steer, ctx);
-    this.headlights = ctx.dark || this.flashT > 0;
+    this.headlights = ctx.dark || this.flashOn;
   }
 }
 

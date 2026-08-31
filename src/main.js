@@ -1,6 +1,6 @@
 import './style.css';
 import { Game } from './game.js';
-import { t, applyDom } from './i18n.js';
+import { applyDom } from './i18n.js';
 
 const game = new Game(document.getElementById('scene'));
 window.__game = game;

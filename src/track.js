@@ -269,12 +269,36 @@ export function limitAt(s) {
   return sec.limit == null ? Infinity : sec.limit;
 }
 
-/** Drivable half-width of our carriageway including the shoulder. */
+/* ------------------------------------------------------------- Auffahrt
+   You join the A81 from the slip road at Zuffenhausen rather than being
+   dropped into a running lane. The ramp runs beside the carriageway and its
+   taper closes onto the edge line, so the merge is yours to make. */
+export const ENTRY_LEN = 340;
+
+/** Edges and centre of the entry slip road at s, or null once it has merged. */
+export function entryRamp(s) {
+  if (s < -20 || s > ENTRY_LEN) return null;
+  const p = Math.min(1, Math.max(0, s) / ENTRY_LEN);
+  const inner = GEO.kerbOut + (GEO.pavedOut - GEO.kerbOut) * (1 - p);   // 12.5 → 10.0
+  const width = 4.9 * Math.pow(1 - p, 0.75);
+  return { inner, outer: inner + width, centre: inner + width * 0.5, width };
+}
+
+/** Drivable half-width of our carriageway including the shoulder and any ramp. */
 export function pavedRange(s) {
   const sec = sectionAt(s);
   // A Baustelle narrows the lanes and takes the shoulder away
-  return sec.works ? { inner: GEO.pavedIn + 0.4, outer: GEO.kerbOut - 0.9 }
-                   : { inner: GEO.pavedIn, outer: GEO.pavedOut };
+  const r = sec.works ? { inner: GEO.pavedIn + 0.4, outer: GEO.kerbOut - 0.9 }
+                      : { inner: GEO.pavedIn, outer: GEO.pavedOut };
+  const e = entryRamp(s);
+  if (e && e.width > 0.2) r.outer = Math.max(r.outer, e.outer);
+  return r;
+}
+
+/** Lateral position of the outer crash barrier — pushed out around the ramp. */
+export function outerBarrier(s) {
+  const e = entryRamp(s);
+  return (e && e.width > 0.2 ? e.outer + 1.3 : GEO.pavedOut) + 0.45;
 }
 
 export const totalKm = LENGTH / 1000;
