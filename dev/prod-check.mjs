@@ -28,7 +28,7 @@ const st = await page.evaluate(() => {
     state: g.state, km: +(g.player.s / 1000).toFixed(2), kmh: Math.round(g.player.v * 3.6),
     gear: g.player.gear + 1, damage: Math.round(g.player.damage),
     traffic: g.traffic.all.length, cops: g.enf.cops.length, cameras: g.enf.cameras.length,
-    tris: g.renderer.info.render.triangles, calls: g.renderer.info.render.calls,
+    trisPerFrame: g.frameStats.tris, callsPerFrame: g.frameStats.calls,
     geoms: g.renderer.info.memory.geometries, textures: g.renderer.info.memory.textures,
   };
 });

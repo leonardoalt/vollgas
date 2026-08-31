@@ -15,6 +15,8 @@ import {
 import { buildTerrain, buildVegetation, buildLandmarks } from './scenery.js';
 
 const CHUNK = 512;                    // metres per road chunk
+/* Where the sun sits relative to the car. Late-afternoon, over your shoulder. */
+const SUN_OFFSET = new THREE.Vector3(-165, 225, 250);
 const CROSSFALL = 0.025;              // 2.5 %, drains to the outside
 
 /* ------------------------------------------------------------- mesh helper */
@@ -67,6 +69,7 @@ function makeMaterials(env) {
     asphalt: new THREE.MeshStandardMaterial({ map: asph, roughness: 0.93, metalness: 0.02, envMap: env, envMapIntensity: 0.25 }),
     concrete: new THREE.MeshStandardMaterial({ color: 0xb9b6ae, roughness: 0.9 }),
     concreteIn: new THREE.MeshStandardMaterial({ color: 0x9d9a95, roughness: 0.9, side: THREE.DoubleSide }),
+    concreteBoth: new THREE.MeshStandardMaterial({ color: 0xb0aca4, roughness: 0.9, side: THREE.DoubleSide }),
     median: new THREE.MeshStandardMaterial({ color: 0x5f7245, roughness: 0.96 }),
     markWhite: new THREE.MeshStandardMaterial({
       color: 0xf0efe9, roughness: 0.62, metalness: 0,
@@ -376,22 +379,39 @@ function buildTunnel(mats) {
   lamps.instanceMatrix.needsUpdate = true;
   group.add(lamps);
 
-  // concrete portals
-  for (const [s, flip] of [[s0, 0], [s1, Math.PI]]) {
-    const portal = new THREE.Group();
-    const frame = new THREE.Mesh(new THREE.BoxGeometry((uB - uA) + 3.4, HT + 3.2, 1.6), mats.concrete);
-    frame.position.set(mid, (HT + 3.2) / 2 - 0.6, 0);
-    portal.add(frame);
-    const mouth = new THREE.Mesh(new THREE.CylinderGeometry(halfW, halfW, 2.2, 22, 1, true, 0, Math.PI), mats.concreteIn);
-    mouth.rotation.z = Math.PI / 2; mouth.rotation.y = Math.PI / 2;
-    mouth.position.set(mid, 0, 0);
-    mouth.scale.y = HT / halfW;
-    portal.add(mouth);
-    const p = roadPt(s, 0), c = sample(s);
-    portal.position.set(p[0], p[1], p[2]);
-    portal.rotation.y = c.head + flip;
-    group.add(portal);
+  /* Concrete portal collars. These used to be a solid slab across the road
+     with no hole in it: you drove through a grey wall going in, and on the way
+     out it stood between the chase camera and the car. Now each portal is a
+     ring following the arch outline, so the mouth is actually open. */
+  const collar = new Mesher();
+  const CY = HT * 0.42, THICK = 2.3;
+  const outward = (s, k) => {
+    const t = k / (RIB - 1);
+    let u, rise;
+    if (t < WALL_F) { u = uA; rise = (t / WALL_F) * WALL_H - 0.25; }
+    else if (t > 1 - WALL_F) { u = uB; rise = ((1 - t) / WALL_F) * WALL_H - 0.25; }
+    else {
+      const ang = Math.PI * ((t - WALL_F) / (1 - 2 * WALL_F));
+      u = mid - Math.cos(ang) * halfW;
+      rise = WALL_H + Math.sin(ang) * (HT - WALL_H);
+    }
+    const du = u - mid, dy = rise - CY;
+    const len = Math.hypot(du, dy) || 1;
+    const p = roadPt(s, u + (du / len) * THICK);
+    return [p[0], p[1] + rise + (dy / len) * THICK, p[2]];
+  };
+  for (const [sp, flip] of [[s0, false], [s1, true]]) {
+    for (let k = 0; k < RIB - 1; k++) {
+      const a = arcPt(sp, k), b = arcPt(sp, k + 1);
+      const oa = outward(sp, k), ob = outward(sp, k + 1);
+      if (flip) collar.quad(a, b, ob, oa, 0, 0, 1, 1);
+      else collar.quad(a, oa, ob, b, 0, 0, 1, 1);
+    }
   }
+  const collarMesh = new THREE.Mesh(collar.geo(), mats.concreteBoth);
+  collarMesh.matrixAutoUpdate = false;
+  group.add(collarMesh);
+
   group.userData.range = [s0, s1];
   return group;
 }
@@ -598,16 +618,28 @@ export function buildWorld(scene, renderer, onProgress = () => {}) {
 
   const hemi = new THREE.HemisphereLight(0xdcecff, 0x5d6247, 1.5);
   scene.add(hemi);
+  /* Shadow frustum. The sun is parked SUN_OFFSET away from the car each frame,
+     so near/far have to bracket that distance — with far shorter than the
+     offset the car sits outside the frustum, no shadow is ever cast, and every
+     receiver past the far plane clamps to fully shadowed, which paints huge
+     black slabs across the fields. */
   const sun = new THREE.DirectionalLight(0xfff3dd, 2.6);
-  sun.position.set(-520, 640, 780);
+  sun.position.copy(SUN_OFFSET);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.near = 1;
-  sun.shadow.camera.far = 420;
+  /* An orthographic shadow camera has linear depth, so a generous near/far
+     costs no precision — and a tight near plane is actively harmful: three.js
+     bounds-checks the shadow coord in x and y but not for z < 0, so anything
+     closer to the light than `near` compares as occluded and paints solid
+     black slabs across the landscape. */
+  const sunDist = SUN_OFFSET.length();
+  sun.shadow.camera.near = 8;
+  sun.shadow.camera.far = sunDist + 400;
   const sc = sun.shadow.camera;
-  sc.left = -75; sc.right = 75; sc.top = 75; sc.bottom = -75;
-  sun.shadow.bias = -0.0012;
-  sun.shadow.normalBias = 0.035;
+  sc.left = -95; sc.right = 95; sc.top = 95; sc.bottom = -95;
+  sun.shadow.bias = -0.0009;
+  sun.shadow.normalBias = 0.045;
+  sun.shadow.camera.updateProjectionMatrix();
   scene.add(sun);
   scene.add(sun.target);
 
@@ -644,7 +676,7 @@ export function buildWorld(scene, renderer, onProgress = () => {}) {
     update(dt, playerPos) {
       // keep the shadow frustum on the car
       sun.target.position.copy(playerPos);
-      sun.position.set(playerPos.x - 260, playerPos.y + 320, playerPos.z + 390);
+      sun.position.copy(playerPos).add(SUN_OFFSET);
       for (const t of lm.turbines) t.userData.hub.rotation.z += dt * 0.55;
     },
     inTunnel(s) { return s > tunnelRange[0] && s < tunnelRange[1]; },

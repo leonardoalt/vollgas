@@ -103,7 +103,7 @@ canvas#scene{position:absolute;inset:0;width:100%;height:100%;display:block}
 #hud-rear-title{font-size:10px;letter-spacing:.22em;opacity:.5;text-align:center;margin-bottom:4px}
 #radar{width:170px;height:170px;display:block}
 
-#hud-alerts{position:absolute;left:50%;top:132px;transform:translateX(-50%);width:min(680px,88vw);display:flex;flex-direction:column;gap:8px;align-items:center}
+#hud-alerts{position:absolute;left:50%;top:264px;transform:translateX(-50%);width:min(680px,88vw);display:flex;flex-direction:column;gap:8px;align-items:center}
 .alert{
   --c:#ffce3a;
   display:flex;align-items:center;gap:10px;
@@ -133,6 +133,24 @@ canvas#scene{position:absolute;inset:0;width:100%;height:100%;display:block}
 .pv-bar{height:9px;background:rgba(255,255,255,.12);border-radius:5px;margin:9px 0 6px;overflow:hidden}
 .pv-fill{height:100%;width:0;background:linear-gradient(90deg,#ffb03a,#ff3b2f);border-radius:5px;transition:width .1s linear}
 .pv-sub{font-size:11.5px;opacity:.7;letter-spacing:.05em;text-transform:uppercase}
+
+/* Start countdown: a single big numeral, not a text chip */
+#countdown{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);
+  pointer-events:none;text-align:center}
+#countdown span{
+  display:block;font-size:clamp(88px,15vw,190px);font-weight:700;line-height:.9;
+  color:#fff;letter-spacing:.02em;
+  text-shadow:0 4px 30px rgba(0,0,0,.75),0 0 90px rgba(0,90,200,.55);
+  animation:countPop .55s cubic-bezier(.2,.9,.25,1) both;
+}
+#countdown.go span{color:#5cf08e;text-shadow:0 4px 30px rgba(0,0,0,.7),0 0 100px rgba(60,240,140,.6)}
+@keyframes countPop{
+  0%{opacity:0;transform:scale(1.55)}
+  22%{opacity:1;transform:scale(1)}
+  70%{opacity:1;transform:scale(1)}
+  100%{opacity:0;transform:scale(.94)}
+}
+@media (prefers-reduced-motion:reduce){#countdown span{animation:none}}
 
 #flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
 #flash.go{animation:blitz .42s ease-out}

@@ -18,7 +18,7 @@ const G = 9.81;
 const KMH = 3.6;
 
 /* ------------------------------------------------------- drivetrain setup */
-function derive(perf) {
+export function derive(perf) {
   const vmax = perf.vmax / KMH;                    // m/s
   const P = perf.power * 1000;                     // W
   const crr = 0.013;

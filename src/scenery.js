@@ -67,12 +67,30 @@ function boxBlur(src, radius) {
 })();
 
 /* --------------------------------------------------------------- the rings
-   [ lateral distance in metres, phantom-centreline level ]                 */
-const RING = [
-  [14.5, 0], [19, 0], [26, 0], [40, 0], [62, 1], [95, 1],
-  [150, 2], [250, 2], [430, 3], [820, 3], [1700, 4], [3200, 4],
-];
-const US = [...RING.map(r => [-r[0], r[1]]).reverse(), [0, 0], ...RING];
+   Lateral distances of each ring, in metres. Which phantom centreline a ring
+   follows is a *continuous* function of that distance (below): snapping rings
+   to discrete levels steps the ribbon sideways and vertically wherever the
+   level changes, which shows up as cliff faces far out and as a ridge in the
+   grass right beside the road. */
+const RING = [14.5, 19, 26, 40, 62, 95, 150, 250, 430, 820, 1700, 3200];
+const US = [...RING.map(d => -d).reverse(), 0, ...RING];
+
+/* lateral distance -> fractional phantom-centreline level */
+const LEVEL_AT = [[0, 0], [40, 0], [95, 1], [250, 2], [820, 3], [3200, 4]];
+function levelOf(ad) {
+  for (let i = 0; i < LEVEL_AT.length - 1; i++) {
+    const [d0, l0] = LEVEL_AT[i], [d1, l1] = LEVEL_AT[i + 1];
+    if (ad <= d1) return l0 + (l1 - l0) * Math.max(0, (ad - d0) / (d1 - d0));
+  }
+  return LEVEL_AT[LEVEL_AT.length - 1][1];
+}
+
+/** Ring position on one phantom centreline. */
+function ringOn(ii, d, lv) {
+  const S = SM[lv];
+  const h = S.h[ii];
+  return [S.x[ii] - Math.cos(h) * d, S.y[ii], S.z[ii] + Math.sin(h) * d];
+}
 
 /* ---------------------------------------------------------- biome palettes
    Three tints per biome, chosen by a low-frequency noise so the land breaks
@@ -127,11 +145,18 @@ export function buildTerrain() {
       const sec = SECTIONS[track.sectionIdx[ii]];
       const pal = PALETTE[sec.biome] || PALETTE[BIOME.FARM];
       for (let j = 0; j < cols; j++) {
-        const [d, lv] = US[j];
-        const cx = SM[lv].x[ii], cz = SM[lv].z[ii], cy = SM[lv].y[ii], h = SM[lv].h[ii];
-        const rx = -Math.cos(h), rz = Math.sin(h);
-        const x = cx + rx * d, z = cz + rz * d;
+        const d = US[j];
         const ad = Math.abs(d);
+        // blend between the two bracketing phantom centrelines, so the ribbon
+        // has no step anywhere across its 6.4 km width
+        const L = levelOf(ad);
+        const l0 = Math.floor(L), l1 = Math.min(LEVELS.length - 1, l0 + 1);
+        const t = L - l0;
+        const a = ringOn(ii, d, l0);
+        const x = t > 0 ? a[0] + (ringOn(ii, d, l1)[0] - a[0]) * t : a[0];
+        const b = t > 0 ? ringOn(ii, d, l1) : a;
+        const z = a[2] + (b[2] - a[2]) * t;
+        const cy = a[1] + (b[1] - a[1]) * t;
         const y = cy + hillHeight(x, z, ad) - (ad <= 14.5 ? 0.30 : 0);
         const o = (r * cols + j) * 3;
         pos[o] = x; pos[o + 1] = y; pos[o + 2] = z;

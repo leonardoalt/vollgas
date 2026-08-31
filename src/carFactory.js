@@ -710,32 +710,45 @@ export const CARS = {
   },
 
   /* ------------------------------------------------------- Zivilstreifen */
+  /* Real Zivilstreifen are not slow. The Autobahnpolizei runs 5-series
+     Tourings, E-Klassen and A6 quattros with trained drivers, so these top out
+     only just below the cars you drive — you cannot simply out-drag one, and
+     an escape has to be earned through traffic, braking and corners. */
   zivi_limo: {
-    name: 'Zivilstreife', arch: 'sedan', dims: D(4.77, 1.83, 1.46, 0.18),
-    axleF: 1.46, axleR: -1.34, trackF: 1.58, trackR: 1.57,
-    wheelRF: 0.330, wheelRR: 0.330, wheelWF: 0.215, wheelWR: 0.215,
-    spokes: 5, rimDark: true, face: 'generic', lightY: 0.56, tailStyle: 'plain', tailY: 0.70,
+    name: 'Zivilstreife E-Klasse', arch: 'sedan', dims: D(4.95, 1.85, 1.46, 0.175),
+    axleF: 1.52, axleR: -1.40, trackF: 1.60, trackR: 1.60,
+    wheelRF: 0.345, wheelRR: 0.345, wheelWF: 0.235, wheelWR: 0.235,
     ledZ: 0.285, ledY: 0.80,
-    pipes: 2, mirrorZ: 0.750, mirrorY: 0.740, beltAt: 0.71, handles: [0.44, 0.615],
-    perf: { mass: 1680, power: 206, cd: 0.76, vmax: 265, grip: 1.20, awd: true, gears: 7, redline: 6200 },
+    spokes: 5, rimDark: true, face: 'star', lightY: 0.55, tailStyle: 'plain', tailY: 0.69,
+    pipes: 2, mirrorZ: 0.756, mirrorY: 0.730, beltAt: 0.70, handles: [0.44, 0.615],
+    perf: { mass: 1780, power: 270, cd: 0.75, vmax: 295, grip: 1.24, awd: true, gears: 9, redline: 6400 },
+  },
+  zivi_touring: {
+    name: 'Zivilstreife 5er Touring', arch: 'wagon', dims: D(5.06, 1.87, 1.50, 0.18),
+    axleF: 1.55, axleR: -1.42, trackF: 1.60, trackR: 1.62,
+    wheelRF: 0.345, wheelRR: 0.345, wheelWF: 0.245, wheelWR: 0.245,
+    ledZ: 0.055, ledY: 0.865,
+    spokes: 5, rimDark: true, face: 'kidney', lightY: 0.55, tailStyle: 'lshape', tailY: 0.69,
+    pipes: 2, mirrorZ: 0.744, mirrorY: 0.745, beltAt: 0.715, handles: [0.44, 0.615],
+    perf: { mass: 1880, power: 250, cd: 0.80, vmax: 285, grip: 1.26, awd: true, gears: 8, redline: 6200 },
   },
   zivi_avant: {
-    name: 'Zivilstreife Avant', arch: 'wagon', dims: D(4.94, 1.89, 1.47, 0.18),
+    name: 'Zivilstreife A6 Avant', arch: 'wagon', dims: D(4.94, 1.89, 1.47, 0.18),
     axleF: 1.50, axleR: -1.40, trackF: 1.62, trackR: 1.61,
     wheelRF: 0.340, wheelRR: 0.340, wheelWF: 0.235, wheelWR: 0.235,
-    spokes: 5, rimDark: true, face: 'singleframe', lightY: 0.55, tailStyle: 'bar', tailY: 0.69,
     ledZ: 0.055, ledY: 0.865,
+    spokes: 5, rimDark: true, face: 'singleframe', lightY: 0.55, tailStyle: 'bar', tailY: 0.69,
     pipes: 2, mirrorZ: 0.744, mirrorY: 0.745, beltAt: 0.715, handles: [0.44, 0.615],
-    perf: { mass: 1830, power: 250, cd: 0.80, vmax: 280, grip: 1.24, awd: true, gears: 8, redline: 6400 },
+    perf: { mass: 1870, power: 265, cd: 0.79, vmax: 290, grip: 1.28, awd: true, gears: 8, redline: 6500 },
   },
   zivi_kompakt: {
-    name: 'Zivilstreife Kompakt', arch: 'sedan', dims: D(4.71, 1.83, 1.44, 0.17),
+    name: 'Zivilstreife 3er', arch: 'sedan', dims: D(4.71, 1.83, 1.44, 0.17),
     axleF: 1.44, axleR: -1.31, trackF: 1.58, trackR: 1.60,
     wheelRF: 0.335, wheelRR: 0.345, wheelWF: 0.225, wheelWR: 0.245,
-    spokes: 5, rimDark: true, face: 'kidney', lightY: 0.555, tailStyle: 'lshape', tailY: 0.685,
     ledZ: 0.285, ledY: 0.795,
+    spokes: 5, rimDark: true, face: 'kidney', lightY: 0.555, tailStyle: 'lshape', tailY: 0.685,
     pipes: 2, mirrorZ: 0.752, mirrorY: 0.735, beltAt: 0.70, handles: [0.44, 0.615],
-    perf: { mass: 1650, power: 280, cd: 0.74, vmax: 290, grip: 1.28, awd: true, gears: 8, redline: 7000 },
+    perf: { mass: 1670, power: 285, cd: 0.73, vmax: 300, grip: 1.32, awd: true, gears: 8, redline: 7000 },
   },
   messwagen: {
     name: 'Messfahrzeug', arch: 'van', dims: D(4.95, 1.92, 1.99, 0.215),

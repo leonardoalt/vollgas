@@ -52,18 +52,29 @@ sections, elevation profile, signage, landmarks, camera placement — scales wit
 
 ## Enforcement
 
-**Unmarked patrol cars (Zivilstreifen).** Ordinary Passats, A6 Avants and 3-series
-in fleet grey, running with the traffic. The blue LEDs sit behind the radiator
-grille and on the parcel shelf; the rear window holds a dark LED matrix. You can
-spot one if you look. If you pass one well over the limit it drops in behind you
-and starts a ProViDa measurement, which needs a **sustained follow** to be valid:
+**Unmarked patrol cars (Zivilstreifen).** 5-series Tourings, E-Klassen, A6
+quattros and 3-series in dull fleet grey, running with the traffic. The blue LEDs
+sit behind the radiator grille and on the parcel shelf; the rear window holds a
+dark LED matrix. You can spot one if you look.
+
+They are **not slow** — the Autobahnpolizei runs fast cars with trained drivers,
+and these top out at 273–290 km/h, only just below the cars you drive. Only the
+911 can out-drag one, and even then gaining 340 m takes about 37 seconds flat
+out. Your real advantage is acceleration: 0–200 in 7.8–11.1 s against their
+12.7–16.6 s. Escapes are earned through traffic, braking and corners.
+
+If you pass one well over the limit it drops in behind you and starts a ProViDa
+measurement, which needs a **sustained follow** to be valid:
 
 - brake back to near the limit → measurement aborted
-- pull more than ~340 m clear → measurement void (a 911 can outrun a Passat; an
-  estate cannot outrun an A6)
+- pull more than ~340 m clear → measurement void
 - let the bar fill → Anzeige. Blue lights come out, the rear window lights up
   **STOP POLIZEI**, and if it holds within 30 m of you for 4.5 s you are pulled
   onto the hard shoulder for 20 s.
+
+The ProViDa panel shows the live gap, and the **rear-view mirror** at the top of
+the screen is how you actually see who is back there — its surround turns red
+while you are being measured.
 
 **Mobile speed cameras.** Unmarked vans parked in the Seitenstreifen, clustered
 where limits start and through the roadworks. No in-car warning — radar detectors
@@ -130,6 +141,13 @@ src/
 dev/             headless harnesses (see below)
 ```
 
+### Rear-view mirror
+
+Rendered to a 640×176 target with a narrow field of view, so most of the world
+frustum-culls away, then drawn as a horizontally mirrored quad in a screen-space
+overlay pass — mirrored via the quad rather than the camera, so no projection or
+winding tricks are needed. Costs about 190 extra draw calls.
+
 ### Rendering notes
 
 The terrain is one ribbon following the road, but a ribbon laid along the true
@@ -137,6 +155,12 @@ centreline folds over itself as soon as its half-width exceeds the radius of
 curvature. Each lateral ring is therefore laid out along a **progressively
 smoothed phantom centreline** — near rings hug every bend, the 3.2 km ring runs
 almost straight. The mesh stays connected, nothing folds, and you get a horizon.
+
+Which phantom centreline a ring follows has to be a *continuous* function of its
+lateral distance. Snapping rings to discrete levels steps the ribbon sideways and
+vertically wherever the level changes, which reads as cliff faces in the distance
+and as a ridge in the grass right beside the road that the chase camera clips
+through.
 
 Road furniture is generated in 512 m chunks merged down to ~6 meshes each, so the
 frustum throws away almost all of it. Delineators, tunnel lights and 10 k trees
@@ -163,5 +187,7 @@ bench; `dev/world.html?km=12&view=drive|cockpit|air|sign` is a world bench.
 
 - Two lanes per direction throughout; the real A81 widens to three near Stuttgart.
 - Rivals are enforced against only by the speed cameras, not by ProViDa.
+- The Engelbergtunnel is modelled as a single bore over your carriageway, and
+  there is no hillside over it — you drive into a portal standing in open ground.
 - Slip roads are visual — you cannot actually leave the Autobahn.
 - Marque names and models are fictional stand-ins; no licensed trademarks are used.

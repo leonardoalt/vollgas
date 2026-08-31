@@ -92,6 +92,19 @@ export class Audio {
   resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
   setMuted(m) { this.muted = m; if (this.master) this.master.gain.value = m ? 0 : 0.85; }
 
+  /**
+   * Ramp everything to silence. The mixer holds its last target value, so
+   * whenever the simulation stops stepping — pause, results, back to the menu —
+   * the engine would otherwise sit there droning at whatever revs it had.
+   */
+  hush() {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime, k = 0.06;
+    for (const g of [this.engine, this.whineG, this.wind.g, this.tyre.g, this.rumble.g, this.sirenG]) {
+      g.gain.setTargetAtTime(0, t, k);
+    }
+  }
+
   /** one-shot burst used for impacts and the camera flash */
   burst({ freq = 300, dur = 0.25, gain = 0.5, type = 'lowpass', q = 1 }) {
     if (!this.ready || this.muted) return;

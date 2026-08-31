@@ -39,7 +39,7 @@ export function penaltyFor(excessKmh) {
   return { excess: e, fine: 700, points: 2, ban: 3 };
 }
 
-const ZIVI_TYPES = ['zivi_limo', 'zivi_avant', 'zivi_kompakt'];
+const ZIVI_TYPES = ['zivi_touring', 'zivi_limo', 'zivi_kompakt', 'zivi_avant'];
 /* Deliberately dull fleet colours — the whole point is that you don't spot
    them until they are already behind you. */
 const ZIVI_PAINTS = [0x9aa0a5, 0xb6babd, 0x5c6268, 0x232a35, 0x2c3138, 0xd8dadb];
@@ -201,7 +201,7 @@ export class Enforcement {
         // recycle patrol cars we have left far behind or never met
         if (rel < -450 || rel > 3400) { this._park(z, player.s, false); }
         // did the player just blow past this one, well over the limit?
-        const passing = rel < 40 && rel > -140;
+        const passing = rel < 30 && rel > -85;
         const zLim = limitAt(z.s);
         const excess = zLim === Infinity ? 0 : pKmh - zLim;
         if (passing && excess > 21 && player.v > z.v + 2) {
@@ -285,8 +285,8 @@ export class Enforcement {
   /** Follow the player: sit behind at measuring distance, or close in. */
   _chase(dt, z, player, ctx) {
     const gap = player.s - z.s;
-    const wantGap = z.state === COP_STATE.MEASURE ? 52 : 24;
-    let targetV = player.v + (gap - wantGap) * 0.10 + (z.state === COP_STATE.PURSUE ? 3 : 1);
+    const wantGap = z.state === COP_STATE.MEASURE ? 38 : 24;
+    let targetV = player.v + (gap - wantGap) * 0.10 + (z.state === COP_STATE.PURSUE ? 6 : 2);
     // never drive into the car being followed
     if (gap < wantGap * 0.75) targetV = Math.min(targetV, player.v - 1.5);
     if (gap < 12) targetV = Math.min(targetV, player.v - 5);

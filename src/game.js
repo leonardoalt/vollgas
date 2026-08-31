@@ -53,10 +53,14 @@ export class Game {
     renderer.toneMappingExposure = 1.06;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // accumulate stats across all passes of a frame rather than per render()
+    renderer.info.autoReset = false;
+    this.frameStats = { calls: 0, tris: 0 };
     this.renderer = renderer;
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.32, 5200);
+    this.setupMirror();
 
     const setText = (t) => { const el = $('load-text'); if (el) el.textContent = t + ' …'; };
     await new Promise(r => requestAnimationFrame(r));
@@ -83,6 +87,81 @@ export class Game {
     this.renderer.setSize(innerWidth, innerHeight, false);
     this.camera.aspect = innerWidth / innerHeight;
     this.camera.updateProjectionMatrix();
+    this.layoutMirror();
+  }
+
+  /* ------------------------------------------------------- rear-view mirror
+     A game about being followed has to let you look behind you. The rear view
+     is rendered to a small target with a narrow field of view (so most of the
+     world culls away) and then drawn as a horizontally mirrored quad in a
+     screen-space overlay pass — mirrored via the quad, not the camera, so no
+     winding or culling tricks are needed. */
+  setupMirror() {
+    const MW = 640, MH = 176;
+    this.mirrorRT = new THREE.WebGLRenderTarget(MW, MH, {
+      minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+      depthBuffer: true, samples: 0,
+    });
+    this.mirrorRT.texture.colorSpace = THREE.SRGBColorSpace;
+    this.mirrorCam = new THREE.PerspectiveCamera(36, MW / MH, 0.5, 900);
+
+    this.overlay = new THREE.Scene();
+    this.overlayCam = new THREE.OrthographicCamera(0, 1, 1, 0, 0, 10);
+    this.overlayCam.position.z = 5;
+
+    const bezel = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({ color: 0x0a0d11, transparent: true, opacity: 0.92 })
+    );
+    const glass = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({ map: this.mirrorRT.texture, side: THREE.DoubleSide, toneMapped: false })
+    );
+    glass.scale.x = -1;                      // the actual mirroring
+    bezel.renderOrder = 0; glass.renderOrder = 1;
+    this.overlay.add(bezel, glass);
+    this.mirrorBezel = bezel; this.mirrorGlass = glass;
+    this.layoutMirror();
+  }
+
+  layoutMirror() {
+    if (!this.mirrorGlass) return;
+    const ASPECT = 640 / 176;
+    const wFrac = innerWidth < 900 ? 0.44 : 0.34;
+    const w = wFrac;
+    const h = (w * innerWidth) / (ASPECT * innerHeight);
+    const cx = 0.5, cy = 1 - (0.021 + h / 2) - 0.128;
+    this.mirrorGlass.scale.set(-w, h, 1);
+    this.mirrorGlass.position.set(cx, cy, 0.2);
+    const bw = w + 0.008, bh = h + (0.008 * innerWidth) / innerHeight;
+    this.mirrorBezel.scale.set(bw, bh, 1);
+    this.mirrorBezel.position.set(cx, cy, 0.1);
+  }
+
+  renderMirror() {
+    const p = this.player;
+    if (!p) return;
+    /* Just above and behind the roofline. Sitting inside the cabin puts our
+       own bodywork through the near plane and fills half the mirror with it. */
+    const d = p.spec.dims;
+    // the main render is what normally refreshes matrixWorld, and it happens
+    // after this pass — so bring the car's transform up to date first
+    p.mesh.updateMatrixWorld(true);
+    const eye = new THREE.Vector3(0, d.height * 1.04, -d.length * 0.28);
+    p.mesh.localToWorld(eye);
+    const back = toWorld(p.s - 120, p.u * 0.72);
+    this.mirrorCam.position.copy(eye);
+    this.mirrorCam.up.set(0, 1, 0);
+    this.mirrorCam.lookAt(back.x, back.y + 1.1, back.z);
+    // the bezel goes red while a patrol car is on you
+    const cop = this.enf && this.enf.activeCop;
+    const hot = !!cop && (cop.state === COP_STATE.MEASURE || cop.state === COP_STATE.PURSUE);
+    this.mirrorBezel.material.color.setHex(hot ? 0x5a0e08 : 0x0a0d11);
+    const r = this.renderer;
+    r.setRenderTarget(this.mirrorRT);
+    r.clear();
+    r.render(this.scene, this.mirrorCam);
+    r.setRenderTarget(null);
   }
 
   /* ------------------------------------------------------------- the menu */
@@ -146,6 +225,7 @@ export class Game {
 
     this.raceTime = 0;
     this.countdown = 3.999;
+    this.hud.countdown(null);
     this.finished = false;
     this.results = null;
     this.state = 'race';
@@ -249,6 +329,7 @@ export class Game {
     this.results = { field, place };
     this.state = 'results';
     this.hud.show(false);
+    this.audio.hush();
     this.showResults();
   }
 
@@ -265,6 +346,7 @@ export class Game {
     this.results = { field, place: field.length, dnf: reason };
     this.state = 'results';
     this.hud.show(false);
+    this.audio.hush();
     this.showResults();
   }
 
@@ -350,7 +432,11 @@ export class Game {
 
     if (this.input.tapped('c')) this.camMode = (this.camMode + 1) % CAM_MODES.length;
     if (this.input.tapped('m')) { this.muted = !this.muted; this.audio.setMuted(this.muted); }
-    if (this.input.tapped('p')) { this.paused = !this.paused; $('pause').classList.toggle('hidden', !this.paused); }
+    if (this.input.tapped('p')) {
+      this.paused = !this.paused;
+      $('pause').classList.toggle('hidden', !this.paused);
+      if (this.paused) this.audio.hush();
+    }
     if (this.input.tapped('r')) { this.startRace(); return; }
     if (this.paused) return;
 
@@ -362,8 +448,13 @@ export class Game {
       this.countdown -= dt;
       const after = Math.ceil(this.countdown);
       if (after !== before) {
-        if (after > 0) { this.hud.alert(String(after), '', 'info', 0.9); this.audio.blip(); }
-        else { this.hud.alert('LOS!', 'Bis Böblingen gilt noch ein Limit', 'good', 1.8); this.audio.blip(); }
+        if (after > 0) { this.hud.countdown(String(after)); this.audio.blip(); }
+        else {
+          this.hud.countdown('LOS!', true);
+          this.hud.alert('BIS BÖBLINGEN GILT EIN LIMIT', 'Danach freie Fahrt', 'info', 3.2);
+          this.audio.blip();
+          setTimeout(() => this.hud.countdown(null), 900);
+        }
       }
       // hold a steady 90 km/h until the flag drops
       const hold = p.v < 25 ? 0.42 : 0.16;
@@ -395,13 +486,16 @@ export class Game {
 
     // ---- HUD
     const cop = this.enf.activeCop;
+    const copGap = cop ? p.s - cop.s : 0;
     const field = this.standings();
     const place = field.findIndex(f => f.me) + 1;
     this.hud.update({
       s: p.s, raceTime: this.raceTime, place, fieldSize: field.length,
       vmaxSeen: p.vmaxSeen, fines: p.fines, points: p.points, damage: p.damage,
       provida: cop && cop.state === COP_STATE.MEASURE ? cop.measure : 0,
+      providaGap: copGap,
       pursuit: !!(cop && cop.state === COP_STATE.PURSUE),
+      pursuitGap: copGap,
     });
     this.hud.drawTacho({
       rpm: p.rpm, redline: p.perf.redline, kmh: p.v * KMH, gear: p.gear,
@@ -437,10 +531,21 @@ export class Game {
     const frame = (now) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
-      if (this.state === 'race') this.step(dt);
-      else if (this.state === 'menu' && this.player) { /* keep last frame */ }
+      const racing = this.state === 'race';
+      if (racing) this.step(dt);
       this.input.endFrame();
+      // the mirror is a small strip; 30 Hz is indistinguishable and halves its cost
+      this._mirrorTick = ((this._mirrorTick || 0) + 1) % 2;
+      if (racing && !this.paused && this._mirrorTick === 0) this.renderMirror();
       this.renderer.render(this.scene, this.camera);
+      if (racing) {
+        this.renderer.autoClear = false;
+        this.renderer.render(this.overlay, this.overlayCam);
+        this.renderer.autoClear = true;
+      }
+      const info = this.renderer.info.render;
+      this.frameStats = { calls: info.calls, tris: info.triangles };
+      this.renderer.info.reset();
       requestAnimationFrame(frame);
     };
     requestAnimationFrame(frame);

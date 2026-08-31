@@ -29,6 +29,8 @@ const info = await page.evaluate(async (ph) => {
     g.input.update = () => Object.assign(g.input, { throttle: 0.62, brake: 0, steer: (LANES[0] - p.u) * 0.25 - p.psi * 2, handbrake: false });
     g.step(dt);
     if (ph === 'measure' && z.measure > 0.55) break;
+    if (ph === 'measure-late' && z.measure > 0.94) break;
+    if (ph === 'rearview' && z.measure > 0.6) break;
     if (ph === 'pursue' && z.state === COP_STATE.PURSUE && z.pursueClose > 0.6) break;
   }
   // rear-facing look at the car behind
@@ -37,7 +39,36 @@ const info = await page.evaluate(async (ph) => {
   return { limit: limitAt(p.s), kmh: Math.round(p.v * 3.6), state: z.state, measure: +z.measure.toFixed(2), gap: Math.round(p.s - z.s), fines: p.fines, points: p.points };
 }, phase);
 await new Promise(r => setTimeout(r, 900));
-// for the pursue shot, freeze the sim and look back at the patrol car
+// place the MAIN camera exactly where the mirror camera sits, to prove what
+// the mirror can and cannot see
+if (phase === 'rearview') {
+  await new Promise(r => setTimeout(r, 1200));      // let real frames refresh the mirror
+  const seen = await page.evaluate(async () => {
+    const g = window.__game;
+    g.renderMirror();                               // ensure it is current
+    g.state = 'frozen';
+    const p = g.player;
+    g.camera.position.copy(g.mirrorCam.position);
+    g.camera.quaternion.copy(g.mirrorCam.quaternion);
+    g.camera.fov = g.mirrorCam.fov;
+    g.camera.updateProjectionMatrix();
+    const cop = g.enf.activeCop;
+    if (!cop) return 'no active cop';
+    // where does the patrol car land in the mirror camera's frustum?
+    const v = cop.mesh.position.clone();
+    v.y += 0.7;
+    const ndc = v.clone().project(g.mirrorCam);
+    return {
+      copGap: +(p.s - cop.s).toFixed(1), copU: +cop.u.toFixed(2), playerU: +p.u.toFixed(2),
+      mirrorCamPos: g.mirrorCam.position.toArray().map(x => +x.toFixed(1)),
+      copWorld: cop.mesh.position.toArray().map(x => +x.toFixed(1)),
+      ndc: ndc.toArray().map(x => +x.toFixed(3)),
+      inFrame: Math.abs(ndc.x) <= 1 && Math.abs(ndc.y) <= 1 && ndc.z > -1 && ndc.z < 1,
+    };
+  });
+  console.log('rearview:', JSON.stringify(seen));
+  await new Promise(r => setTimeout(r, 600));
+}
 if (phase === 'pursue') {
   await page.evaluate(async () => {
     const g = window.__game;

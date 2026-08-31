@@ -14,7 +14,8 @@ export class Hud {
       progFill: $('hud-progress-fill'), progMe: $('hud-progress-me'),
       limit: $('hud-limit'), fine: $('hud-fine'), points: $('hud-points'), damage: $('hud-damage'),
       alerts: $('hud-alerts'), provida: $('hud-provida'), pvFill: document.querySelector('.pv-fill'),
-      flash: $('flash'), vignette: $('vignette'),
+      pvSub: document.querySelector('.pv-sub'), pvHead: document.querySelector('.pv-head'),
+      flash: $('flash'), vignette: $('vignette'), countdown: $('countdown'),
     };
     this.tacho = $('tacho');
     this.tctx = this.tacho.getContext('2d');
@@ -48,6 +49,20 @@ export class Hud {
       a.t += dt;
       if (a.t > a.ttl) this._killAlert(a);
     }
+  }
+
+  /** Big centred numeral for the start countdown; `text` null hides it. */
+  countdown(text, go = false) {
+    const el = this.el.countdown;
+    if (text == null) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    el.classList.toggle('go', go);
+    const span = el.firstElementChild;
+    span.textContent = text;
+    // restart the animation
+    span.style.animation = 'none';
+    void span.offsetWidth;
+    span.style.animation = '';
   }
 
   blitzFlash() { const f = this.el.flash; f.classList.remove('go'); void f.offsetWidth; f.classList.add('go'); }
@@ -98,7 +113,15 @@ export class Hud {
 
     const measuring = st.provida > 0;
     e.provida.classList.toggle('hidden', !measuring);
-    if (measuring) e.pvFill.style.width = (Math.min(1, st.provida) * 100).toFixed(1) + '%';
+    if (measuring) {
+      e.pvFill.style.width = (Math.min(1, st.provida) * 100).toFixed(1) + '%';
+      const gap = Math.max(0, Math.round(st.providaGap));
+      e.pvHead.innerHTML =
+        `<span class="pv-dot"></span> P R O V I D A &nbsp;·&nbsp; MESSUNG L\u00c4UFT &nbsp;·&nbsp; ${gap} m`;
+      e.pvSub.textContent = gap > 240
+        ? 'Abstand w\u00e4chst \u2014 dranbleiben und die Messung platzt'
+        : 'Zivilfahrzeug hinter dir \u2014 abbremsen oder abh\u00e4ngen';
+    }
     e.vignette.classList.toggle('on', st.pursuit || st.damage > 80);
   }
 
