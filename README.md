@@ -11,11 +11,19 @@ traffic stream taking **ProViDa** video measurements, and mobile **Blitzer** van
 sit in the hard shoulder. Going fast where it is legal is free. Going fast where
 it is not is how you take time out — and how you end up with a Bußgeldbescheid.
 
+**▶ Play it: https://leonardoalt.github.io/vollgas/**
+
 ```bash
 npm install
 npm run dev        # http://localhost:5173
 npm run build      # static bundle in dist/
+npm run deploy     # build and publish to the gh-pages branch
 ```
+
+`vite.config.js` sets a production-only `base` of `/vollgas/`, because Pages
+serves from a subpath while the dev server must stay on `/` or every local URL
+and every harness in `dev/` breaks. `npm run deploy` pushes `dist/` as an orphan
+history on `gh-pages`; rename the repo and that base path has to change with it.
 
 ## Controls
 
