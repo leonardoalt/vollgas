@@ -150,7 +150,11 @@ export class Enforcement {
       for (const b of mesh.userData.blues) b.material.emissiveIntensity = 0;
       if (mesh.userData.led) mesh.userData.led.material.map = mesh.userData.led.userData.off;
       this.scene.add(mesh);
-      this.cameras.push({ s, u, mesh, fired: false, warned: false, cooldown: 0 });
+      this.cameras.push({
+        s, u, mesh, fired: false, warned: false, cooldown: 0,
+        // the van is a physical object, not scenery
+        halfLen: CARS.messwagen.dims.length / 2, halfWid: CARS.messwagen.dims.width / 2,
+      });
     }
   }
 
@@ -340,21 +344,39 @@ export class Enforcement {
     z.headlights = true;
   }
 
-  /** Follow the player onto the hard shoulder and come to a stop behind them. */
+  /**
+   * Follow the player onto the hard shoulder and stop right behind them. They
+   * park close — a patrol car that comes to rest 25 m back is out of the
+   * mirror, so you never actually see who stopped you.
+   */
   _pullOver(dt, z, player, ctx) {
     const gap = player.s - z.s;
     const targetU = GEO.kerbOut + GEO.shoulder * 0.5;
     const err = targetU - z.u;
-    const arrived = Math.abs(err) < 0.9;
-    // same reason as the player: keep rolling until actually on the shoulder
-    let wantV = arrived ? (player.v < 1.2 ? 0 : 3) : 8;
-    if (gap < 9) wantV = Math.min(wantV, Math.max(0, player.v));
+    const arrived = Math.abs(err) < 1.0;
+    const playerStopped = player.v < 1.2;
+    const STOP_GAP = 6.5;                  // centre to centre: a couple of metres of air
+
+    let wantV;
+    if (!arrived) {
+      // still getting onto the shoulder — keep rolling, you cannot steer at 0
+      wantV = 8;
+    } else if (gap > STOP_GAP + 1.2) {
+      /* On the shoulder but hanging back. Close at a rate proportional to the
+         gap — a fixed creep cannot make up 40 m in any reasonable time. */
+      const closing = Math.min(12, 1.2 + (gap - STOP_GAP) * 0.45);
+      wantV = playerStopped ? closing : Math.max(closing, player.v);
+    } else {
+      wantV = playerStopped ? 0 : Math.max(0, player.v - 1);
+    }
+    if (gap < STOP_GAP - 1.2) wantV = 0;   // close enough; do not nudge them
+
     let thr = 0, brake = 0;
     if (z.v > wantV + 0.3) brake = Math.min(1, 0.2 + (z.v - wantV) * 0.10);
-    else if (z.v < wantV - 0.3) thr = 0.34;
+    else if (z.v < wantV - 0.3) thr = 0.30;
     z.stepLong(dt, thr, brake, ctx);
     z.stepLat(dt, Math.max(-0.6, Math.min(0.6, err * 0.28)), ctx);
-    if (z.v < 0.3) z.v = 0;
+    if (z.v < 0.25) z.v = 0;
     z.headlights = true;
   }
 
@@ -442,7 +464,7 @@ export class Enforcement {
     }
     if (!best) return;
     if (bd > 150) {
-      best.s = player.s - 52;
+      best.s = player.s - 38;
       best.u = player.u;
       best.v = Math.max(player.v, 30);
       best.psi = 0;
@@ -452,6 +474,19 @@ export class Enforcement {
     best.setLights(true);
     this.activeCop = best;
     player.stoppedT = 999;
+  }
+
+  /**
+   * Did we just hit a parked measuring van? They sit in the hard shoulder and
+   * used to be scenery you drove straight through.
+   */
+  hitCamera(player) {
+    for (const cam of this.cameras) {
+      if (Math.abs(cam.s - player.s) > player.halfLen + cam.halfLen) continue;
+      if (Math.abs(cam.u - player.u) > player.halfWid + cam.halfWid) continue;
+      return cam;
+    }
+    return null;
   }
 
   drainEvents() { const e = this.events; this.events = []; return e; }

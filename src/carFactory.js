@@ -640,7 +640,7 @@ export const CARS = {
 
     blurbEn: 'Rear engine, all-wheel drive, 650 hp. Still planted in the left-hand lane at 300, and utterly unbothered by oncoming traffic. The most expensive way there is to collect points in Flensburg.',  },
   m5: {
-    name: 'Bayern M-Sport M5 CS', marque: 'Bayern Automobil', arch: 'sedan',
+    name: 'Bayern M-Sport M5 CS', marque: 'Bayerische Motoren', arch: 'sedan',
     dims: D(5.00, 1.90, 1.47, 0.155),
     axleF: 1.55, axleR: -1.43, trackF: 1.63, trackR: 1.65,
     wheelRF: 0.355, wheelRR: 0.365, wheelWF: 0.275, wheelWR: 0.305,
@@ -654,7 +654,7 @@ export const CARS = {
 
     blurbEn: 'Four doors, all-wheel drive, twin-turbo V8. The classic of the fast lane: does 300 like it is 130, with room for the luggage of four people who did not want to be here.',  },
   rs6: {
-    name: 'Ingolstadt RS-6 Avant', marque: 'Ingolstadt Werke', arch: 'wagon',
+    name: 'Ingolstadt RS-6 Avant', marque: 'Vier Ringe', arch: 'wagon',
     dims: D(5.02, 1.95, 1.47, 0.16),
     axleF: 1.53, axleR: -1.40, trackF: 1.67, trackR: 1.66,
     wheelRF: 0.360, wheelRR: 0.360, wheelWF: 0.285, wheelWR: 0.285,
@@ -664,11 +664,11 @@ export const CARS = {
     plate: 'IN AU 6',
     paints: [{ n: 'Nardograu', c: 0x9a9da0 }, { n: 'Mythosschwarz', c: 0x22252a }, { n: 'Tangorot', c: 0x8e1a12 }],
     perf: { mass: 2075, power: 441, cd: 0.86, vmax: 305, grip: 1.38, awd: true, gears: 8, redline: 6800 },
-    blurb: 'Der Kombi, der alles gewinnt. Quattro heißt: bei Regen, Rollsplitt und Baustelle immer noch Vollgas. Dafür 2,1 Tonnen, die man in der Kurve merkt.',
+    blurb: 'Ein Kombi. Platz für Kinderwagen, Hund und den halben Baumarkt — und 600 PS. Die braucht man auf dem Rückweg aus dem Familienurlaub, wenn hinten zum vierzigsten Mal gefragt wird, ob man bald da ist. Man ist dann bald da.',
 
-    blurbEn: 'The estate that wins everything. Quattro means full throttle in the rain, over loose chippings and through the roadworks. The price is 2.1 tonnes you can feel in every corner.',  },
+    blurbEn: 'An estate car. Room for the pram, the dog and half a hardware shop — and 600 hp. You need those on the drive home from the family holiday, when the back seat asks for the fortieth time whether you are nearly there. You are nearly there.',  },
   amg: {
-    name: 'Affalterbach AMG 63 S', marque: 'Affalterbach Manufaktur', arch: 'coupe4',
+    name: 'Affalterbach AMG 63 S', marque: 'Stern aus Stuttgart', arch: 'coupe4',
     dims: D(4.94, 1.90, 1.43, 0.15),
     axleF: 1.52, axleR: -1.34, trackF: 1.62, trackR: 1.64,
     wheelRF: 0.350, wheelRR: 0.365, wheelWF: 0.265, wheelWR: 0.305,
@@ -678,9 +678,9 @@ export const CARS = {
     plate: 'S MB 63',
     paints: [{ n: 'Selenitgrau', c: 0x5b6066 }, { n: 'Obsidianschwarz', c: 0x191b1e }, { n: 'Hyazinthrot', c: 0x7e1220 }],
     perf: { mass: 1795, power: 375, cd: 0.76, vmax: 315, grip: 1.30, awd: false, gears: 9, redline: 7000 },
-    blurb: 'Hinterrad, Handarbeit, Hubraum. Beschleunigt so wie es klingt und will beim Rausbeschleunigen aus der Kurve mitreden. Für Leute, die Gegenlenken für ein Feature halten.',
+    blurb: 'Handgebauter V8, Hinterradantrieb, und ein Geräusch, das aus Nachbarn Feinde macht. Geradeaus fantastisch, in Kurven will das Heck gelegentlich mitreden. Verbraucht auf dem Weg zum Bäcker mehr als ein Kleinwagen im Monat.',
 
-    blurbEn: 'Rear-wheel drive, hand-built, all the displacement. Accelerates exactly the way it sounds and wants a say in how you get out of a corner. For people who think opposite lock is a feature.',  },
+    blurbEn: 'A hand-built V8, rear-wheel drive, and a noise that turns neighbours into enemies. Magnificent in a straight line; in corners the back end likes to join the conversation. Uses more fuel going to the bakery than a small car does in a month.',  },
 
   /* ---------------------------------------------------------- other traffic */
   kombi: {

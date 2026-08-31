@@ -85,8 +85,12 @@ export class Game {
     GLOBALS.km = STAGE_KM;
     document.documentElement.lang = lang;
     applyDom();
-    // pictures of the cars: live renders of the very models you drive
-    this.showroom = new Showroom($('car-canvas'));
+    /* The car pictures are live renders, which means a second WebGL context.
+       Creating it here delayed the loading screen clearing by well over a
+       second, so it is built on the first menu frame instead and the list is
+       redrawn once it exists. */
+    this.showroom = null;
+    this._needShowroom = true;
     const langBtn = $('lang-btn');
     if (langBtn) langBtn.onclick = () => { toggleLang(); this.buildMenu(); };
     this.buildMenu();
@@ -370,17 +374,19 @@ export class Game {
     if (this.ending) return;
     this.ending = { kind, t: 0, shown: false, showT: 0 };
     this.camMode = 4;                        // pull back so you can see it
-    if (kind !== 'wreck') this.enf.forceStop(this.player);
+    if (kind !== 'wreck' && kind !== 'rammed') this.enf.forceStop(this.player);
   }
 
   stepEnding(dt) {
     const e = this.ending, p = this.player;
     e.t += dt;
+    // make room on the shoulder rather than dragging the car through traffic
+    if (p.stoppedT > 0) this.traffic.clearPath(p);
     const cop = this.enf.activeCop;
-    const settled = e.kind === 'wreck'
+    const settled = (e.kind === 'wreck' || e.kind === 'rammed')
       ? p.v < 2.0
       : (p.pulledOver && (!cop || cop.v < 0.8));
-    if (!e.shown && (settled || e.t > 12)) {
+    if (!e.shown && (settled || e.t > 15)) {
       e.shown = true;
       this.hud.busted(e.kind);
       this.audio.hush();
@@ -388,7 +394,10 @@ export class Game {
     if (e.shown) {
       e.showT += dt;
       if (e.showT > 2.9) {
-        const reason = { arrest: 'dnf.stopped', points: 'dnf.points', wreck: 'dnf.wreck' }[e.kind];
+        const reason = {
+          arrest: 'dnf.stopped', points: 'dnf.points',
+          wreck: 'dnf.wreck', rammed: 'dnf.rammed',
+        }[e.kind];
         this.outOfRace(t(reason));
         return true;
       }
@@ -470,10 +479,12 @@ export class Game {
       const ban = Math.max(...p.tickets.map(x => x.ban));
       tk.innerHTML = `<h4>${t('res.ticket')}</h4>` +
         p.tickets.map(x =>
-          `<div class="tk-row"><span>${t('res.row', {
-            where: `${t('src.' + x.src)} · ${x.place}`,
-            speed: x.speed, limit: x.limit, excess: x.excess,
-          })}</span><span>${money(x.fine)}</span></div>`
+          `<div class="tk-row"><span>${x.plain
+            ? t('res.rowplain', { where: `${t('src.' + x.src)} · ${x.place}` })
+            : t('res.row', {
+                where: `${t('src.' + x.src)} · ${x.place}`,
+                speed: x.speed, limit: x.limit, excess: x.excess,
+              })}</span><span>${money(x.fine)}</span></div>`
         ).join('') +
         `<div class="tk-row"><span>${t('res.pointsrow')}</span><span>${p.points}</span></div>` +
         (ban > 0 ? `<div class="tk-row"><span>${t('res.ban')}</span><span>${t(ban > 1 ? 'res.months' : 'res.month', { n: ban })}</span></div>` : '') +
@@ -586,6 +597,19 @@ export class Game {
       this.audio.impact(sev);
       if (kind === 'rear' && sev > 0.55) this.hud.alert(t('a.crash'), t('a.crash.sub'), 'bad', 2.6, 'crash');
     }, dt);
+    // hitting a parked measuring van ends the run there and then
+    if (!this.ending && p.stoppedT <= 0) {
+      const van = this.enf.hitCamera(p);
+      if (van) {
+        p.damage = 100;
+        p.v *= 0.25;
+        p.fines += 1000; p.points += 3;
+        p.tickets.push({ src: 'collision', place: t('ticket.rammed'), plain: true, fine: 1000, points: 3, ban: 1 });
+        this.shake = Math.max(this.shake, 1.1);
+        this.audio.impact(1);
+        this.beginEnding('rammed');
+      }
+    }
     if (p.scrape) this.shake = Math.max(this.shake, 0.05);
     if (p.offroad && p.v > 12) this.shake = Math.max(this.shake, 0.035);
 
@@ -655,9 +679,16 @@ export class Game {
       last = now;
       const racing = this.state === 'race';
       if (racing) this.step(dt);
-      else if (this.showroom && this.showroom.ok && this.state === 'menu') {
+      else if (this.state === 'menu') {
+        if (this._needShowroom) {
+          this._needShowroom = false;
+          this.showroom = new Showroom($('car-canvas'));
+          this.buildMenu();
+        }
         const cv = $('car-canvas');
-        if (cv && cv.clientWidth > 0) this.showroom.render(dt, cv.clientWidth, cv.clientHeight);
+        if (this.showroom && this.showroom.ok && cv && cv.clientWidth > 0) {
+          this.showroom.render(dt, cv.clientWidth, cv.clientHeight);
+        }
       }
       this.input.endFrame();
       // the mirror is a small strip; 30 Hz is indistinguishable and halves its cost

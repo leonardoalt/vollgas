@@ -24,7 +24,7 @@ npm run build      # static bundle in dist/
 | `W` / `↑` | throttle |
 | `S` / `↓` | brake |
 | `A` `D` / `←` `→` | steer |
-| `Space` | handbrake |
+| `Space` | handbrake — a locked rear axle: ~0.5 g and 42 % less cornering grip |
 | `C` | cycle camera (chase / close / cockpit / bonnet / cinematic) |
 | `M` | mute · `P` pause · `R` restart |
 
@@ -172,6 +172,12 @@ the cars carries a real marque's badge.
 
 ### Endings
 
+Traffic clears the hard shoulder while you are being pulled over. Anything in
+the space you are about to occupy pulls left and slows, and anything actually
+in the way is recycled far ahead — being dragged bodily through a Kombi looks
+much worse than a car quietly no longer being there.
+
+
 All three ways a run can end share one flow: let the situation come to rest,
 hold on a full-screen card so you can see *why*, then show the numbers.
 
@@ -180,6 +186,7 @@ hold on a full-screen card so you can see *why*, then show the numbers.
 | ProViDa stop | ERWISCHT / BUSTED | you and the patrol car both pull onto the shoulder |
 | Eight points | FÜHRERSCHEIN WEG / LICENCE GONE | a patrol car closes in and stops you |
 | 100 % damage | SCHROTT / WRECKED | you coast to a halt; no police involved |
+| Hitting a camera van | GERAMMT / RAMMED | the vans are solid: €1000, 3 points, run over |
 
 ### Time trial
 

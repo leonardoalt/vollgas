@@ -48,6 +48,7 @@ export class Vehicle {
     this.gear = 1; this.rpm = 1000; this.shiftT = 0;
     this.aLong = 0; this.aLat = 0; this.slip = 0;
     this.damage = 0; this.offroad = false; this.scrape = 0;
+    this.hand = 0;                          // handbrake, 0..1
     this.kind = opts.kind || 'traffic';
     this.name = opts.name || spec.name;
     this.active = true;
@@ -73,6 +74,9 @@ export class Vehicle {
     const c = sample(this.s);
     F -= p.mass * G * c.grade * this.dir;                   // gradient
     if (brake > 0) F -= brake * d.aMax * p.mass * (this.offroad ? 0.45 : 0.88);
+    /* Handbrake locks the rear axle only: a strong retardation, nothing like
+       the full braking system, and it costs you most of your rear grip. */
+    if (this.hand > 0) F -= this.hand * d.aMax * p.mass * 0.34;
 
     this.aLong = F / p.mass;
     this.v = Math.max(0, this.v + this.aLong * dt);
@@ -99,7 +103,7 @@ export class Vehicle {
     const v = this.v;
     // friction circle: what's left for cornering after longitudinal demand
     const used = Math.min(1, Math.abs(this.aLong) / d.aMax);
-    const gripMul = this.offroad ? 0.45 : 1;
+    const gripMul = (this.offroad ? 0.45 : 1) * (1 - 0.42 * this.hand);
     const latMax = d.aMax * gripMul * Math.sqrt(Math.max(0.10, 1 - used * used * 0.85));
 
     // steer angle, tapering with speed the way a real rack feels
@@ -219,9 +223,10 @@ export class Player extends Vehicle {
     }
     let thr = input.throttle, brk = input.brake;
     if (this.damage >= 100) { thr = 0; brk = Math.max(brk, 0.5); }
+    this.hand = input.handbrake ? 1 : 0;
     this.stepLong(dt, thr, brk, ctx);
     this.stepLat(dt, input.steer, ctx);
-    if (input.handbrake) { this.v *= 1 - 2.6 * dt; this.slip = Math.min(1, this.slip + dt * 2); }
+    if (this.hand) this.slip = Math.min(1, this.slip + dt * 1.6);
     this.vmaxSeen = Math.max(this.vmaxSeen, this.v * KMH);
   }
 }
@@ -526,6 +531,24 @@ export class Traffic {
       r.drive(dt, ctx);
       if (r.s >= LENGTH - 20) { r.finished = true; r.finishT = ctx.raceTime; }
       r.sync(dt);
+    }
+  }
+
+  /**
+   * Clear a path to the hard shoulder for a traffic stop. Traffic in the way
+   * pulls left and slows; anything actually in the space we are about to
+   * occupy is recycled far ahead, because being dragged through a Kombi looks
+   * far worse than a car quietly no longer being there.
+   */
+  clearPath(player) {
+    for (const t of this.same) {
+      const rel = t.s - player.s;
+      if (rel < -50 || rel > 110) continue;
+      // in the space we are moving into?
+      const inTheWay = Math.abs(rel) < 26 && t.u > GEO.laneL + 1.2;
+      if (inTheWay) { this._placeSame(t, player.s, false); continue; }
+      t.lane = 0;                            // move over
+      t.cruise = Math.min(t.cruise, 24);     // and ease off
     }
   }
 
