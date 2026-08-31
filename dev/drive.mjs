@@ -74,7 +74,7 @@ await page.evaluate(async () => {
           t: +g.raceTime.toFixed(1), km: +(p.s / 1000).toFixed(2),
           kmh: Math.round(p.v * 3.6), lim: limitAt(p.s) === Infinity ? '-' : limitAt(p.s),
           u: +p.u.toFixed(1), gear: p.gear, dmg: Math.round(p.damage),
-          eur: p.fines, pts: p.points, place: g.standings().findIndex(f => f.me) + 1,
+          eur: p.fines, pts: p.points,
           cop: cop ? cop.state + ':' + cop.measure.toFixed(2) : '',
         });
       }
