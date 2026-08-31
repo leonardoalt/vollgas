@@ -1,4 +1,4 @@
-<!-- Two independent handoffs live in this file. They were written by different
+<!-- Three independent handoffs live in this file. They were written by different
      agents on different branches and merged verbatim; neither supersedes the
      other. Keep them separated. -->
 
@@ -9,6 +9,8 @@
 * [Part II — road & roadside visuals](#handoff--road--roadside-visuals) — the
   asphalt / guardrail / grass / walls / tunnel work. See the status note at the
   head of that part.
+* [Part III — procedural engine audio](#handoff--audio-rework-procedural-engine)
+  — physically shaped player audio and lightweight traffic voices. Active work.
 
 ---
 
@@ -909,3 +911,201 @@ post sharing one atlas removed about as many as the new meshes added.
 `dev/best-check.mjs` and `dev/start-check.mjs` now take `process.env.URL`,
 defaulting to the `http://localhost:5173/` they hardcoded before, so the old
 invocation is unchanged.
+---
+
+# HANDOFF — audio rework (procedural engine)
+
+Branch: `worktree-agent-ab75cd5c6fb0486d8`. Task: make Vollgas's audio "a lot more
+realistic", engine note first.
+
+## Approach chosen, and why
+
+**All-in on procedural synthesis. No samples.** Two synths:
+
+1. **`PlayerEngine`** — an `AudioWorklet` running a physically-shaped model:
+   per-cylinder-bank **firing-order pulse trains** → blowdown pulse shaper →
+   **quarter-wave exhaust waveguide** (delay line, damped inverting reflection at
+   the tailpipe) → node-graph post chain (3 peaking exhaust formants, a muffler
+   notch, a load-driven waveshaper, a separate intake path, a turbo).
+2. **`WaveEngine`** — one `OscillatorNode` with a `PeriodicWave` built from the
+   **DFT of one 720° engine cycle**. Correct harmonic structure, ~4 nodes per
+   voice. Used for traffic neighbours, and as fallback if the worklet won't load.
+
+### The central idea (this is the thing worth keeping)
+
+A four-stroke's engine cycle is 720° long, so *everything* the engine radiates is
+a harmonic of `f_cycle = rpm/120`. Number those harmonics `k`; engine order is
+`k/2`. Exhaust is collected **per bank**, so what matters is each bank's firing
+spacing:
+
+| engine | bank firing angles | bank spacing | consequence |
+|---|---|---|---|
+| flat-six (911), firing order 1-6-2-4-3-5 | A 0/240/480, B 120/360/600 | even 240° | energy only on k=3,6,9 → **no half order**, smooth |
+| cross-plane V8 (M5/RS6/AMG), 1-8-7-2-6-5-4-3 | A 0/180/450/630, B 90/270/360/540 | **uneven 90-180-270-180** | energy on *every* k incl. k=1 → **the burble** |
+| flat-plane V8, 1-8-7-3-6-5-4-2 | A 0/180/360/540, B 90/270/450/630 | even 180° | banks cancel at k=4, leaves k=8 → pure 4th-order scream |
+| inline-4 / inline-6 | single bank, even | 180° / 120° | 2nd / 3rd order, no half order |
+
+Overall firing is even 90° for *both* V8s — the lumpiness is purely a per-bank
+effect, which is why you must model banks separately and sum them. Unequal pipe
+lengths between banks put a slow beat in the burble.
+
+**This is measured, not asserted** — see `dev/sound-check.mjs` results below.
+
+### Why samples were rejected
+
+A research pass established the licensing/size facts (all verified by actual
+HTTP requests, not from memory):
+
+- **OpenGameArt, CC0, no credentials needed, verified 200:**
+  - <https://opengameart.org/content/racing-car-engine-sound-loops> (domasx2) —
+    licence field reads exactly `CC0`. 6 files, 44.1 kHz mono, 0.62–0.86 s, at
+    `https://opengameart.org/sites/default/files/loop_0.wav`, `loop_1_0.wav`,
+    `loop_2_0.wav`, `loop_3_0.wav`, `loop_4_0.wav`, `loop_5_0.wav`. Measured
+    genuinely seamless. **Trap:** `loop_1.wav` without the `_0` also returns 200
+    but is a different, unrelated file (Drupal filename collision).
+  - <https://opengameart.org/content/car-sound-effects-pack-low-quality>
+    (GGBotNet) — CC0, zip 176 KB, `car_sound_effects_pack.zip`.
+- **archive.org** `GOLD_TAPE_13.2_Sports_Cars_Race_Cars` — `licenseurl` is CC0,
+  uploaded by IA staff; has a real rev ramp. CC0 is IA's *assertion*, not an
+  author dedication — defensible, not bulletproof.
+- **Freesound**: best content, but original downloads need OAuth2 (401), and
+  `robots.txt` has `User-agent: ClaudeBot / Disallow: /`. Its CC0 search filter
+  **leaks** — returned a CC-BY-3.0 and a CC-BY-NC-4.0. Needs a free API key.
+- **Ruled out:** Pixabay (not CC0 since 2019-01-09; proprietary licence bars
+  "standalone" redistribution), Wikimedia (engine files are CC-BY-**SA**, viral),
+  Zapsplat (account + mandatory credit), Sonniss (explicitly bars redistribution),
+  Kenney (zero vehicle audio).
+
+Size was never the constraint: 6 loops at 48 kbps mono MP3 = **63 KB base64**,
+1.5% of the 4 MB budget.
+
+**Rejected anyway**, for one reason: the only clean CC0 engine content is *one*
+engine loop at six pitches plus a phone-recorded ogg. That cannot produce a
+flat-six vs cross-plane V8 vs diesel distinction, load-dependent timbre,
+overrun crackle, or a rev-limiter bounce — which is the entire brief. One
+generic loop pitched up and down for all four cars would be a regression on the
+thing the owner actually asked for. Zero art assets is also the project's ethos.
+
+**No `CREDITS.md` is needed — no third-party asset ships.**
+
+## Files
+
+**Owned (new):**
+- `src/engineSpec.js` — firing-order tables per engine layout, per-engine tone
+  parameters (pipe lengths, damping, reflection, pulse tau, rasp, intake, turbo,
+  crackle, jitter, formants, muffler notch), `CAR_ENGINE` car-id → engine map,
+  `fireHz`/`cycleHz` helpers, and `bankCycle()` (one 720° cycle of a bank's
+  exhaust pressure, DC-removed).
+- `src/engineWorkletSource.js` — the worklet DSP **as an exported string**. It
+  must be a string: the game ships as one HTML file via
+  `dev/build-artifact.mjs`, so the worklet becomes a `Blob` URL at runtime and
+  there is no second file to fetch. Contains `Pipe` (waveguide),
+  `Pulse` (two cascaded one-poles → `t·exp(-t/tau)`, band-limited by
+  construction), `Reso` (intake plenum), and the processor.
+- `src/engineSound.js` — `PlayerEngine` (worklet host + post chain + turbo +
+  blow-off), `WaveEngine` (PeriodicWave voice), `enginePeriodicWave()`,
+  `engineCycleWaveform()`, `doppler()`, `IMAG_SIGN`.
+- `dev/sound-check.mjs` — the measurement harness.
+
+**Owned (rewritten):** `src/audio.js` — the mixer.
+
+**`src/game.js` — exactly two edits, both additive:**
+- line 297: `this.audio.start();` → `this.audio.start(id);`
+- lines 660–670 (the `this.audio.update(dt, {…})` call): added fields
+  `gear, shiftT, redline, tunnel, cam, others, playerS, playerU, self, copS, copV`.
+  Nothing removed.
+
+**`src/carFactory.js` — NOT TOUCHED.** No `perf` fields added; the car→engine
+mapping lives in `CAR_ENGINE` in `engineSpec.js` instead, so there is no merge
+surface in a file another agent owns.
+
+## What works (measured)
+
+`node dev/sound-check.mjs http://localhost:5202/` — all engine-side checks pass:
+
+- Worklet is the live source in the real game (`engineMode: worklet`).
+- Firing partial lands on `cyl·rpm/120` within 0.6 Hz at 4200 rpm and at 1500 rpm
+  for all six engines.
+- **Half-order energy relative to the firing partial:** flat-six **−40.3 dB**
+  (absent, correct), cross-plane V8s **−4.9 / +0.7 / +1.0 dB** (present — the
+  burble), flat-plane control **−11.0 dB**, inline-four **−33.1 dB**. Flat-six
+  1.5-order present at −25.2 dB (bank fires every 240°), as it should be.
+- No clipping (worst engine peak 0.70 at unity gain), no non-finite samples.
+- Overrun: 15–19 dB quieter, and loses both top (÷8) and bottom (÷7) end.
+- rpm sweep 900→7400 through the limiter: peak 0.72, no dropout.
+- PeriodicWave convention measured: forward correlation **0.999** vs reversed
+  0.597 (this is why `IMAG_SIGN = 1` — see gotchas).
+- Doppler: 70 m/s closing = ×1.256, receding = ×0.831.
+- Live master bus does not clip (0.32 open road, 0.44 in the tunnel); tunnel is
+  louder than open road; reverb send is 0 outside and rises inside.
+
+## Half-done / where I left off
+
+`dev/sound-check.mjs` section **F (live mix)** has three failing/blocked checks,
+all one root cause: **under swiftshader the game renders at ~2 fps and the main
+loop clamps `dt` to 50 ms, so simulated time runs ~10× slower than wall time.**
+17 s of held throttle produced only 70 km/h in first gear. I replaced the
+stopwatch with `page.waitForFunction('… v*3.6 > 235')` and it **timed out at
+180 s** — the car may never get there while ploughing into traffic.
+
+**Fix I was about to make:** stop requiring a speed from the physics. Instead add
+a deterministic *mix-curve probe*: set `game.state = 'probe'` so the loop stops
+calling `step()`, then call `audio.update(1/60, {…synthetic…})` in a loop for
+~300 ms per point at 60/140/200/250/320 km/h, letting the `setTargetAtTime`
+ramps settle, and read back `wind.g.gain.value`, `road.g.gain.value`,
+`engine.gain.value`. Assert wind grows superlinearly and overtakes road roar
+above ~200 km/h. Keep the live drive but only to prove it runs and does not
+clip (drop the 235 km/h requirement, e.g. wait for `v*3.6 > 120` with a
+generous timeout, or just drive 20 s and report whatever speed it reached).
+
+Also still to do:
+1. Re-run `node dev/audio-check.mjs` and `node dev/prod-check.mjs` — **neither
+   has been run since the rewrite.** `audio-check` reads `a.engine`,
+   `a.wind.g`, `a.tyre.g`, `a.sirenG` by name; those names were deliberately
+   preserved, but it is unverified.
+2. `npm run build` — **not yet run.**
+3. `traffic voice engine lookup`: `audio.js` `_traffic()` calls
+   `engineFor(tgt.spec && tgt.spec.id ? … : tgt.kind)`. **`spec.id` does not
+   exist** on `CARS` entries (only `mesh.userData.id` has an id, and only for
+   the truck). So every car voice currently falls back to `tgt.kind`
+   (`'traffic'`/`'truck'`/`'police'`) → always `four`. Either use
+   `tgt.mesh.userData.id`, or map `kind` → engine explicitly. Harmless today
+   (it just means less variety), but it is not doing what it claims.
+4. Verify the blow-off/upshift bark actually fires in-game (only unit-reasoned).
+
+## Gotchas found the hard way
+
+- **`PeriodicWave` real/imag convention is the opposite of the textbook DFT.**
+  With `imag[k] = -(2/M)Σw·sin`, the rendered waveform came out **time-reversed**
+  (forward corr 0.60, reversed 0.99). `IMAG_SIGN = 1` is correct for Chromium.
+  The harness measures this rather than trusting it, so a browser that disagrees
+  will fail loudly instead of quietly inverting the pulse shape.
+- **Overrun crackle probability is per *firing*, not per second.** At 4200 rpm a
+  V8 fires 280×/s, so `p = 0.31` gave 87 pops/s — a continuous hiss that made the
+  overrun spectrum *brighter* than full throttle. Scaled by 0.11 → ~10 pops/s.
+- **Spectral centroid is the wrong "brightness" metric here**, because crackle
+  transients are broadband and dominate it when the tonal content collapses.
+  Absolute band energy (40–300 / 300–1500 / 1500–9000 Hz) is the honest measure.
+- Peaking exhaust formants add up to +5.6 dB, which pushed the raw engine bus to
+  peak 1.02. Fixed by lowering `exGain` and raising `audio.engine` gain to
+  compensate; the invariant "engine bus peak < 1.0 at unity" is now asserted.
+- The worklet's soft knee `v/(1+|v|·0.6)` asymptotes at 1.67, so it does **not**
+  guarantee < 1. The master `WaveShaper` limiter (curve endpoints ±0.985) is what
+  actually guarantees no sample leaves the mixer above 1.
+- `hush()` must re-arm anything it zeroes that `update()` does not write every
+  frame. `trafficBus` was zeroed by `hush()` and never restored → traffic went
+  permanently silent after the first pause. Now written every frame.
+- Swapping a `PeriodicWave` mid-note clicks. Neighbour voices only change target
+  (and wave) while their gain is < 0.02.
+
+## Build and verify
+
+```bash
+ln -s /home/leo/devel/autobahn/node_modules node_modules    # do NOT npm install
+npx vite --port 5202 --strictPort &
+node dev/sound-check.mjs http://localhost:5202/     # the new one
+node dev/audio-check.mjs http://localhost:5202/     # must stay clean
+npm run build
+npx vite preview --port 5203 --strictPort &
+node dev/prod-check.mjs http://localhost:5203/ /tmp/out.png
+```

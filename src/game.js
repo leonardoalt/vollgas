@@ -349,7 +349,7 @@ export class Game {
     this.hud.show(true);
     $('menu').classList.add('hidden');
     $('results').classList.add('hidden');
-    this.audio.start();
+    this.audio.start(id);
     this.audio.resume();
     this._camPos.set(0, 0, 0); this._camLook.set(0, 0, 0);
     this.player.sync(0);
@@ -771,6 +771,10 @@ export class Game {
         rpm: p.rpm, throttle: inp.throttle, speed: p.v, slip: p.slip,
         offroad: p.offroad, scrape: p.scrape, engineOn: true,
         siren: sirenNear > 0.02, sirenNear,
+        gear: p.gear, shiftT: p.shiftT, redline: p.perf.redline,
+        tunnel: this._tunnelMix, cam: this.camMode,
+        others: this.traffic.all, playerS: p.s, playerU: p.u, self: p,
+        copS: cop ? cop.s : 0, copV: cop ? cop.v : 0,
       });
     }
 
