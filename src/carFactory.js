@@ -518,6 +518,14 @@ function wheelGeoms(radius, width, spokes, tier) {
       rim.push(sp);
     }
   }
+  /* Backplate. The rim barrel is deliberately open at the front so you can see
+     the disc through the spokes, but that also means that from inboard — which
+     is exactly what you see of the near wheels in any rear three-quarter view —
+     you were looking into an unlit tube. One annulus closes it. */
+  const back = new THREE.CircleGeometry(0.70 * R, hi ? 22 : 14);
+  back.rotateY(-Math.PI / 2);
+  back.translate(-0.40 * W, 0, 0);
+  rim.push(back);
   // ---- centre cap
   rim.push(cyl(0.19 * R, 0.17 * R, 0.14 * W, hi ? 14 : 10, 0.30 * W, 0, 0));
   const cap = new THREE.CircleGeometry(0.17 * R, hi ? 14 : 10);
@@ -762,12 +770,14 @@ function rearEnd(spec, dims, bucket, tier, stations) {
       bucket.tail.push(box(hw * 0.10, H * 0.026, 0.03, s * hw * 0.80, H * 0.235, tail + 0.02));
     }
   }
-  // plate recess and diffuser, with fins
+  /* Plate recess, and a diffuser that is an insert in a painted bumper rather
+     than a full-width black slab across the whole tail. */
   bucket.dark.push(box(hw * 0.64, H * 0.115, 0.05, 0, H * 0.30, tail + 0.015));
-  bucket.dark.push(box(hw * 1.74, H * 0.115, 0.24, 0, H * 0.185, tail + 0.13));
+  bucket.dark.push(box(hw * 1.16, H * 0.095, 0.22, 0, H * 0.175, tail + 0.12));
+  bucket.paint.push(box(hw * 1.66, H * 0.105, 0.20, 0, H * 0.255, tail + 0.13));
   if (fine) {
-    for (let i = -2; i <= 2; i++) {
-      bucket.trim.push(box(0.022, H * 0.085, 0.18, i * hw * 0.30, H * 0.175, tail + 0.10));
+    for (let i = -1; i <= 1; i++) {
+      bucket.trim.push(box(0.020, H * 0.070, 0.16, i * hw * 0.30, H * 0.170, tail + 0.10));
     }
   }
   // exhausts: a chrome tip with a dark bore down it
@@ -775,9 +785,9 @@ function rearEnd(spec, dims, bucket, tier, stations) {
   for (let i = 0; i < n; i++) {
     const side = i < n / 2 ? -1 : 1;
     const k = n <= 2 ? 0 : (i % 2 ? 0.5 : -0.5);
-    const x = side * hw * (0.62 + k * 0.22);
-    bucket.chrome.push(cyl(0.062, 0.058, 0.20, fine ? 14 : 8, x, H * 0.155, tail + 0.04, 'x'));
-    bucket.dark.push(cyl(0.045, 0.045, 0.13, fine ? 12 : 8, x, H * 0.155, tail + 0.10, 'x'));
+    const x = side * hw * (0.44 + k * 0.20);
+    bucket.chrome.push(cyl(0.058, 0.055, 0.16, fine ? 14 : 8, x, H * 0.175, tail + 0.05, 'x'));
+    bucket.dark.push(cyl(0.042, 0.042, 0.11, fine ? 12 : 8, x, H * 0.175, tail + 0.10, 'x'));
   }
   /* Wing / spoiler. Heights come off the *actual* loft rather than a fraction
      of the car's height: guessing left the ducktail floating a hand's width
