@@ -159,6 +159,33 @@ GLBs we ship.
   flat untextured material, so it takes the fleet's paint tinting cleanly.
 * Invented marque; no badges.
 
+### Generic USA/EU Station wagon — used for `rs6`, `zivi_touring`, `zivi_avant`, `kombi`
+
+The estate the fictional-marque catalogue could not supply.
+
+* Author: **Anserkon** — <https://sketchfab.com/anserkon>
+* Source: <https://sketchfab.com/3d-models/generic-usaeu-station-wagon-c14f271c9d414b8e8d25e7cec3bb44f5>
+* Mirror used: <https://huggingface.co/datasets/allenai/objaverse/resolve/main/glbs/000-133/c14f271c9d414b8e8d25e7cec3bb44f5.glb>
+* Licence: **CC BY 4.0**, from the file's own `asset.extras`:
+  > `"license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"`
+  > `"author": "Anserkon (https://sketchfab.com/anserkon)"`
+* Required credit:
+  > This work is based on "Generic USA/EU Station wagon"
+  > (https://sketchfab.com/3d-models/generic-usaeu-station-wagon-c14f271c9d414b8e8d25e7cec3bb44f5)
+  > by Anserkon (https://sketchfab.com/anserkon) licensed under CC-BY-4.0
+  > (http://creativecommons.org/licenses/by/4.0/)
+* Shipped as `src/assets/models/car-wagon-eu.glb` (149 kB, 18.5 k triangles).
+* **What we changed:** its materials were named `.001`, `.002`, `material`,
+  `Material` and its node names were Cyrillic, so `dev/rename-glb.mjs` renamed
+  them offline before optimisation — every fitting decision keys off names, and
+  encoding mojibake in a recipe works until somebody opens the file. Then
+  `dev/optimise-model.sh`, 677 kB → 149 kB. At load time the modeller's rear
+  plate quad is dropped and the wheels are measured but not drawn.
+* Generic by title and by design; no marque, no badges.
+* Anserkon was identified in the earlier search as one of the best-fitting
+  authors available and written off as unreachable because no mirror existed.
+  Objaverse is that mirror.
+
 ### Provenance note
 
 Both were checked for signs of being re-uploaded rips of commercial game
@@ -237,7 +264,14 @@ useful thing to know when the fleet next needs extending.
 | Blender BMW27 (Mike Pan) | CC BY-SA | Rejected: copyleft, badged, and a render scene rather than a game asset. |
 | Poly Haven, ambientCG | CC0 | No vehicles. |
 
-**Gaps that remain.** A **modern European estate** is the one body style still
-missing: the only well-licensed, trademark-free estates found are 1980s American
-station wagons, whose wheelbase-to-length ratio is far enough from the rig's
-that scaling on the wheelbase overshoots the length by 15%.
+**Gaps that remain.** None for the cars. Every vehicle in `CARS` is now on a
+licensed model; only the articulated lorry is still procedural.
+
+The estate was the last gap and the hardest. Daniel Zhabotinsky has exactly the
+right one — *Shvan 92 Traveller* — but his catalogue is 133 models of which
+only 47 are in the December 2022 Objaverse snapshot, and the Traveller is not
+one of them; nor is *Urban '10 Cop Enforcer*. Both were uploaded later. His only
+mirrored estates are 1980s American station wagons, whose wheelbase is short
+enough relative to their length that scaling on the wheelbase overshoots a
+modern estate by 15%, and whose styling would not sit next to a modern coupe.
+Anserkon's *Generic USA/EU Station wagon* is mirrored, modern, and fits.

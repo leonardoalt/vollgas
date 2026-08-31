@@ -41,6 +41,7 @@ import urlSedan10 from './assets/models/car-sedan10.glb';
 import urlCoupe07 from './assets/models/car-coupe07.glb';
 import urlHatch11 from './assets/models/car-hatch11.glb';
 import urlLcv07 from './assets/models/car-lcv07.glb';
+import urlWagonEu from './assets/models/car-wagon-eu.glb';
 
 
 /* ------------------------------------------------------------- the sources */
@@ -51,6 +52,7 @@ const FILES = {
   coupe07: urlCoupe07,
   hatch11: urlHatch11,
   lcv07: urlLcv07,
+  wagonEu: urlWagonEu,
 };
 
 /**
@@ -139,6 +141,33 @@ RECIPE.amg = {
   glassMat: [/^glass$/i],
 };
 
+/* The estate.
+
+   The one body style the fictional-marque catalogue could not supply: its only
+   trademark-free estates are 1980s American station wagons, whose wheelbase is
+   so short relative to their length that scaling on the wheelbase overshoots a
+   modern estate by 15%. Anserkon's is a modern European one, and reachable
+   through the same mirror.
+
+   It arrives with its materials called `.001`, `.002`, `material`, `Material`
+   and its node names in Cyrillic that survives neither a terminal nor a regex
+   typed by hand, so `dev/rename-glb.mjs` renames them once, offline, and the
+   renamed file is what is committed. Encoding mojibake in a recipe would work
+   until somebody opened the file. */
+RECIPE.rs6 = {
+  ...ZHAB,
+  file: 'wagonEu',
+  wheelMat: [],
+  wheelNode: [/^wheels_[abc]$/i],
+  paintMat: [/^wagon_paint$/i],
+  glassMat: [/^wagon_glass$/i],
+  strip: [/^wagon_plate$/i],
+  stripNode: [],
+};
+RECIPE.zivi_touring = { ...RECIPE.rs6 };
+RECIPE.zivi_avant = { ...RECIPE.rs6 };
+RECIPE.kombi = { ...RECIPE.rs6 };
+
 /* The Zivilstreifen.
 
    An unmarked patrol car is an ordinary saloon or estate — that is the whole
@@ -192,7 +221,6 @@ RECIPE.van = { ...RECIPE.messwagen };
    single 16-metre-wide mesh named after whichever car happened to be first. */
 const PACK = {
   taxi: 'Sedan_Body_Body_0',
-  kombi: 'Wagon_Body_Body_0',
 };
 for (const [id, node] of Object.entries(PACK)) {
   RECIPE[id] = {

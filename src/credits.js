@@ -63,6 +63,14 @@ export const ATTRIBUTIONS = [
     licence: 'CC BY 4.0',
     licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
   },
+  {
+    title: 'Generic USA/EU Station wagon',
+    author: 'Anserkon',
+    authorUrl: 'https://sketchfab.com/anserkon',
+    source: 'https://sketchfab.com/3d-models/generic-usaeu-station-wagon-c14f271c9d414b8e8d25e7cec3bb44f5',
+    licence: 'CC BY 4.0',
+    licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
+  },
 ];
 
 const CSS = 'margin:12px 0 0;padding-top:9px;'
