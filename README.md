@@ -162,6 +162,25 @@ src/
 dev/             headless harnesses (see below)
 ```
 
+### Cars on the menu
+
+The pictures in the menu are **live renders of the same models you drive**, not
+photographs — a turntable of the selected car plus stills for the list, drawn on
+a small second WebGL context (`showroom.js`) and parked while you are driving.
+That avoids the licensing question entirely: the geometry is ours and none of
+the cars carries a real marque's badge.
+
+### Endings
+
+All three ways a run can end share one flow: let the situation come to rest,
+hold on a full-screen card so you can see *why*, then show the numbers.
+
+| | card | what happens |
+|---|---|---|
+| ProViDa stop | ERWISCHT / BUSTED | you and the patrol car both pull onto the shoulder |
+| Eight points | FÜHRERSCHEIN WEG / LICENCE GONE | a patrol car closes in and stops you |
+| 100 % damage | SCHROTT / WRECKED | you coast to a halt; no police involved |
+
 ### Time trial
 
 Best time is stored per car in `localStorage` and shown live in the HUD, so the
@@ -216,6 +235,11 @@ node dev/finish.mjs  <url> out.png [de|en]         # finish line + penalty notic
 node dev/audio-check.mjs <url>                     # engine really goes silent on pause/results
 node dev/lang-check.mjs  <url> <outdir>            # both languages, flags untranslated nodes
 node dev/alert-check.mjs <url> out.png [de|en]     # alert burst: coalescing + placement
+node dev/arrest-check.mjs <url> out.png            # tunnel warnings, escape balance, pull-over
+node dev/flash-check.mjs  <url> out.png            # Lichthupe: visible, persists, then stops
+node dev/busted-check.mjs <url> <outdir> [de|en]   # all three endings show their card
+node dev/best-check.mjs   out.png                  # best-time persistence
+node dev/start-check.mjs  out.png                  # you start on the slip road
 ```
 
 `dev/cars.html?cars=turbo,m5&mode=side|front|rear|front34|rear34|top` is a car

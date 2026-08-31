@@ -156,6 +156,28 @@ canvas#scene{position:absolute;inset:0;width:100%;height:100%;display:block}
 }
 @media (prefers-reduced-motion:reduce){#countdown span{animation:none}}
 
+/* The run-is-over card. Deliberately theatrical: you want a beat between the
+   moment it goes wrong and the numbers. */
+#busted{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;
+  opacity:0;transition:opacity .4s ease-out;--bw:#ff4438}
+#busted.on{opacity:1}
+#busted .bg{position:absolute;inset:0;
+  background:radial-gradient(ellipse 90% 70% at 50% 50%,rgba(10,5,5,.52) 0%,rgba(4,2,2,.93) 88%)}
+#busted .word{position:relative;text-align:center;padding:0 24px}
+#busted h2{font-size:clamp(52px,10.5vw,148px);font-weight:700;letter-spacing:.05em;line-height:.94;
+  color:var(--bw);text-wrap:balance;
+  text-shadow:0 0 60px rgba(0,0,0,.9),0 4px 0 rgba(0,0,0,.4);
+  animation:bustedIn .62s cubic-bezier(.16,.9,.24,1) both}
+#busted p{margin-top:16px;font-size:clamp(12px,1.6vw,18px);letter-spacing:.22em;
+  text-transform:uppercase;color:rgba(255,255,255,.74);
+  animation:bustedSub .6s .2s ease-out both}
+#busted.k-arrest{--bw:#ff4438}
+#busted.k-points{--bw:#ffc23a}
+#busted.k-wreck{--bw:#a8bccd}
+@keyframes bustedIn{from{opacity:0;transform:scale(1.4)}60%{opacity:1}to{opacity:1;transform:scale(1)}}
+@keyframes bustedSub{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){#busted h2,#busted p{animation:none}}
+
 #flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
 #flash.go{animation:blitz .42s ease-out}
 @keyframes blitz{0%{opacity:0}6%{opacity:.95}18%{opacity:.15}30%{opacity:.8}100%{opacity:0}}
@@ -178,7 +200,7 @@ canvas#scene{position:absolute;inset:0;width:100%;height:100%;display:block}
 #car-select{display:grid;grid-template-columns:1.15fr 1fr;gap:22px;align-items:start}
 #car-list{display:flex;flex-direction:column;gap:9px}
 .car-card{
-  display:grid;grid-template-columns:58px 1fr auto;gap:14px;align-items:center;
+  display:grid;grid-template-columns:116px 1fr auto;gap:14px;align-items:center;
   background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.1);
   border-left:4px solid transparent;border-radius:7px;padding:11px 15px;
   cursor:pointer;transition:background .13s,border-color .13s,transform .13s;
@@ -186,14 +208,27 @@ canvas#scene{position:absolute;inset:0;width:100%;height:100%;display:block}
 }
 .car-card:hover{background:rgba(255,255,255,.085);transform:translateX(3px)}
 .car-card.sel{background:rgba(0,74,153,.34);border-color:rgba(120,190,255,.5);border-left-color:#5fb2ff}
-.car-swatch{width:52px;height:26px;border-radius:4px 8px 4px 3px;box-shadow:inset 0 -6px 10px rgba(0,0,0,.45),0 1px 4px rgba(0,0,0,.5)}
+/* Rendered three-quarter stills of the actual models, not photographs. */
+.car-thumb{width:116px;height:58px;object-fit:contain;display:block;
+  filter:drop-shadow(0 4px 8px rgba(0,0,0,.55))}
+.car-swatch{width:52px;height:26px;border-radius:4px 8px 4px 3px;
+  box-shadow:inset 0 -6px 10px rgba(0,0,0,.45),0 1px 4px rgba(0,0,0,.5)}
 .car-name{font-size:18px;font-weight:700;line-height:1.1}
 .car-marque{font-size:11px;letter-spacing:.14em;opacity:.55;text-transform:uppercase;margin-top:2px}
 .car-vmax{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
 .car-vmax small{font-size:10px;opacity:.5;display:block;letter-spacing:.1em;text-align:right}
 
-#car-detail{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:18px 20px}
-#car-detail-name{font-size:26px;font-weight:700;line-height:1.05}
+#car-detail{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:0 20px 18px}
+/* live turntable of the selected car */
+#car-stage{position:relative;margin:0 -20px 12px;height:190px;border-radius:7px 7px 0 0;
+  overflow:hidden;
+  background:
+    radial-gradient(ellipse 65% 42% at 50% 96%,rgba(0,0,0,.55),transparent 70%),
+    radial-gradient(ellipse 120% 90% at 50% 8%,#20344c 0%,#111a25 60%,#0c1219 100%)}
+#car-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#car-stage:after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(140,190,255,.35),transparent)}
+#car-detail-name{font-size:26px;font-weight:700;line-height:1.05;padding-top:2px}
 #car-detail-sub{font-size:11.5px;letter-spacing:.15em;opacity:.55;text-transform:uppercase;margin:4px 0 16px}
 #car-stats{display:flex;flex-direction:column;gap:9px}
 .stat{display:grid;grid-template-columns:104px 1fr 54px;gap:10px;align-items:center;font-size:12px}
@@ -253,6 +288,9 @@ button:active{transform:translateY(0)}
 
 @media (max-width:900px){
   #car-select{grid-template-columns:1fr}
+  #car-stage{height:150px}
+  .car-card{grid-template-columns:88px 1fr auto}
+  .car-thumb{width:88px;height:44px}
   #briefing{grid-template-columns:1fr}
   #menu-foot{grid-template-columns:1fr}
   #hud-rear{display:none}

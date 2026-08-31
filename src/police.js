@@ -20,7 +20,7 @@
    ========================================================================== */
 import { LENGTH, LANES, GEO, SECTIONS, limitAt, sectionAt, sample, toWorld } from './track.js';
 import { buildCar, CARS, randomPlate } from './carFactory.js';
-import { TrafficCar, FLASH_DUR } from './vehicles.js';
+import { TrafficCar } from './vehicles.js';
 
 const KMH = 3.6;
 
@@ -103,7 +103,7 @@ export class Enforcement {
     this.cameras = [];          // parked Messfahrzeuge
     this.events = [];           // things the HUD should shout about
     this.activeCop = null;
-    this.flashT = 0;
+    this.camFlashT = 0;     // Blitzer flash effect, unrelated to headlight flashing
   }
 
   /* --------------------------------------------------------------- setup */
@@ -172,7 +172,7 @@ export class Enforcement {
 
   /* ---------------------------------------------------------------- logic */
   update(dt, player, traffic, ctx) {
-    this.flashT = Math.max(0, this.flashT - dt);
+    this.camFlashT = Math.max(0, this.camFlashT - dt);
     this._checkRivals(traffic);
     const lim = limitAt(player.s);
     const pKmh = player.v * KMH;
@@ -188,7 +188,7 @@ export class Enforcement {
           cam.fired = true;
           const p = penaltyFor(pKmh - camLim);
           this._ticket(player, p, 'blitzer', sectionAt(cam.s).name, camLim, pKmh);
-          this.flashT = 0.45;
+          this.camFlashT = 0.45;
           this.events.push({ type: 'flash', penalty: p, limit: camLim, speed: pKmh });
         } else {
           cam.fired = true;
@@ -390,7 +390,8 @@ export class Enforcement {
     // nobody coming the other way right now — keep the warning pending
     if (!flashers.length) return;
     threat.obj.warned = true;
-    for (const f of flashers) f.flashT = FLASH_DUR;
+    // they keep flashing until you are past them, not for a fixed moment
+    for (const f of flashers) { f.warnFlash = true; f.flashPhase = 0; }
     this.events.push({ type: 'lichthupe', threat });
   }
 
@@ -425,6 +426,32 @@ export class Enforcement {
       src, place, limit: Math.round(limit), speed: Math.round(speed),
       excess: p.excess, fine: p.fine, points: p.points, ban: p.ban,
     });
+  }
+
+  /**
+   * Summon a stop. Used when the run ends for a reason the police would act on
+   * (eight points) but no patrol car happens to be on you — one closes in,
+   * lights on, and the normal pull-over plays out.
+   */
+  forceStop(player) {
+    if (this.cops.some(z => z.state === COP_STATE.STOP)) return;
+    let best = null, bd = Infinity;
+    for (const z of this.cops) {
+      const d = Math.abs(player.s - z.s);
+      if (d < bd) { bd = d; best = z; }
+    }
+    if (!best) return;
+    if (bd > 150) {
+      best.s = player.s - 52;
+      best.u = player.u;
+      best.v = Math.max(player.v, 30);
+      best.psi = 0;
+    }
+    best.state = COP_STATE.STOP;
+    best.pursueClose = 0;
+    best.setLights(true);
+    this.activeCop = best;
+    player.stoppedT = 999;
   }
 
   drainEvents() { const e = this.events; this.events = []; return e; }

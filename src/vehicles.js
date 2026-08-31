@@ -249,7 +249,9 @@ export class TrafficCar extends Vehicle {
     this.cruise = 30;
     this.react = 0.25 + Math.random() * 0.55;
     this.courtesy = Math.random();          // will they move over for you?
-    this.flashT = 0;
+    this.flashHold = 0;                     // seconds of flashing left
+    this.flashPhase = 0;                    // continuous, drives the pulse pattern
+    this.warnFlash = false;                 // warning you about something ahead
     this.flashOn = false;
   }
 
@@ -290,12 +292,20 @@ export class TrafficCar extends Vehicle {
     const behind = ctx.fastBehind(this);
     if (behind && this.lane === 0) {
       if (this.courtesy > 0.14 && ctx.laneClear(this, 1, -18, 38)) this.lane = 1;
-      if (this.flashT <= 0 && behind < 90) this.flashT = FLASH_DUR;
+      if (this.flashHold <= 0 && !this.warnFlash && behind < 90) this.flashHold = FLASH_DUR;
     }
-    this.flashT = Math.max(0, this.flashT - dt);
-    // on/off pattern across the window, so it reads as flicked headlights
-    this.flashOn = this.flashT > 0 &&
-      Math.floor((FLASH_DUR - this.flashT) / FLASH_PULSE) % 2 === 0;
+    /* Someone warning you about a camera keeps flashing until you have actually
+       gone past them — a driver does not flick their lights once and give up
+       while you are still half a kilometre away. */
+    if (this.warnFlash) {
+      const ps = ctx.playerS;
+      if (ps === undefined || this.s <= ps + 4) { this.warnFlash = false; this.flashHold = 0; }
+      else this.flashHold = 0.25;
+    }
+    this.flashHold = Math.max(0, this.flashHold - dt);
+    if (this.flashHold > 0) this.flashPhase += dt; else this.flashPhase = 0;
+    // on/off pattern, so it reads as flicked headlights rather than main beam
+    this.flashOn = this.flashHold > 0 && Math.floor(this.flashPhase / FLASH_PULSE) % 2 === 0;
 
     if (this.v < want - 0.4) { thr = 1; }
     else if (this.v > want + 0.4) { thr = 0; brake = Math.max(brake, Math.min(0.55, (this.v - want) * 0.09)); }
@@ -459,6 +469,7 @@ export class Traffic {
     t.cruise = t.isTruck ? 22.5 + this.rand() * 2 : (30 + this.rand() * 16);
     t.v = t.cruise;
     t.psi = 0;
+    t.warnFlash = false; t.flashHold = 0; t.flashPhase = 0; t.flashOn = false;
   }
 
   /* ----------------------------------------------------- spatial queries */
@@ -499,6 +510,7 @@ export class Traffic {
 
   /* ------------------------------------------------------------- stepping */
   update(dt, player, ctx) {
+    this.playerS = player.s;               // so drivers know when you are past
     for (const t of this.same) {
       t.drive(dt, ctx);
       if (t.s < player.s - 260 || t.s > player.s + 2100) this._placeSame(t, player.s, false);

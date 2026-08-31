@@ -503,14 +503,13 @@ function frontEnd(spec, dims, bucket) {
     case 'star': {   // wide diamond grille with a centre badge
       bucket.grille.push(box(hw * 1.30, H * 0.24, 0.10, 0, H * 0.43, zf - 0.03));
       bucket.chrome.push(box(hw * 1.34, H * 0.265, 0.04, 0, H * 0.43, zf - 0.055));
+      /* A plain chrome ring, deliberately empty. An earlier version put a
+         three-pointed star in here, which is somebody's trademark — none of
+         these cars carry a real marque's badge. */
       const badge = new THREE.TorusGeometry(H * 0.062, H * 0.012, 6, 18);
       badge.translate(0, H * 0.43, zf - 0.01); bucket.chrome.push(badge);
-      for (let i = 0; i < 3; i++) {
-        const sp = new THREE.BoxGeometry(H * 0.010, H * 0.115, 0.02);
-        sp.rotateZ(i * Math.PI * 2 / 3);
-        sp.translate(0, H * 0.43, zf - 0.012);
-        bucket.chrome.push(sp);
-      }
+      const bar = new THREE.BoxGeometry(H * 0.085, H * 0.011, 0.02);
+      bar.translate(0, H * 0.43, zf - 0.012); bucket.chrome.push(bar);
       for (const s of [-1, 1]) {
         bucket.light.push(box(hw * 0.46, H * 0.075, 0.08, s * hw * 0.60, y, zf - 0.05));
         bucket.dark.push(box(hw * 0.48, H * 0.105, 0.09, s * hw * 0.60, y, zf - 0.08));
@@ -641,7 +640,7 @@ export const CARS = {
 
     blurbEn: 'Rear engine, all-wheel drive, 650 hp. Still planted in the left-hand lane at 300, and utterly unbothered by oncoming traffic. The most expensive way there is to collect points in Flensburg.',  },
   m5: {
-    name: 'Bayern M-Sport M5 CS', marque: 'Bayerische Motoren', arch: 'sedan',
+    name: 'Bayern M-Sport M5 CS', marque: 'Bayern Automobil', arch: 'sedan',
     dims: D(5.00, 1.90, 1.47, 0.155),
     axleF: 1.55, axleR: -1.43, trackF: 1.63, trackR: 1.65,
     wheelRF: 0.355, wheelRR: 0.365, wheelWF: 0.275, wheelWR: 0.305,
@@ -655,7 +654,7 @@ export const CARS = {
 
     blurbEn: 'Four doors, all-wheel drive, twin-turbo V8. The classic of the fast lane: does 300 like it is 130, with room for the luggage of four people who did not want to be here.',  },
   rs6: {
-    name: 'Ingolstadt RS-6 Avant', marque: 'Vier Ringe', arch: 'wagon',
+    name: 'Ingolstadt RS-6 Avant', marque: 'Ingolstadt Werke', arch: 'wagon',
     dims: D(5.02, 1.95, 1.47, 0.16),
     axleF: 1.53, axleR: -1.40, trackF: 1.67, trackR: 1.66,
     wheelRF: 0.360, wheelRR: 0.360, wheelWF: 0.285, wheelWR: 0.285,
@@ -669,7 +668,7 @@ export const CARS = {
 
     blurbEn: 'The estate that wins everything. Quattro means full throttle in the rain, over loose chippings and through the roadworks. The price is 2.1 tonnes you can feel in every corner.',  },
   amg: {
-    name: 'Affalterbach AMG 63 S', marque: 'Stern aus Stuttgart', arch: 'coupe4',
+    name: 'Affalterbach AMG 63 S', marque: 'Affalterbach Manufaktur', arch: 'coupe4',
     dims: D(4.94, 1.90, 1.43, 0.15),
     axleF: 1.52, axleR: -1.34, trackF: 1.62, trackR: 1.64,
     wheelRF: 0.350, wheelRR: 0.365, wheelWF: 0.265, wheelWR: 0.305,

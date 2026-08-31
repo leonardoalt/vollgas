@@ -17,6 +17,7 @@ export class Hud {
       alerts: $('hud-alerts'), provida: $('hud-provida'), pvFill: document.querySelector('.pv-fill'),
       pvSub: document.querySelector('.pv-sub'), pvHead: document.querySelector('.pv-head'),
       flash: $('flash'), vignette: $('vignette'), countdown: $('countdown'),
+      busted: $('busted'),
     };
     this.tacho = $('tacho');
     this.tctx = this.tacho.getContext('2d');
@@ -78,6 +79,21 @@ export class Hud {
     span.style.animation = 'none';
     void span.offsetWidth;
     span.style.animation = '';
+  }
+
+  /** The full-screen "your run is over" card. kind: arrest | points | wreck */
+  busted(kind) {
+    const el = this.el.busted;
+    el.className = 'k-' + kind;
+    el.querySelector('h2').textContent = t(`busted.${kind}`);
+    el.querySelector('p').textContent = t(`busted.${kind}.sub`);
+    void el.offsetWidth;                    // restart the animations
+    el.classList.add('on');
+  }
+  clearBusted() {
+    const el = this.el.busted;
+    el.classList.remove('on');
+    el.classList.add('hidden');
   }
 
   blitzFlash() { const f = this.el.flash; f.classList.remove('go'); void f.offsetWidth; f.classList.add('go'); }

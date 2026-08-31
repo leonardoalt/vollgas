@@ -9,6 +9,7 @@ import {
 } from './vehicles.js';
 import { Enforcement, COP_STATE } from './police.js';
 import { Hud } from './hud.js';
+import { Showroom } from './showroom.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { LENGTH, LANES, toWorld, rng, STAGE_KM, entryRamp } from './track.js';
@@ -84,6 +85,8 @@ export class Game {
     GLOBALS.km = STAGE_KM;
     document.documentElement.lang = lang;
     applyDom();
+    // pictures of the cars: live renders of the very models you drive
+    this.showroom = new Showroom($('car-canvas'));
     const langBtn = $('lang-btn');
     if (langBtn) langBtn.onclick = () => { toggleLang(); this.buildMenu(); };
     this.buildMenu();
@@ -181,8 +184,12 @@ export class Game {
       const spec = CARS[id];
       const card = document.createElement('div');
       card.className = 'car-card' + (i === this.selected ? ' sel' : '');
-      card.innerHTML = `
-        <div class="car-swatch" style="background:#${spec.paints[0].c.toString(16).padStart(6, '0')}"></div>
+      const thumb = this.showroom && this.showroom.ok
+        ? this.showroom.thumbnail(id, spec.paints[0].c) : null;
+      const pic = thumb
+        ? `<img class="car-thumb" src="${thumb}" alt="">`
+        : `<div class="car-swatch" style="background:#${spec.paints[0].c.toString(16).padStart(6, '0')}"></div>`;
+      card.innerHTML = `${pic}
         <div><div class="car-name">${spec.name}</div><div class="car-marque">${spec.marque}</div></div>
         <div class="car-vmax">${spec.perf.vmax}<small>km/h</small></div>`;
       card.onclick = () => { this.selected = i; this.paintIdx = 0; this.buildMenu(); };
@@ -190,6 +197,7 @@ export class Game {
     });
     const id = PLAYER_CARS[this.selected];
     const spec = CARS[id];
+    if (this.showroom) this.showroom.setCar(id, spec.paints[this.paintIdx % spec.paints.length].c);
     $('car-detail-name').textContent = spec.name;
     $('car-detail-sub').textContent =
       `${spec.marque} · ${t(spec.perf.awd ? 'car.awd' : 'car.rwd')} · ${t('car.gears', { n: spec.perf.gears })}`;
@@ -243,10 +251,9 @@ export class Game {
 
     this.raceTime = 0;
     this.countdown = 3.999;
-    this.arrestT = 0;
-    this.endingT = 0;
-    this.endingReason = null;
+    this.ending = null;
     this._warned6 = false;
+    this.hud.clearBusted();
     this.best = this.loadBest(id);
     this.hud.countdown(null);
     this.finished = false;
@@ -325,6 +332,40 @@ export class Game {
     this.scene.fog.far = L.fogFar * (1 - m) + 340 * m;
     this.scene.fog.color.copy(L.fogCol).lerp(new THREE.Color(0x14161a), m);
     this.renderer.toneMappingExposure = 1.06 + m * 0.5;
+  }
+
+  /* --------------------------------------------------------------- endings
+     All three ways a run can end share one flow: let the situation come to
+     rest, hold on a full-screen card so the player sees *why*, then show the
+     numbers. Snapping straight to a results table reads like a bug. */
+  beginEnding(kind) {
+    if (this.ending) return;
+    this.ending = { kind, t: 0, shown: false, showT: 0 };
+    this.camMode = 4;                        // pull back so you can see it
+    if (kind !== 'wreck') this.enf.forceStop(this.player);
+  }
+
+  stepEnding(dt) {
+    const e = this.ending, p = this.player;
+    e.t += dt;
+    const cop = this.enf.activeCop;
+    const settled = e.kind === 'wreck'
+      ? p.v < 2.0
+      : (p.pulledOver && (!cop || cop.v < 0.8));
+    if (!e.shown && (settled || e.t > 12)) {
+      e.shown = true;
+      this.hud.busted(e.kind);
+      this.audio.hush();
+    }
+    if (e.shown) {
+      e.showT += dt;
+      if (e.showT > 2.9) {
+        const reason = { arrest: 'dnf.stopped', points: 'dnf.points', wreck: 'dnf.wreck' }[e.kind];
+        this.outOfRace(t(reason));
+        return true;
+      }
+    }
+    return false;
   }
 
   /* ------------------------------------------------------------ best times */
@@ -456,8 +497,7 @@ export class Game {
           break;
         case 'stopped':
           this.hud.alert(t('a.stopped'), t('a.stopped.sub'), 'bad', 8, 'pursuit');
-          this.arrestT = 9.5;               // let the stop play out, then end it
-          this.camMode = 4;                 // pull back so you can see it happen
+          this.beginEnding('arrest');
           break;
       }
     }
@@ -560,33 +600,21 @@ export class Game {
     });
 
     // ---- end conditions
-    if (this.arrestT > 0) {
-      this.arrestT -= dt;
-      const cop = this.enf.activeCop;
-      const bothStopped = p.pulledOver && (!cop || cop.v < 0.6);
-      if (this.arrestT <= 0 || (bothStopped && this.arrestT < 7.0)) {
-        this.outOfRace(t('dnf.stopped'));
-        return;
+    if (this.ending) {
+      if (this.stepEnding(dt)) return;
+    } else {
+      // one warning before the licence goes
+      if (p.points >= 6 && p.points < 8 && !this._warned6) {
+        this._warned6 = true;
+        this.hud.alert(t('a.points6'), t('a.points6.sub'), 'bad', 6, 'points');
       }
-    }
-    // a pending ending: show why, then roll the results
-    if (this.endingT > 0) {
-      this.endingT -= dt;
-      if (this.endingT <= 0) { this.outOfRace(this.endingReason); return; }
-    }
-    // one warning before the licence goes
-    if (p.points >= 6 && p.points < 8 && !this._warned6) {
-      this._warned6 = true;
-      this.hud.alert(t('a.points6'), t('a.points6.sub'), 'bad', 6, 'points');
-    }
-    if (p.s >= LENGTH - 8) this.finish();
-    else if (this.endingT <= 0 && this.arrestT <= 0) {
-      if (p.damage >= 100 && p.v < 2) {
-        this.hud.alert(t('a.wrecked'), t('a.wrecked.sub'), 'bad', 6, 'end');
-        this.endingT = 3.0; this.endingReason = t('dnf.wreck');
+      if (p.s >= LENGTH - 8) this.finish();
+      else if (p.damage >= 100 && p.v < 6) {
+        this.hud.alert(t('a.wrecked'), t('a.wrecked.sub'), 'bad', 8, 'end');
+        this.beginEnding('wreck');
       } else if (p.points >= 8) {
-        this.hud.alert(t('a.revoked'), t('a.revoked.sub'), 'bad', 6, 'end');
-        this.endingT = 3.5; this.endingReason = t('dnf.points');
+        this.hud.alert(t('a.revoked'), t('a.revoked.sub'), 'bad', 8, 'end');
+        this.beginEnding('points');
       }
     }
   }
@@ -599,6 +627,10 @@ export class Game {
       last = now;
       const racing = this.state === 'race';
       if (racing) this.step(dt);
+      else if (this.showroom && this.showroom.ok && this.state === 'menu') {
+        const cv = $('car-canvas');
+        if (cv && cv.clientWidth > 0) this.showroom.render(dt, cv.clientWidth, cv.clientHeight);
+      }
       this.input.endFrame();
       // the mirror is a small strip; 30 Hz is indistinguishable and halves its cost
       this._mirrorTick = ((this._mirrorTick || 0) + 1) % 2;

@@ -144,7 +144,11 @@ const arrest = await page.evaluate(async () => {
       log.push(`${g.raceTime.toFixed(1)}s ${z.state} gap=${(p.s - z.s).toFixed(0)}m playerV=${Math.round(p.v * 3.6)}`);
     }
     // hold the frame while both cars sit on the shoulder, for the screenshot
-    if (z.state === COP_STATE.STOP && p.v < 2 && z.v < 2) { g.arrestT = 999; break; }
+    // hold the frame while both cars sit on the shoulder, for the screenshot
+    if (z.state === COP_STATE.STOP && p.v < 2 && z.v < 2) {
+      if (g.ending) g.ending.showT = -999;      // keep the card from advancing
+      break;
+    }
     if (g.state !== 'race') break;
   }
   delete g.input.update;
@@ -154,6 +158,9 @@ const arrest = await page.evaluate(async () => {
     copU: +z.u.toFixed(1), playerU: +p.u.toFixed(1), gap: Math.round(p.s - z.s),
     dnf: g.results && g.results.dnf, fines: p.fines, points: p.points,
     copStillThere: !!z.mesh.parent,
+    endingKind: g.ending && g.ending.kind,
+    bustedShown: document.getElementById('busted').classList.contains('on'),
+    bustedWord: (document.querySelector('#busted h2') || {}).textContent,
   };
 });
 console.log('arrest transitions:');
@@ -162,7 +169,11 @@ console.log('final:', JSON.stringify({ ...arrest, log: undefined }));
 await new Promise(r => setTimeout(r, 900));
 await page.screenshot({ path: out });            // both stopped on the shoulder
 // now let it finish and capture the time-trial result
-await page.evaluate(() => { const g = window.__game; g.arrestT = 0.01; g.step(1 / 40); });
+await page.evaluate(() => {
+  const g = window.__game;
+  if (g.ending) { g.ending.shown = true; g.ending.showT = 3.0; }
+  g.step(1 / 40);
+});
 await new Promise(r => setTimeout(r, 700));
 await page.screenshot({ path: out.replace('.png', '-results.png') });
 console.log(errs.length ? errs.slice(0, 5).join('\n') : 'no page errors');
