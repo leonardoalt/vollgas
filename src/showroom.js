@@ -93,6 +93,11 @@ export class Showroom {
    * A still, three-quarter front thumbnail as a data URL. Rendered once per
    * car and cached; used for the list on the left of the menu.
    */
+  /** A previously rendered thumbnail, or null — never renders. */
+  cachedThumb(id, paint, w = 232, h = 116) {
+    return this.thumbs.get(`${id}:${paint}:${w}x${h}`) || null;
+  }
+
   thumbnail(id, paint, w = 232, h = 116) {
     if (!this.ok) return null;
     const key = `${id}:${paint}:${w}x${h}`;

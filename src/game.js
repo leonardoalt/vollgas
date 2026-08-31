@@ -184,8 +184,10 @@ export class Game {
       const spec = CARS[id];
       const card = document.createElement('div');
       card.className = 'car-card' + (i === this.selected ? ' sel' : '');
+      // use a cached render if we have one; otherwise a swatch that gets
+      // swapped for the render a frame or two later (see scheduleThumbs)
       const thumb = this.showroom && this.showroom.ok
-        ? this.showroom.thumbnail(id, spec.paints[0].c) : null;
+        ? this.showroom.cachedThumb(id, spec.paints[0].c) : null;
       const pic = thumb
         ? `<img class="car-thumb" src="${thumb}" alt="">`
         : `<div class="car-swatch" style="background:#${spec.paints[0].c.toString(16).padStart(6, '0')}"></div>`;
@@ -214,6 +216,32 @@ export class Game {
       `<div class="stat"><span class="sl">${l}</span><span class="sb"><i style="width:${Math.max(4, Math.min(100, (v / max) * 100)).toFixed(0)}%"></i></span><span class="sv">${txt}</span></div>`
     ).join('');
     $('car-blurb').textContent = (lang === 'en' && spec.blurbEn) ? spec.blurbEn : spec.blurb;
+    this.scheduleThumbs();
+  }
+
+  /**
+   * Render the list thumbnails one per frame after the menu is already up.
+   * Doing all four before the loading screen clears cost about three seconds.
+   */
+  scheduleThumbs() {
+    if (!this.showroom || !this.showroom.ok || this._thumbJob) return;
+    let i = 0;
+    const step = () => {
+      if (i >= PLAYER_CARS.length) { this._thumbJob = false; return; }
+      const id = PLAYER_CARS[i];
+      const spec = CARS[id];
+      const url = this.showroom.thumbnail(id, spec.paints[0].c);
+      const card = document.querySelectorAll('#car-list .car-card')[i];
+      if (card && url && card.firstElementChild && !card.firstElementChild.matches('img')) {
+        const img = document.createElement('img');
+        img.className = 'car-thumb'; img.src = url; img.alt = '';
+        card.firstElementChild.replaceWith(img);
+      }
+      i++;
+      requestAnimationFrame(step);
+    };
+    this._thumbJob = true;
+    requestAnimationFrame(step);
   }
 
   /* ------------------------------------------------------------ the race */
