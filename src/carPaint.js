@@ -65,11 +65,11 @@ export function makeCarMaterials(envMap) {
      actually does, rather than whichever one happened to be drawn first
      punching a hole in the other. */
   MAT.glass = new THREE.MeshPhysicalMaterial({
-    color: 0x0a1017, metalness: 0.0, roughness: 0.028,
-    envMap, envMapIntensity: 1.55,
+    color: 0x1b2530, metalness: 0.0, roughness: 0.028,
+    envMap, envMapIntensity: 1.35,
     clearcoat: 1.0, clearcoatRoughness: 0.02,
-    ior: 1.52, reflectivity: 0.62,
-    transparent: true, opacity: 0.62, depthWrite: false,
+    ior: 1.52, reflectivity: 0.58,
+    transparent: true, opacity: 0.44, depthWrite: false,
   });
 
   MAT.dark = new THREE.MeshPhysicalMaterial({
@@ -78,6 +78,11 @@ export function makeCarMaterials(envMap) {
   });
   MAT.grille = new THREE.MeshStandardMaterial({
     color: 0x080a0c, metalness: 0.75, roughness: 0.38, envMap, envMapIntensity: 0.45,
+  });
+  /* Lamp reflector: bright metal, but matt enough that it reads as a reflector
+     bowl rather than a mirror. Full chrome under this sky goes to white. */
+  MAT.reflector = new THREE.MeshStandardMaterial({
+    color: 0x9aa3ac, metalness: 1.0, roughness: 0.34, envMap, envMapIntensity: 0.85,
   });
   MAT.chrome = new THREE.MeshStandardMaterial({
     color: 0xe2e6ea, metalness: 1.0, roughness: 0.075, envMap, envMapIntensity: 1.7,
@@ -144,10 +149,18 @@ export function makeCarMaterials(envMap) {
   });
 
   MAT.shadow = new THREE.MeshBasicMaterial({
-    map: contactShadow(), transparent: true, depthWrite: false, opacity: 0.8,
+    map: contactShadow(), transparent: true, depthWrite: false, opacity: 1.0,
   });
-  MAT.interior = new THREE.MeshStandardMaterial({ color: 0x101318, roughness: 0.88, metalness: 0.0 });
-  MAT.seat = new THREE.MeshStandardMaterial({ color: 0x191d23, roughness: 0.80, metalness: 0.02 });
+  /* The cabin used to read as a void: near-black materials with no environment
+     term, behind glass dark enough to hide them anyway. Giving the trim an
+     envMap and lifting it two stops means you can actually see seats in there,
+     which is the difference between a car and a shell. */
+  MAT.interior = new THREE.MeshStandardMaterial({
+    color: 0x2b3038, roughness: 0.85, metalness: 0.04, envMap, envMapIntensity: 0.55,
+  });
+  MAT.seat = new THREE.MeshStandardMaterial({
+    color: 0x3a4048, roughness: 0.76, metalness: 0.04, envMap, envMapIntensity: 0.6,
+  });
   MAT.liner = new THREE.MeshStandardMaterial({
     color: 0x0c0e10, roughness: 0.96, metalness: 0, side: THREE.DoubleSide,
   });

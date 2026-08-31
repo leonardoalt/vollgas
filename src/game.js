@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { buildWorld } from './world.js';
 import { initMaterials, CARS, PLAYER_CARS } from './carFactory.js';
 import { roadEnv } from './carEnv.js';
+import { createPostFX } from './postfx.js';
 import {
   Player, Traffic, resolveCollisions,
 } from './vehicles.js';
@@ -88,6 +89,12 @@ export class Game {
       fogCol: this.scene.fog.color.clone(),
     };
 
+    /* [car visuals] Bloom. Five small passes of our own rather than
+       EffectComposer, which would tone-map a second time on top of the scene
+       pass — see postfx.js. Returns null if the device cannot give us a float
+       target, in which case we just render straight to the canvas as before. */
+    this.post = createPostFX(renderer, innerWidth, innerHeight);
+
     addEventListener('resize', () => this.onResize());
     GLOBALS.km = STAGE_KM;
     document.documentElement.lang = lang;
@@ -110,6 +117,7 @@ export class Game {
     this.renderer.setSize(innerWidth, innerHeight, false);
     this.camera.aspect = innerWidth / innerHeight;
     this.camera.updateProjectionMatrix();
+    if (this.post) this.post.setSize(innerWidth, innerHeight);   // [car visuals]
     this.layoutMirror();
   }
 
@@ -713,7 +721,9 @@ export class Game {
       // the mirror is a small strip; 30 Hz is indistinguishable and halves its cost
       this._mirrorTick = ((this._mirrorTick || 0) + 1) % 2;
       if (racing && !this.paused && this._mirrorTick === 0) this.renderMirror();
-      this.renderer.render(this.scene, this.camera);
+      // [car visuals] bloom composite when available, plain render otherwise
+      if (this.post) this.post.render(this.scene, this.camera);
+      else this.renderer.render(this.scene, this.camera);
       if (racing) {
         this.renderer.autoClear = false;
         this.renderer.render(this.overlay, this.overlayCam);

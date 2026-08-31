@@ -148,7 +148,7 @@ function skyShade(x, y, z, out) {
   // haze band straight across the horizon: crisp, bright, and the whole point
   const band = 1 - sstep(0.0, 0.030, Math.abs(y));
   if (band > 0) {
-    const w = band * 0.55;
+    const w = band * 0.42;
     out[0] = out[0] * (1 - w) + 0.92 * w;
     out[1] = out[1] * (1 - w) + 0.95 * w;
     out[2] = out[2] * (1 - w) + 0.99 * w;

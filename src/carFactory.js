@@ -61,15 +61,37 @@ function section(st, pts, regs, sec) {
     const f = i / (nB - 1);
     push(-wBottom + 2 * wBottom * f, yFloor + 0.035 * (2 * f - 1) ** 2, REG.BODY);
   }
-  // 2 — right flank up to the beltline, bulging out over the sill
-  const sideAt = (t) => [
-    qbez(t, wBottom, wBody * 1.03, wBody),
-    qbez(t, yFloor, yFloor + (yBelt - yFloor) * 0.66, yBelt),
-  ];
-  for (let i = 1; i < nS; i++) { const [x, y] = sideAt(i / (nS - 1)); push(x, y, REG.BODY); }
+  /* 2 — right flank up to the beltline, with a shoulder crease.
+
+     Real sheet metal reaches its widest point at a feature line about three
+     quarters of the way up the flank and then tucks back in towards the
+     beltline, and that crease has a radius of a few millimetres. One bezier
+     from sill to beltline has no such line anywhere on it, which is precisely
+     why the old bodies read as soft. So: two curve segments meeting at the
+     crease, and the samples clustered around it, because a tight radius throws
+     a highlight that stays a line instead of smearing into a gradient. */
+  const CR = 0.74;                          // crease height, fraction of flank
+  const flank = yBelt - yFloor;
+  const yCr = yFloor + flank * CR;
+  const wBelt = wBody * 0.972;
+  const sideAt = (t) => {
+    if (t <= CR) {
+      const u = t / CR;
+      return [qbez(u, wBottom, wBody * 1.035, wBody),
+        qbez(u, yFloor, yFloor + flank * CR * 0.62, yCr)];
+    }
+    const u = (t - CR) / (1 - CR);
+    return [qbez(u, wBody, wBody * 1.001, wBelt),
+      qbez(u, yCr, yCr + flank * (1 - CR) * 0.42, yBelt)];
+  };
+  // monotone reparameterisation that packs samples towards the crease
+  const clump = (f) => (f <= CR
+    ? CR - CR * Math.pow(1 - f / CR, 1.55)
+    : CR + (1 - CR) * Math.pow((f - CR) / (1 - CR), 1.55));
+  for (let i = 1; i < nS; i++) { const [x, y] = sideAt(clump(i / (nS - 1))); push(x, y, REG.BODY); }
   // 3 — right greenhouse (tumblehome). Degenerates when there is no cabin.
   const ghAt = (t) => [
-    qbez(t, wBody, wBody * 0.995, wRoof),
+    qbez(t, wBelt, wBelt * 0.995, wRoof),
     qbez(t, yBelt, yBelt + (yRoof - yBelt) * 0.58, yRoof),
   ];
   for (let i = 1; i < nG; i++) { const [x, y] = ghAt(i / (nG - 1)); push(x, y, REG.SIDE); }
@@ -83,7 +105,7 @@ function section(st, pts, regs, sec) {
   // 5 — left greenhouse, mirrored back down to the beltline
   for (let i = nG - 2; i >= 0; i--) { const [x, y] = ghAt(i / (nG - 1)); push(-x, y, REG.SIDE); }
   // 6 — left flank back down to the floor (last point closes onto floor[0])
-  for (let i = nS - 2; i >= 1; i--) { const [x, y] = sideAt(i / (nS - 1)); push(-x, y, REG.BODY); }
+  for (let i = nS - 2; i >= 1; i--) { const [x, y] = sideAt(clump(i / (nS - 1))); push(-x, y, REG.BODY); }
   return pts.length / 2;
 }
 
@@ -589,7 +611,10 @@ function frontEnd(spec, dims, bucket, tier) {
      of what makes a car read as a car at four hundred metres. */
   const lamp = (x, w, h, ry = 0) => {
     bucket.dark.push(box(w * 1.16, h * 1.42, 0.10, x, y, zf - 0.085, 0, ry));
-    if (fine) bucket.chrome.push(box(w * 0.99, h * 1.00, 0.045, x, y, zf - 0.055, 0, ry));
+    /* The reflector has to stay *inside* the lens. At w*0.99 it poked out past
+       the dark cover glass and, being chrome under a bright sky, read as a
+       white slab bolted to the nose. */
+    if (fine) bucket.reflector.push(box(w * 0.80, h * 0.66, 0.035, x, y, zf - 0.072, 0, ry));
     bucket.light.push(box(w, h, 0.05, x, y, zf - 0.028, 0, ry));
     // two small projector barrels inside, so the unit has something in it
     if (fine) {
@@ -655,10 +680,15 @@ function frontEnd(spec, dims, bucket, tier) {
     case 'roundlamp': {  // no radiator grille at all — four round lamps
       for (const s of [-1, 1]) {
         const cx = s * hw * 0.645;
-        const bowl = new THREE.SphereGeometry(H * 0.098, fine ? 18 : 12, 9);
-        bowl.scale(1, 0.94, 0.62); bowl.rotateX(0.34);
-        bowl.translate(cx, y, zf - 0.315);
-        bucket.dark.push(bowl);
+        /* The pod is body colour, not black. On a rear-engined fastback the
+           round lamps sit up on the crowns of the front wings, so from the
+           cockpit you are supposed to see two humps out there — but they have
+           to be painted humps, not two dark domes surfacing through the
+           bonnet, which is what a black housing looked like. */
+        const bowl = new THREE.SphereGeometry(H * 0.101, fine ? 18 : 12, 9);
+        bowl.scale(1, 0.86, 0.72); bowl.rotateX(0.34);
+        bowl.translate(cx, y - H * 0.014, zf - 0.30);
+        bucket.paint.push(bowl);
         const l = new THREE.SphereGeometry(H * 0.076, fine ? 18 : 12, 10);
         l.scale(1, 0.92, 0.55); l.rotateX(0.34);
         l.translate(cx, y, zf - 0.288);
@@ -790,7 +820,7 @@ function sideDetail(spec, dims, bucket, stations, tier, arch) {
        bolted to the door. */
     bucket.dark.push(box(0.085, 0.032, 0.05, s * hw * 0.99, H * spec.mirrorY, mz));
     const shell = new THREE.SphereGeometry(0.088, fine ? 14 : 8, fine ? 10 : 6);
-    shell.scale(0.85, 0.62, 1.55);
+    shell.scale(0.88, 0.70, 1.18);
     shell.rotateY(s * 0.16);
     shell.translate(s * (hw + 0.10), H * spec.mirrorY + 0.028, mz);
     bucket.paint.push(shell);
@@ -844,9 +874,17 @@ function sideDetail(spec, dims, bucket, stations, tier, arch) {
         if (lg) bucket.paint.push(lg);
       }
     }
-    // shark-fin aerial at the back of the roof
+    /* Shark-fin aerial. It has to sit on the roof at *that* station: the
+       tables only reach rf = 1.0 around the middle of the cabin, so anchoring
+       it to H left it hovering 15 cm above the rear of the roof. */
+    const finZ = zt(Math.min(cab[1] - 0.06, cab[0] + 0.13));
+    let roofSt = stations[0], rd = 1e9;
+    for (const st of stations) {
+      const d = Math.abs(st.z - finZ);
+      if (d < rd) { rd = d; roofSt = st; }
+    }
     const fin = new THREE.BoxGeometry(0.035, 0.055, 0.20);
-    fin.translate(0, H * 1.002, zt(cab[0] + 0.06));
+    fin.translate(0, roofSt.yRoof + roofSt.crown + 0.018, finZ);
     bucket.paint.push(fin);
     // wipers parked at the base of the windscreen
     if (tier === 'hi') {
@@ -1088,7 +1126,7 @@ function tierOf(id) {
   return 'lo';
 }
 
-const BUCKETS = ['paint', 'glass', 'dark', 'grille', 'chrome', 'trim',
+const BUCKETS = ['paint', 'glass', 'dark', 'grille', 'chrome', 'trim', 'reflector',
   'light', 'drl', 'tail', 'interior', 'seat', 'liner'];
 
 /* Which buckets collapse into which on the cheap tier. Every bucket is one
@@ -1096,7 +1134,8 @@ const BUCKETS = ['paint', 'glass', 'dark', 'grille', 'chrome', 'trim',
    patrol cars the material count costs more than the triangles do, and at two
    hundred metres nobody can tell satin trim from gloss black anyway. */
 const LO_MERGE = {
-  grille: 'dark', trim: 'dark', chrome: 'dark', drl: 'light', seat: 'interior',
+  grille: 'dark', trim: 'dark', chrome: 'dark', reflector: 'dark',
+  drl: 'light', seat: 'interior',
 };
 
 /** Where the door shut lines fall, in table t. Derived from the handles. */
@@ -1178,6 +1217,7 @@ export function buildCar(id, opts = {}) {
   add(geos.grille, MAT.grille);
   add(geos.chrome, MAT.chrome);
   add(geos.trim, MAT.trim);
+  add(geos.reflector, MAT.reflector);
   const headMat = MAT.headlight.clone();
   const tailMat = MAT.tail.clone();
   add(geos.light, headMat);
@@ -1205,7 +1245,7 @@ export function buildCar(id, opts = {}) {
     dims.height * 0.30, -dims.length / 2 - 0.008));
 
   // ---- fake contact shadow, car-shaped rather than a circle in a rectangle
-  const sh = new THREE.Mesh(new THREE.PlaneGeometry(dims.width * 1.62, dims.length * 1.16), MAT.shadow);
+  const sh = new THREE.Mesh(new THREE.PlaneGeometry(dims.width * 2.05, dims.length * 1.34), MAT.shadow);
   sh.rotation.x = -Math.PI / 2;
   sh.position.y = 0.015;
   sh.renderOrder = -1;

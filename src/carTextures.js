@@ -146,21 +146,9 @@ export function bodyDetail(o) {
       gap(X(b3), Y(0.045), X(b4), Y(0.045), 0.7);
     }
 
-    /* ---- shoulder crease down the flank, and the beltline join */
-    for (const u of [b2 - (b2 - b1) * 0.18, b2]) {
-      const g = A.createLinearGradient(X(u) - 3, 0, X(u) + 3, 0);
-      g.addColorStop(0, 'rgba(0,0,0,0)');
-      g.addColorStop(0.5, 'rgba(0,0,0,0.17)');
-      g.addColorStop(1, 'rgba(255,255,255,0.16)');
-      A.fillStyle = g; A.fillRect(X(u) - 3, Y(0.95), 6, H * 0.9);
-    }
-    for (const u of [b5, b5 + (1 - b5) * 0.18]) {
-      const g = A.createLinearGradient(X(u) - 3, 0, X(u) + 3, 0);
-      g.addColorStop(0, 'rgba(255,255,255,0.16)');
-      g.addColorStop(0.5, 'rgba(0,0,0,0.17)');
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      A.fillStyle = g; A.fillRect(X(u) - 3, Y(0.95), 6, H * 0.9);
-    }
+    /* The shoulder crease used to be painted in here as a soft gradient. It is
+       real geometry now (see section() in carFactory.js), so drawing it again
+       would give every car two parallel feature lines. */
 
     /* ---- soft ambient darkening into the wheel arch tops and under the tail */
     const ao = A.createLinearGradient(0, Y(0.02), 0, Y(0.10));
@@ -273,11 +261,13 @@ export function contactShadow() {
       ctx.beginPath(); ctx.arc(0, 0, 1, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     };
-    // body umbra
-    paint(W / 2, H / 2, W * 0.40, H * 0.40, 0.52);
-    // axles
-    paint(W / 2, H * 0.255, W * 0.44, H * 0.115, 0.42);
-    paint(W / 2, H * 0.745, W * 0.44, H * 0.115, 0.42);
+    /* Three overlapping blobs: a broad body umbra, a tighter dark core under
+       the centre of the car, and one under each axle. A single soft ellipse is
+       not enough contrast to plant a car on the road — it just tints it. */
+    paint(W / 2, H / 2, W * 0.42, H * 0.42, 0.46);
+    paint(W / 2, H / 2, W * 0.30, H * 0.34, 0.42);
+    paint(W / 2, H * 0.255, W * 0.43, H * 0.105, 0.52);
+    paint(W / 2, H * 0.745, W * 0.43, H * 0.105, 0.52);
     return tex(c);
   });
 }

@@ -43,7 +43,7 @@ if (envKind === 'studio') {
   sun.position.set(-165, 225, 250); scene.add(sun);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400),
     new THREE.MeshStandardMaterial({
-      map: groundTex('#5d6266', '#4e5257', 4000, [60, 60]), roughness: 0.95, envMap: env, envMapIntensity: 0.3,
+      map: groundTex('#8d9298', '#82878d', 4000, [60, 60]), roughness: 0.95, envMap: env, envMapIntensity: 0.3,
     }));
   ground.rotation.x = -Math.PI / 2; scene.add(ground);
 }
@@ -83,6 +83,7 @@ window.__setCam = (az, el, dist, tx = 0, ty = dims.height * 0.5, tz = 0) => {
 const post = wantPost ? createPostFX(renderer, innerWidth, innerHeight) : null;
 document.getElementById('lbl').textContent =
   `${ids.join(' ')}  [${mode}] env=${envKind} post=${post ? 'on' : 'off'}`;
+window.__cars = cars; window.__scene = scene;
 window.__ready = true;
 (function loop() {
   if (post) post.render(scene, camera); else renderer.render(scene, camera);

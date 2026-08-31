@@ -60,24 +60,42 @@ void main() {
   gl_FragColor = vec4(s, 1.0);
 }`;
 
-/* three already injects colorspace_pars_fragment into every fragment shader's
-   prologue, so only the assignment chunk goes in here — including the pars a
-   second time is a redefinition and the shader will not compile. */
+/* The sRGB encode is written out by hand rather than pulled in with
+   `#include <colorspace_fragment>`. That include depends on three injecting
+   `colorspace_pars_fragment` into the prologue, which it does for its own
+   materials but which is an implementation detail — getting it wrong compiles
+   on one driver and fails on the next, and a fragment shader that fails to
+   compile here means the whole frame is black. This has no includes at all, so
+   there is nothing to get wrong. */
 const COMP_FRAG = /* glsl */`
 uniform sampler2D tScene;
 uniform sampler2D tBloom;
 uniform float strength;
 varying vec2 vUv;
+vec3 encodeSRGB(vec3 c) {
+  c = clamp(c, 0.0, 1.0);
+  vec3 lo = c * 12.92;
+  vec3 hi = pow(c, vec3(0.41666)) * 1.055 - 0.055;
+  return mix(hi, lo, step(c, vec3(0.0031308)));
+}
+vec3 decodeSRGB(vec3 c) {
+  vec3 lo = c / 12.92;
+  vec3 hi = pow((c + 0.055) / 1.055, vec3(2.4));
+  return mix(hi, lo, step(c, vec3(0.04045)));
+}
 void main() {
   vec3 base = texture2D(tScene, vUv).rgb;
   vec3 glow = texture2D(tBloom, vUv).rgb;
-  gl_FragColor = vec4(base + glow * strength, 1.0);
-  #include <colorspace_fragment>
+#ifdef DECODE_SRGB
+  base = decodeSRGB(base);
+  glow = decodeSRGB(glow);
+#endif
+  gl_FragColor = vec4(encodeSRGB(base + glow * strength), 1.0);
 }`;
 
-function rt(w, h, samples = 0) {
+function rt(w, h, type, colorSpace, samples = 0) {
   const t = new THREE.WebGLRenderTarget(Math.max(1, w), Math.max(1, h), {
-    type: THREE.HalfFloatType,
+    type,
     format: THREE.RGBAFormat,
     minFilter: THREE.LinearFilter,
     magFilter: THREE.LinearFilter,
@@ -85,7 +103,7 @@ function rt(w, h, samples = 0) {
     stencilBuffer: false,
     samples,
   });
-  t.texture.colorSpace = THREE.NoColorSpace;
+  t.texture.colorSpace = colorSpace;
   t.texture.generateMipmaps = false;
   return t;
 }
@@ -96,11 +114,22 @@ function rt(w, h, samples = 0) {
  *          the caller should just render normally.
  */
 export function createPostFX(renderer, w, h, opts = {}) {
-  if (!renderer.capabilities.isWebGL2) return null;
-  let scene, quad, cam, mats, targets;
+  if (!renderer || !renderer.capabilities || !renderer.capabilities.isWebGL2) return null;
+  let scene, quad, cam, mats, targets, srgbInput = false;
   try {
     const pr = renderer.getPixelRatio();
     const W = Math.round(w * pr), H = Math.round(h * pr);
+
+    /* Not every driver can render into a float target. Where one is available
+       we keep highlights above 1.0, which is what makes the bloom pick out a
+       sun glint rather than every pale surface; where it is not we fall back to
+       an sRGB-encoded byte target and decode it again in the composite. */
+    const ext = renderer.extensions;
+    const canFloat = !!(ext && (ext.has('EXT_color_buffer_half_float')
+      || ext.has('EXT_color_buffer_float')));
+    srgbInput = !canFloat;
+    const type = canFloat ? THREE.HalfFloatType : THREE.UnsignedByteType;
+    const cs = canFloat ? THREE.NoColorSpace : THREE.SRGBColorSpace;
 
     mats = {
       bright: new THREE.ShaderMaterial({
@@ -118,6 +147,7 @@ export function createPostFX(renderer, w, h, opts = {}) {
         depthTest: false, depthWrite: false,
       }),
       comp: new THREE.ShaderMaterial({
+        defines: srgbInput ? { DECODE_SRGB: '1' } : {},
         uniforms: {
           tScene: { value: null }, tBloom: { value: null },
           strength: { value: opts.strength ?? 0.38 },
@@ -135,12 +165,12 @@ export function createPostFX(renderer, w, h, opts = {}) {
 
     const samples = Math.min(4, renderer.capabilities.maxSamples || 0);
     targets = {
-      scene: rt(W, H, samples),
-      a: rt(W >> 2, H >> 2),
-      b: rt(W >> 2, H >> 2),
+      scene: rt(W, H, type, cs, samples),
+      a: rt(W >> 2, H >> 2, type, cs),
+      b: rt(W >> 2, H >> 2, type, cs),
     };
   } catch (e) {
-    console.warn('postfx unavailable:', e && e.message);
+    console.warn('postfx: setup failed, rendering without it —', e && e.message);
     return null;
   }
 
@@ -149,6 +179,70 @@ export function createPostFX(renderer, w, h, opts = {}) {
     renderer.setRenderTarget(target);
     renderer.render(scene, cam);
   };
+
+  /* Feature detection, by actually running the thing.
+
+     three does not throw when a shader fails to compile — it logs and the draw
+     silently becomes a no-op, which for a full-screen composite means a black
+     frame and no clue why. So push a known white pixel through all three
+     materials into a 1x1 byte target and read it back. Anything that comes out
+     black did not compile, and we decline the whole effect rather than hand the
+     player a black screen. */
+  const selfTest = () => {
+    const probe = new THREE.WebGLRenderTarget(1, 1, {
+      type: THREE.UnsignedByteType, format: THREE.RGBAFormat,
+      minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+      depthBuffer: false, stencilBuffer: false,
+    });
+    const white = new THREE.DataTexture(
+      new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat);
+    white.needsUpdate = true;
+    const black = new THREE.DataTexture(
+      new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat);
+    black.needsUpdate = true;
+    const buf = new Uint8Array(4);
+    const lit = (mat) => {
+      blit(mat, probe);
+      renderer.readRenderTargetPixels(probe, 0, 0, 1, 1, buf);
+      return Math.max(buf[0], buf[1], buf[2]);
+    };
+    let ok = true;
+    try {
+      const th = mats.bright.uniforms.threshold.value;
+      mats.bright.uniforms.threshold.value = 0.0;
+      mats.bright.uniforms.tSrc.value = white;
+      ok = ok && lit(mats.bright) > 8;
+      mats.bright.uniforms.threshold.value = th;
+
+      mats.blur.uniforms.tSrc.value = white;
+      mats.blur.uniforms.dir.value.set(0, 0);
+      ok = ok && lit(mats.blur) > 8;
+
+      const st = mats.comp.uniforms.strength.value;
+      mats.comp.uniforms.strength.value = 0;
+      mats.comp.uniforms.tScene.value = white;
+      mats.comp.uniforms.tBloom.value = black;
+      ok = ok && lit(mats.comp) > 8;
+      mats.comp.uniforms.strength.value = st;
+    } catch (e) {
+      ok = false;
+    }
+    probe.dispose(); white.dispose(); black.dispose();
+    renderer.setRenderTarget(null);
+    mats.bright.uniforms.tSrc.value = null;
+    mats.blur.uniforms.tSrc.value = null;
+    mats.comp.uniforms.tScene.value = null;
+    mats.comp.uniforms.tBloom.value = null;
+    return ok;
+  };
+
+  if (!selfTest()) {
+    console.warn('postfx: shader self-test failed on this driver — bloom disabled');
+    for (const t of Object.values(targets)) t.dispose();
+    for (const m of Object.values(mats)) m.dispose();
+    quad.geometry.dispose();
+    return null;
+  }
 
   return {
     get sceneTarget() { return targets.scene; },
