@@ -571,7 +571,7 @@ function wheelGeoms(radius, width, spokes, tier) {
   return res;
 }
 
-function buildWheel(spec, front, tier = 'lo') {
+export function buildWheel(spec, front, tier = 'lo') {
   const g = new THREE.Group();
   const r = front ? spec.wheelRF : spec.wheelRR;
   const w = front ? spec.wheelWF : spec.wheelWR;

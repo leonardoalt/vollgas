@@ -3,7 +3,7 @@
    &grid=1 draws a 1 m reference grid and the rig's axle marks.            */
 import * as THREE from 'three';
 import { initMaterials, buildCar, CARS } from '../src/carFactory.js';
-import { preloadCarModels, modelStats, hasModel } from '../src/carModels.js';
+import { preloadCarModels, modelStats, hasModel, _scenes } from '../src/carModels.js';
 import { roadEnv, studioEnv } from '../src/carEnv.js';
 import { createPostFX } from '../src/postfx.js';
 import { groundTex } from '../src/textures.js';
@@ -113,6 +113,7 @@ const label = document.getElementById('lbl');
   }
   window.__cars = cars;
   window.__stats = { stats, tris, model: ids.map(hasModel) };
+  window.__scenes = _scenes;
   label.textContent = `${ids.join(' ')} [${mode}] env=${envKind} `
     + `model=${ids.map(i => (hasModel(i) ? 'Y' : 'n')).join('')} tris=${tris} `
     + JSON.stringify(modelStats());
