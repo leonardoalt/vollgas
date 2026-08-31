@@ -70,7 +70,7 @@ GLBs we ship.
   remaining paint material is tinted to the player's chosen colour and given
   our environment map. Net in game: ~124 k triangles.
 
-### Generic passenger car pack — used for traffic (`taxi`, `kombi`, `hatch`, `van`)
+### Generic passenger car pack — no longer shipped
 
 * Author: **Comrade1280** — <https://sketchfab.com/comrade1280>
 * Source: <https://sketchfab.com/3d-models/generic-passenger-car-pack-20f9af9b8a404d5cb022ac6fe87f21f5>
@@ -89,6 +89,12 @@ GLBs we ship.
   out beside the bodies rather than mounted on them.
 * This pack carries **no marque badges of any kind** — it is deliberately
   trademark-free, which is why it was chosen for traffic.
+* **Removed in Phase B and no longer in the repository.** Two reasons, neither
+  of them a complaint about the licence: its bodies are 2.7 k triangles next to
+  a 39 k triangle 911, and each one has its colour baked into the material, so
+  tinting a car blue produced a dark green car and every saloon in the traffic
+  would have been the same shade. The entry stays here because the record of
+  what was shipped, and under what terms, should not be edited away.
 
 ### Generic sedan 2010 — used for `m5`
 
@@ -185,6 +191,25 @@ The estate the fictional-marque catalogue could not supply.
 * Anserkon was identified in the earlier search as one of the best-fitting
   authors available and written off as unreachable because no mirror existed.
   Objaverse is that mirror.
+
+### Generic SUV — used for `taxi`
+
+* Author: **Daniel Zhabotinsky** — <https://sketchfab.com/DanielZhabotinsky>
+* Source: <https://sketchfab.com/3d-models/generic-suv-low-poly-model-2866efdfa943484391ef8313768e074d>
+* Mirror used: <https://huggingface.co/datasets/allenai/objaverse/resolve/main/glbs/000-005/2866efdfa943484391ef8313768e074d.glb>
+* Licence: **CC BY 4.0**, from the file's own `asset.extras`.
+* Required credit:
+  > This work is based on "Generic SUV - Low poly model"
+  > (https://sketchfab.com/3d-models/generic-suv-low-poly-model-2866efdfa943484391ef8313768e074d)
+  > by Daniel Zhabotinsky (https://sketchfab.com/DanielZhabotinsky) licensed
+  > under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* Shipped as `src/assets/models/car-suv10.glb` (263 kB, 17.7 k triangles).
+* **What we changed:** `dev/optimise-model.sh`, 1.53 MB → 263 kB. Flat
+  untextured body material, so it tints cleanly.
+* `taxi` keeps its id and its rig, but is now an SUV: traffic made only of
+  saloons, estates and hatchbacks has nothing tall in it and does not read as a
+  motorway.
+* Invented marque; no badges.
 
 ### Provenance note
 

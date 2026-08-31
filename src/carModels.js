@@ -36,23 +36,23 @@ import {
 } from './carFit.js';
 
 import url930 from './assets/models/car-930.glb';
-import urlPack from './assets/models/car-generic-pack.glb';
 import urlSedan10 from './assets/models/car-sedan10.glb';
 import urlCoupe07 from './assets/models/car-coupe07.glb';
 import urlHatch11 from './assets/models/car-hatch11.glb';
 import urlLcv07 from './assets/models/car-lcv07.glb';
 import urlWagonEu from './assets/models/car-wagon-eu.glb';
+import urlSuv10 from './assets/models/car-suv10.glb';
 
 
 /* ------------------------------------------------------------- the sources */
 const FILES = {
   p930: url930,
-  pack: urlPack,
   sedan10: urlSedan10,
   coupe07: urlCoupe07,
   hatch11: urlHatch11,
   lcv07: urlLcv07,
   wagonEu: urlWagonEu,
+  suv10: urlSuv10,
 };
 
 /**
@@ -210,36 +210,30 @@ RECIPE.messwagen = {
 RECIPE.hatch = { ...RECIPE.zivi_kompakt };
 RECIPE.van = { ...RECIPE.messwagen };
 
-/* Bodies available in the generic pack, by the pack's own node names. Kept
-   separate from RECIPE because they all share one file and one fitting path.
+/* Traffic.
 
-   Node names as GLTFLoader reports them: it replaces spaces with underscores,
-   so the pack's "Sedan Body" arrives as "Sedan_Body_Body_0". The scene is
-   flat — no per-car grouping — and the pack merges by material, so a name has
-   to be matched exactly or `Compact_Body` also selects `Compact_Body_Glass_0`,
-   which is not the compact's glass at all but every window in the pack, a
-   single 16-metre-wide mesh named after whichever car happened to be first. */
-const PACK = {
-  taxi: 'Sedan_Body_Body_0',
+   The generic passenger-car pack is gone. It was two thousand seven hundred
+   triangles a car next to a thirty-nine thousand triangle 911, and its bodies
+   arrive with their colour baked into the material, so tinting one blue got a
+   dark green car — every saloon in the traffic would have been the same shade.
+   Dropping it also takes 1 MB out of the bundle and leaves one fewer visual
+   style on the road.
+
+   What is left is four modern shapes that all tint properly: an estate, a
+   hatchback, an SUV and a box van. `taxi` keeps its name and its rig — the
+   name is never shown for traffic — but it is now the SUV, because a fleet of
+   saloons, estates and hatchbacks with nothing tall in it does not look like a
+   motorway. */
+RECIPE.taxi = {
+  ...ZHAB,
+  file: 'suv10',
+  /* `dust_bottom` is shared between the rims, the light housings and the
+     underbody, so the wheels are found by node name. */
+  wheelMat: [],
+  wheelNode: [/^wheels?[_\d]/i],
+  paintMat: [/^dust_body$/i],
+  glassMat: [/^dust_glass$/i],
 };
-for (const [id, node] of Object.entries(PACK)) {
-  RECIPE[id] = {
-    file: 'pack', pick: node,
-    strip: [/^Cylinder001/i],
-    /* The pack's wheels are correctly mounted in the arches — but merged by
-       design, so one mesh holds every instance of "wheel A" across the whole
-       pack, which for the saloon and the estate means eight wheels belonging
-       to two different cars. They are clipped to each body's own footprint
-       before being measured, and then used only for measurement: carFactory's
-       revolved wheels have proper spokes and calipers and cost less. */
-    ownWheels: true,
-    coat: [],
-    wheelMat: [/^wheel/i, /^wheek/i],
-    paintMat: [/^Body/i],
-    // the pack's glass arrives on an auto-named palette material
-    glassMat: [/glass/i, /PaletteMaterial/i],
-  };
-}
 
 /* ------------------------------------------------------------------ state */
 const _templates = new Map();      // car id -> fitted THREE.Group template
