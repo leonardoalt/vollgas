@@ -9,6 +9,7 @@ import { createPostFX } from './postfx.js';
 import { mountHero } from './carHero.js';
 import { mountCredits } from './credits.js';
 import { preloadCarModels } from './carModels.js';
+import { createPerfHud } from './perfHud.js';
 import {
   Player, Traffic, resolveCollisions,
 } from './vehicles.js';
@@ -106,6 +107,11 @@ export class Game {
        target, in which case we just render straight to the canvas as before. */
     this.post = createPostFX(renderer, innerWidth, innerHeight);
 
+    /* [car visuals] fps / frame-time readout: F, or ?stats=1. The only way to
+       answer "does it run" honestly, since every other number in this project
+       was measured on a software rasteriser. */
+    this.perf = createPerfHud({ visible: /[?&]stats=1/.test(location.search) });
+
     addEventListener('resize', () => this.onResize());
     GLOBALS.km = STAGE_KM;
     document.documentElement.lang = lang;
@@ -119,7 +125,7 @@ export class Game {
     this.showroom = null;
     this._needShowroom = true;
     const langBtn = $('lang-btn');
-    if (langBtn) langBtn.onclick = () => { toggleLang(); this.buildMenu(); };
+    if (langBtn) langBtn.onclick = () => { toggleLang(); mountCredits($('car-detail')); this.buildMenu(); };
     this.buildMenu();
     $('loading').classList.add('done');
     this.state = 'menu';
@@ -749,6 +755,7 @@ export class Game {
       const info = this.renderer.info.render;
       this.frameStats = { calls: info.calls, tris: info.triangles };
       this.renderer.info.reset();
+      if (this.perf) this.perf.update(dt, this.frameStats);   // [car visuals]
       requestAnimationFrame(frame);
     };
     requestAnimationFrame(frame);

@@ -10,11 +10,14 @@ let js = readFileSync(join(dist, 'assets', files.find(f => f.endsWith('.js'))), 
 const css = readFileSync(join(dist, 'assets', files.find(f => f.endsWith('.css'))), 'utf8');
 const html = readFileSync(join(dist, 'index.html'), 'utf8');
 
-/* Vite emits imported images as separate hashed files, which a single-file page
+/* Vite emits imported assets as separate hashed files, which a single-file page
    cannot fetch. Inline each one as a data URI and rewrite the reference. */
 const MIME = {
   '.webp': 'image/webp', '.png': 'image/png', '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.svg': 'image/svg+xml',
+  // car bodies: without these the single-file page silently falls back to the
+  // procedural cars, because there is no server to fetch a .glb from
+  '.glb': 'model/gltf-binary',
 };
 for (const f of files) {
   const ext = f.slice(f.lastIndexOf('.'));

@@ -11,6 +11,8 @@
    apply to what we redistribute, not to what happened to render.
    ========================================================================== */
 
+import { lang } from './i18n.js';
+
 /** One entry per third-party work we redistribute. */
 export const ATTRIBUTIONS = [
   {
@@ -51,7 +53,7 @@ export function mountCredits(container) {
     container.appendChild(el);
   }
   const a = (href, text) => `<a href="${href}" target="_blank" rel="noopener" style="${LINK}">${text}</a>`;
-  el.innerHTML = 'Fahrzeugmodelle: '
+  el.innerHTML = (lang === 'en' ? 'Car models: ' : 'Fahrzeugmodelle: ')
     + ATTRIBUTIONS.map(x =>
       `${a(x.source, x.title)} — ${a(x.authorUrl, x.author)}, ${a(x.licenceUrl, x.licence)}`
     ).join(' · ');
