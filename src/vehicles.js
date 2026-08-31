@@ -3,18 +3,47 @@
 
    Everything lives in track space: s (metres along the A81), u (metres right
    of the median centre), plus a heading offset psi from the road tangent.
-   Longitudinally it is a power-limited point mass with real drag; laterally
-   it is a bicycle model whose steering is clamped by a friction circle, so
-   braking really does cost you cornering grip and a 2.1 t estate really does
-   run wide where a 911 does not.
+
+   Longitudinally it is a power-limited point mass with real drag. Every
+   published figure — 0-100, top speed, braking distance — comes out of
+   stepLong(), and stepLong() is unchanged.
+
+   Laterally there are two models.
+
+   The player runs a *dynamic* single-track model with genuine yaw inertia:
+   slip angles at each axle, a saturating tyre curve, per-axle vertical load
+   from real weight transfer, and a friction circle per axle so the newtons
+   spent accelerating or braking are newtons the tyres cannot spend cornering.
+   The car therefore rotates with mass, settles on its own through the tyres
+   rather than by having its heading forced back to parallel, and has a real
+   understeer/oversteer balance — including throttle-induced oversteer for the
+   rear-drive AMG.
+
+   Traffic and patrol cars run the original cheap *kinematic* model, verbatim.
+   Their AI is tuned around its damping, they are only ever seen from outside
+   at distance, and there are two dozen of them in every frame.
    ========================================================================== */
 import * as THREE from 'three';
 import {
   sample, toWorld, LANES, GEO, LENGTH, sectionAt, limitAt, pavedRange, outerBarrier,
 } from './track.js';
 import { buildCar, buildTruck, CARS, randomPlate } from './carFactory.js';
+import { chassis, axleFy, muLeft, loadMul, steerLock, HAND_LAT_CUT } from './tyres.js';
+import { Rack, laneAssist } from './steering.js';
+import { BODY } from './suspension.js';
+
+export { laneAssist };
 
 const G = 9.81;
+/* Brake bias. The front does most of the work, which is why the nose dives —
+   and why the front axle is the one that runs out of cornering grip on the
+   way into a corner. */
+const BRAKE_FRONT = 0.66;
+/* Guards for the dynamic lateral model. The heading clamp is wider than the
+   kinematic one (0.7) because a car with real yaw inertia is allowed to get
+   properly sideways before the model gives up on it. */
+const PSI_MAX_DYN = 1.05;
+const R_MAX = 2.6;
 const KMH = 3.6;
 /* Lichthupe timing: a ~0.95 s burst of roughly 0.13 s pulses. */
 export const FLASH_DUR = 0.95;
@@ -48,10 +77,30 @@ export class Vehicle {
     this.halfWid = mesh.userData.halfWid ?? spec.dims.width / 2;
     this.wheelbase = (spec.axleF ?? 1.4) - (spec.axleR ?? -1.4);
 
+    this.ch = chassis(spec, opts.id);
+    /* dynamic lateral model: the player only. See the header. */
+    this.dyn = !!opts.dyn;
+
     this.s = 0; this.u = LANES[1]; this.v = 30;
     this.psi = 0; this.dir = opts.dir ?? 1;          // +1 with us, -1 oncoming
     this.gear = 1; this.rpm = 1000; this.shiftT = 0;
     this.aLong = 0; this.aLat = 0; this.slip = 0;
+
+    /* Lateral state proper: body-frame sideslip velocity (positive to the
+       car's right) and yaw rate. These two are what replace the old trick of
+       decaying psi towards zero every frame. */
+    this.vy = 0; this.r = 0;
+    this.fxF = 0; this.fxR = 0;              // tyre longitudinal force, per axle
+    this.slipF = 0; this.slipR = 0;          // slip angles, rad
+    this.steerAngle = 0;                     // road-wheel angle, rad
+    this.balance = 0;                        // >0 oversteering, <0 understeering
+    this._align = 0;
+    this.rack = this.dyn ? new Rack() : null;
+    this.sRoll = BODY.roll();
+    this.sPitch = BODY.pitch();
+    this.sHeave = this.dyn ? BODY.heave() : null;
+    this.roll = 0; this.pitch = 0;
+    this._dGds = 0;
     this.damage = 0; this.offroad = false; this.scrape = 0;
     this.hand = 0;                          // handbrake, 0..1
     this.kind = opts.kind || 'traffic';
@@ -70,18 +119,38 @@ export class Vehicle {
     let F = 0;
     this.shiftT = Math.max(0, this.shiftT - dt);
     const cut = this.shiftT > 0 ? 0.12 : 1;
+    let tract = 0;
     if (throttle > 0) {
       const grip = d.aMax * p.mass * d.drive * (this.offroad ? 0.42 : 1);
-      F += Math.min(d.P * throttle * cut / v, grip);
+      tract = Math.min(d.P * throttle * cut / v, grip);
+      F += tract;
     }
     F -= d.k * v * v;                                       // aerodynamic drag
     F -= d.roll * (this.offroad ? 9 : 1);                   // rolling resistance
     const c = sample(this.s);
     F -= p.mass * G * c.grade * this.dir;                   // gradient
-    if (brake > 0) F -= brake * d.aMax * p.mass * (this.offroad ? 0.45 : 0.88);
+    let fbrake = 0;
+    if (brake > 0) {
+      fbrake = brake * d.aMax * p.mass * (this.offroad ? 0.45 : 0.88);
+      F -= fbrake;
+    }
     /* Handbrake locks the rear axle only: a strong retardation, nothing like
        the full braking system, and it costs you most of your rear grip. */
-    if (this.hand > 0) F -= this.hand * d.aMax * p.mass * 0.34;
+    let fhand = 0;
+    if (this.hand > 0) {
+      fhand = this.hand * d.aMax * p.mass * 0.34;
+      F -= fhand;
+    }
+
+    /* Book those same newtons to their axles. Nothing above is altered — the
+       total F is arithmetically identical to what it always was, which is why
+       dev/phys.mjs cannot drift — but the lateral model needs to know how much
+       of each axle's grip is already spent before it asks the tyres for any
+       cornering force. This bookkeeping is what gives the rear-drive AMG
+       throttle-induced oversteer and every car understeer on the brakes. */
+    const rb = this.ch ? this.ch.rearDrive : (p.awd ? 0.60 : 1);
+    this.fxF = tract * (1 - rb) - fbrake * BRAKE_FRONT;
+    this.fxR = tract * rb - fbrake * (1 - BRAKE_FRONT) - fhand;
 
     this.aLong = F / p.mass;
     this.v = Math.max(0, this.v + this.aLong * dt);
@@ -103,6 +172,19 @@ export class Vehicle {
 
   /* -------------------------------------------------------------- lateral */
   stepLat(dt, steer, ctx) {
+    if (this.dyn) this._latDynamic(dt, steer, ctx);
+    else this._latKinematic(dt, steer, ctx);
+    this._surface(dt);
+  }
+
+  /* ------------------------------------------------ kinematic lateral model
+     The original model, verbatim, still driving every traffic and patrol car.
+     It reads a yaw rate straight off the steer angle (so no rotational
+     inertia) and force-decays psi towards zero every frame, which is a
+     self-centring hack rather than physics. Both are fine for a car you only
+     ever see from outside, and the traffic AI's simple proportional lane
+     controllers are tuned around exactly that damping. */
+  _latKinematic(dt, steer, ctx) {
     const d = this.d;
     const c = sample(this.s);
     const v = this.v;
@@ -137,8 +219,12 @@ export class Vehicle {
 
     // self-centring: the car naturally settles parallel to the road
     this.psi *= 1 - Math.min(0.9, dt * 2.4);
+  }
 
-    // ---- surface & furniture
+  /* ---------------------------------------------------- surface & furniture
+     Shared by both lateral models: what is under the wheels, and what happens
+     when you put a flank into a Stahlschutzplanke. */
+  _surface(dt) {
     const pr = pavedRange(this.s);
     const au = Math.abs(this.u);
     this.offroad = au > pr.outer + 0.35 || au < pr.inner - 0.1;
@@ -147,14 +233,129 @@ export class Vehicle {
     this.scrape = 0;
     if (au + this.halfWid * 0.75 > railOuter) {
       this.u = Math.sign(this.u) * (railOuter - this.halfWid * 0.75);
-      this.psi *= 0.25; this.v *= 1 - 2.2 * dt; this.scrape = 1;
+      this.psi *= 0.25; this.r *= 0.25; this.vy *= 0.15;
+      this.v *= 1 - 2.2 * dt; this.scrape = 1;
       this.damage = Math.min(100, this.damage + 5 * dt * (this.v / 40));
     }
     if (au - this.halfWid * 0.75 < railInner) {
       this.u = Math.sign(this.u || 1) * (railInner + this.halfWid * 0.75);
-      this.psi *= 0.25; this.v *= 1 - 2.2 * dt; this.scrape = 1;
+      this.psi *= 0.25; this.r *= 0.25; this.vy *= 0.15;
+      this.v *= 1 - 2.2 * dt; this.scrape = 1;
       this.damage = Math.min(100, this.damage + 5 * dt * (this.v / 40));
     }
+  }
+
+  /* -------------------------------------------------- dynamic lateral model
+     A single-track model with rotational mass. Per sub-step:
+
+       loads      static weight distribution, plus longitudinal transfer from
+                  whatever stepLong just did, plus the lateral transfer the
+                  car is already carrying
+       grip       per axle: a friction circle against that axle's own share of
+                  the drive/brake force, then a load-sensitivity term so a
+                  heavily loaded outside tyre gives a little back
+       slip       af = atan((vy + a*r)/v) - delta,  ar = atan((vy - b*r)/v)
+       forces     a saturating tyre curve: a peak, then a falloff
+       integrate  vy from the total side force, r from the yaw *moment*
+
+     Nothing forces psi anywhere. The car settles because the tyres damp vy
+     and r, which is how a real car settles, and it keeps a heading error
+     relative to the road until the driver steers it out — which is the whole
+     difference between driving a car and sliding a brick sideways. */
+  _latDynamic(dt, cmd, ctx) {
+    const ch = this.ch, p = this.perf;
+    const c = sample(this.s);
+    const surf = this.offroad ? 0.45 : 1;
+
+    // ---- vertical load per axle
+    const dz = p.mass * this.aLong * ch.hCog / ch.L;      // + = onto the rear
+    const fzF = Math.max(0.12 * ch.staticF, ch.staticF - dz);
+    const fzR = Math.max(0.12 * ch.staticR, ch.staticR + dz);
+
+    /* ---- grip left per axle. The handbrake's lateral cut lands on the rear
+       only, because the rear is the axle that is locked. */
+    const muBaseF = ch.mu * surf;
+    const muBaseR = ch.mu * surf * (1 - HAND_LAT_CUT * this.hand);
+    const ay0 = this.aLat;
+    const muF = Math.max(0.05, muLeft(muBaseF, this.fxF, fzF)
+      * loadMul(ay0, fzF, p.mass, ch.hCog, ch.track, ch.rollF));
+    const muR = Math.max(0.05, muLeft(muBaseR, this.fxR, fzR)
+      * loadMul(ay0, fzR, p.mass, ch.hCog, ch.track, 1 - ch.rollF));
+
+    /* Sub-stepped: cornering stiffness over mass times speed is a stiff
+       eigenvalue at low speed, and the game clamps dt to 0.05 s. Nine
+       sub-steps of a two-state ODE for one car costs nothing, and it means a
+       20 fps frame produces the same car as a 144 fps one. */
+    const n = Math.min(14, Math.max(1, Math.ceil(dt / 0.006)));
+    const h = dt / n;
+    const rot = c.curv * this.dir;              // road's own yaw rate per m/s
+    let fyF = 0, fyR = 0, af = 0, ar = 0;
+
+    for (let i = 0; i < n; i++) {
+      const v = this.v;
+      const vr = Math.max(2.2, v);
+      const delta = this.rack.step(h, cmd, this._align) * steerLock(ch, v);
+
+      af = Math.atan((this.vy + ch.a * this.r) / vr) - delta;
+      ar = Math.atan((this.vy - ch.b * this.r) / vr);
+      fyF = axleFy(af, fzF, muF, ch.csF);
+      fyR = axleFy(ar, fzR, muR, ch.csR);
+      const cd = Math.cos(delta);
+
+      const ay = (fyF * cd + fyR) / p.mass;
+      const mz = ch.a * fyF * cd - ch.b * fyR;
+      this.vy += (ay - this.r * v) * h;
+      this.r += (mz / ch.iz) * h;
+
+      /* Below walking-out speed the slip-angle formulation degenerates, so
+         fade to the kinematic answer. Nothing is ever driven fast enough for
+         that to be visible, and it is what keeps the pull-over stable. */
+      if (v < 8) {
+        const w = Math.min(1, Math.max(0, (v - 2.5) / 5.5));
+        const rk = (v / ch.L) * Math.tan(delta);
+        this.r = w * this.r + (1 - w) * rk;
+        this.vy = w * this.vy + (1 - w) * rk * ch.b;
+      }
+      if (this.r > R_MAX) this.r = R_MAX; else if (this.r < -R_MAX) this.r = -R_MAX;
+      const vyCap = 0.8 * Math.max(v, 5) + 3;
+      if (this.vy > vyCap) this.vy = vyCap; else if (this.vy < -vyCap) this.vy = -vyCap;
+
+      // heading relative to the road: subtract the road's own rotation
+      this.psi += (this.r - v * rot) * h;
+      if (this.psi > PSI_MAX_DYN) { this.psi = PSI_MAX_DYN; if (this.r > 0) this.r = 0; }
+      else if (this.psi < -PSI_MAX_DYN) { this.psi = -PSI_MAX_DYN; if (this.r < 0) this.r = 0; }
+
+      const cp = Math.cos(this.psi), sp = Math.sin(this.psi);
+      this.u += (v * sp + this.vy * cp) * this.dir * h;
+      this.s += (v * cp - this.vy * sp) * this.dir * h;
+
+      /* Cornering drag: a tyre making side force at a slip angle costs you
+         forward speed. Exactly zero in a straight line, so it cannot reach
+         any figure dev/phys.mjs measures — but it means a big slide is slow. */
+      const drag = (Math.abs(fyF * Math.sin(af)) + Math.abs(fyR * Math.sin(ar))) / p.mass;
+      this.v = Math.max(0, this.v - drag * h);
+
+      this.aLat = ay;
+      this.steerAngle = delta;
+      this._wheelAngle = delta;
+
+      /* Self-aligning torque fed back to the rack, normalised by what the
+         front axle can actually do, with the pneumatic trail collapsing as
+         the front saturates — so the steering goes light just before the car
+         runs wide, which is the only warning a real one gives you. */
+      let nrm = fyF / Math.max(1, muF * fzF);
+      if (nrm > 1.4) nrm = 1.4; else if (nrm < -1.4) nrm = -1.4;
+      this._align = nrm * (1 - 0.28 * nrm * nrm);
+    }
+
+    this.slipF = af; this.slipR = ar;
+    /* How far past its best each axle is, and which one is further: that is
+       the understeer/oversteer balance, and it is a real number now. */
+    const useF = Math.abs(af) / ch.peakF, useR = Math.abs(ar) / ch.peakR;
+    this.balance = useR - useF;
+    const target = Math.min(1, Math.max(0, (Math.max(useF, useR) - 0.85) / 0.75));
+    this.slip += (target - this.slip) * Math.min(1, dt * 6);
+    this.slip = Math.max(0, Math.min(1, this.slip));
   }
 
   /* ---------------------------------------------------------- mesh update */
@@ -162,11 +363,34 @@ export class Vehicle {
     const c = sample(this.s);
     const w = toWorld(this.s, this.u);
     const m = this.mesh;
-    m.position.set(w.x, w.y, w.z);
+
+    /* Body attitude as a sprung mass rather than an algebraic function of
+       acceleration. The same steady-state lean and squat as before — a car
+       holding 0.8 g leans exactly as far as it always did — but it now takes
+       a couple of tenths to get there and overshoots once on the way. */
+    const roll = this.sRoll.step(dt, Math.max(-0.06, Math.min(0.06, this.aLat * 0.0055)));
+    const pitch = this.sPitch.step(dt, -this.aLong * 0.0035);
+    this.roll = roll; this.pitch = pitch;
+
+    let heave = 0;
+    if (this.sHeave) {
+      /* Float over a crest: for a moment the body carries on in a straight
+         line while the road falls away underneath it. Low-passed, because the
+         elevation profile's grade is only piecewise smooth. */
+      const ds = this.s - (this._lastS ?? this.s);
+      const dg = c.grade - (this._lastGrade ?? c.grade);
+      this._lastS = this.s; this._lastGrade = c.grade;
+      let raw = Math.abs(ds) > 0.05 ? dg / ds : 0;
+      if (raw > 4e-4) raw = 4e-4; else if (raw < -4e-4) raw = -4e-4;
+      this._dGds += (raw - this._dGds) * Math.min(1, dt * 8);
+      const tgt = Math.max(-0.05, Math.min(0.05, -this.v * this.v * this._dGds * 0.016));
+      heave = this.sHeave.step(dt, tgt);
+    }
+
+    m.position.set(w.x, w.y + heave, w.z);
     m.rotation.y = c.head + this.psi + (this.dir < 0 ? Math.PI : 0);
-    const pitch = -Math.atan(c.grade) * this.dir - this.aLong * 0.0035 * this.dir;
-    m.rotation.x = pitch;
-    m.rotation.z = Math.max(-0.06, Math.min(0.06, this.aLat * 0.0055)) * this.dir;
+    m.rotation.x = -Math.atan(c.grade) * this.dir + pitch * this.dir;
+    m.rotation.z = roll * this.dir;
 
     const ws = m.userData.wheels;
     if (ws) {
@@ -199,7 +423,7 @@ export class Player extends Vehicle {
   constructor(id, paint) {
     const spec = CARS[id];
     const mesh = buildCar(id, { paint });
-    super(mesh, spec, { kind: 'player' });
+    super(mesh, spec, { kind: 'player', id, dyn: true });
     this.id = id;
     this.u = LANES[0];
     this.vmaxSeen = 0;
@@ -222,7 +446,9 @@ export class Player extends Vehicle {
       if (this.v > wantV + 0.5) brk = Math.min(1, 0.18 + (this.v - wantV) * 0.05);
       else if (this.v < wantV - 0.5) thr = 0.32;
       this.stepLong(dt, thr, brk, ctx);
-      this.stepLat(dt, Math.max(-0.6, Math.min(0.6, err * 0.30)), ctx);
+      /* A car with yaw inertia needs a damped controller, not a bare gain on
+         lateral error — that is an undamped second-order loop and it weaves. */
+      this.stepLat(dt, laneAssist(this, target, { kp: 1.3, kd: 2.5, lim: 0.7 }), ctx);
       if (this.v < 0.3) this.v = 0;
       return;
     }
