@@ -997,7 +997,9 @@ export const CARS = {
     tailStyle: 'lshape', tailY: 0.68, pipes: 4, wing: 'lip',
     mirrorZ: 0.756, mirrorY: 0.735, beltAt: 0.70, handles: [0.44, 0.615],
     plate: 'M BM 5',
-    paints: [{ n: 'Marina-Bay-Blau', c: 0x1c56b4 }, { n: 'Frozen Schwarz', c: 0x1a1c1f }, { n: 'Brands-Hatch-Grau', c: 0x6e757b }],
+    /* First entry matches the menu photograph — see carHero.js. */
+    paints: [{ n: 'Frozen Bluestone', c: 0x3b4350 }, { n: 'Marina-Bay-Blau', c: 0x1c56b4 },
+      { n: 'Frozen Schwarz', c: 0x1a1c1f }, { n: 'Brands-Hatch-Grau', c: 0x6e757b }],
     perf: { mass: 1825, power: 467, cd: 0.78, vmax: 305, grip: 1.34, awd: true, gears: 8, launch: 0.73, redline: 7200 },
     blurb: 'Vier Türen, Allrad, V8-Biturbo. Der Klassiker der linken Spur: fährt 300 als wäre es 130 und hat Platz für das Gepäck von vier Leuten, die das nicht wollten.',
 
@@ -1025,7 +1027,9 @@ export const CARS = {
     tailStyle: 'lshape', tailY: 0.665, pipes: 4, wing: 'lip',
     mirrorZ: 0.756, mirrorY: 0.725, beltAt: 0.69, handles: [0.44, 0.615],
     plate: 'S MB 63',
-    paints: [{ n: 'Selenitgrau', c: 0x5b6066 }, { n: 'Obsidianschwarz', c: 0x191b1e }, { n: 'Hyazinthrot', c: 0x7e1220 }],
+    /* First entry matches the menu photograph — see carHero.js. */
+    paints: [{ n: 'Graphitgrau', c: 0x44474c }, { n: 'Selenitgrau', c: 0x5b6066 },
+      { n: 'Obsidianschwarz', c: 0x191b1e }, { n: 'Hyazinthrot', c: 0x7e1220 }],
     perf: { mass: 1800, power: 375, cd: 0.76, vmax: 290, grip: 1.30, awd: false, gears: 7, launch: 0.605, redline: 7000 },
     blurb: 'Handgebauter V8, Hinterradantrieb, und ein Geräusch, das aus Nachbarn Feinde macht. Geradeaus fantastisch, in Kurven will das Heck gelegentlich mitreden. Verbraucht auf dem Weg zum Bäcker mehr als ein Kleinwagen im Monat.',
 

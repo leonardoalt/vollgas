@@ -7,13 +7,19 @@
    *selling* it — so the 911 gets the photo as its hero image and a FOTO / 3D
    toggle to drop back to the live model.
 
-   Only the `turbo` has one. Every other car falls through to the turntable
-   with no toggle shown, rather than pretending there is a photo to see.
+   All four player cars have one. A car with no photo falls through to the
+   turntable with no toggle shown, rather than pretending there is a photo.
 
-   The image is imported, so Vite hashes and emits it and `dev/build-artifact`
-   can inline it into the single-file build.
+   The images are imported, so Vite hashes and emits them and
+   `dev/build-artifact` can inline them into the single-file build. An import
+   yields a *URL*, not bytes — the fetch happens when the img is mounted, so
+   only the selected car's photo is ever downloaded and none of them delay
+   first paint.
    ========================================================================== */
 import turboHero from './assets/turbo-hero.webp';
+import m5Hero from './assets/m5-hero.webp';
+import rs6Hero from './assets/rs6-hero.webp';
+import amgHero from './assets/amg-hero.webp';
 
 /**
  * `paint` is the body colour of the car in the photograph. It is also the
@@ -23,6 +29,9 @@ import turboHero from './assets/turbo-hero.webp';
  */
 export const HERO = {
   turbo: { src: turboHero, paint: 0x1b46b0 },
+  m5: { src: m5Hero, paint: 0x3b4350 },
+  rs6: { src: rs6Hero, paint: 0x9a9da0 },
+  amg: { src: amgHero, paint: 0x44474c },
 };
 
 const BAR = 'position:absolute;left:8px;bottom:7px;z-index:3;display:flex;gap:4px;';
