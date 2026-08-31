@@ -129,6 +129,36 @@ GLBs we ship.
   so a car built on them corners while parked.
 * The marque is invented; no badges.
 
+### Modern Hatchback — used for `zivi_kompakt` and `hatch`
+
+* Author: **Daniel Zhabotinsky** — <https://sketchfab.com/DanielZhabotinsky>
+* Source: <https://sketchfab.com/3d-models/modern-hatchback-low-poly-model-055ff8a21b8d4d279debca089e2fafcd>
+* Mirror used: <https://huggingface.co/datasets/allenai/objaverse/resolve/main/glbs/000-125/055ff8a21b8d4d279debca089e2fafcd.glb>
+* Licence: **CC BY 4.0**, from the file's own `asset.extras`:
+  > `"license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"`
+* Required credit:
+  > This work is based on "Modern Hatchback - Low Poly model"
+  > (https://sketchfab.com/3d-models/modern-hatchback-low-poly-model-055ff8a21b8d4d279debca089e2fafcd)
+  > by Daniel Zhabotinsky (https://sketchfab.com/DanielZhabotinsky) licensed
+  > under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* Shipped as `src/assets/models/car-hatch11.glb` (248 kB, 10.1 k triangles).
+* **What we changed:** `dev/optimise-model.sh`, 3.18 MB → 248 kB. Three
+  materials for the whole car, which is why it is cheap to put several on the
+  road at once. Its rims share the body material, so they are found by node
+  name and then not drawn.
+* Invented marque; no badges, no plate.
+
+### Light Commercial Truck '07 — used for `messwagen` and `van`
+
+* Author: **Daniel Zhabotinsky** — <https://sketchfab.com/DanielZhabotinsky>
+* Source: <https://sketchfab.com/3d-models/light-commercial-truck-07-low-poly-model-3be03b6a43aa41898c9ca806b8787052>
+* Mirror used: <https://huggingface.co/datasets/allenai/objaverse/resolve/main/glbs/000-149/3be03b6a43aa41898c9ca806b8787052.glb>
+* Licence: **CC BY 4.0**, from the file's own `asset.extras`.
+* Shipped as `src/assets/models/car-lcv07.glb` (322 kB, 13.3 k triangles).
+* **What we changed:** `dev/optimise-model.sh`, 4.52 MB → 322 kB. The body is a
+  flat untextured material, so it takes the fleet's paint tinting cleanly.
+* Invented marque; no badges.
+
 ### Provenance note
 
 Both were checked for signs of being re-uploaded rips of commercial game

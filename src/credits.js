@@ -47,6 +47,22 @@ export const ATTRIBUTIONS = [
     licence: 'CC BY 4.0',
     licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
   },
+  {
+    title: 'Modern Hatchback',
+    author: 'Daniel Zhabotinsky',
+    authorUrl: 'https://sketchfab.com/DanielZhabotinsky',
+    source: 'https://sketchfab.com/3d-models/modern-hatchback-low-poly-model-055ff8a21b8d4d279debca089e2fafcd',
+    licence: 'CC BY 4.0',
+    licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
+  },
+  {
+    title: "Light Commercial Truck '07",
+    author: 'Daniel Zhabotinsky',
+    authorUrl: 'https://sketchfab.com/DanielZhabotinsky',
+    source: 'https://sketchfab.com/3d-models/light-commercial-truck-07-low-poly-model-3be03b6a43aa41898c9ca806b8787052',
+    licence: 'CC BY 4.0',
+    licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
+  },
 ];
 
 const CSS = 'margin:12px 0 0;padding-top:9px;'

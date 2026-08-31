@@ -39,6 +39,8 @@ import url930 from './assets/models/car-930.glb';
 import urlPack from './assets/models/car-generic-pack.glb';
 import urlSedan10 from './assets/models/car-sedan10.glb';
 import urlCoupe07 from './assets/models/car-coupe07.glb';
+import urlHatch11 from './assets/models/car-hatch11.glb';
+import urlLcv07 from './assets/models/car-lcv07.glb';
 
 
 /* ------------------------------------------------------------- the sources */
@@ -47,6 +49,8 @@ const FILES = {
   pack: urlPack,
   sedan10: urlSedan10,
   coupe07: urlCoupe07,
+  hatch11: urlHatch11,
+  lcv07: urlLcv07,
 };
 
 /**
@@ -135,6 +139,48 @@ RECIPE.amg = {
   glassMat: [/^glass$/i],
 };
 
+/* The Zivilstreifen.
+
+   An unmarked patrol car is an ordinary saloon or estate — that is the whole
+   point of one — so they share bodies with the traffic and the player's cars
+   rather than having anything special of their own. The earlier note in
+   HANDOFF.md said the pack did not fit them; that was read off the broken
+   wheel measurement fixed in Phase A.
+
+   `zivi_limo` reuses the sedan the `m5` is built from. That is not laziness:
+   it is the same file already in the bundle, so the second template costs no
+   bytes and shares its textures on the GPU, and an anonymous silver saloon
+   that looks like ordinary traffic until the blues come on is exactly the
+   brief. The player's car is a different colour and is in front of you. */
+RECIPE.zivi_limo = { ...RECIPE.m5 };
+RECIPE.zivi_kompakt = {
+  ...ZHAB,
+  file: 'hatch11',
+  /* One material for the whole body, wheels included, so node names are the
+     only way to find them. */
+  wheelMat: [],
+  /* `\b` does not match before an underscore — `_` is a word character — so
+     `^wheel_fl\b` never fired and the car came out scaled on length. */
+  wheelNode: [/^wheel_(fl|fr|rl|rr)_/i, /^wheel_[0-9]/i],
+  paintMat: [/MODERNHATCH_body/i],
+  glassMat: [/^GLASS$/i],
+};
+RECIPE.messwagen = {
+  ...ZHAB,
+  file: 'lcv07',
+  wheelMat: [/^TIRE$/i, /^material$/i],
+  wheelNode: [/^wheel_0/i],
+  paintMat: [/^BODY$/i],
+  glassMat: [/^GLASS$/i],
+};
+
+/* Traffic rides on the same two files as the Zivilstreifen. They are already
+   in the bundle, so a second template costs no bytes and shares its textures
+   on the GPU — and an unmarked patrol car that is indistinguishable from the
+   hatchback beside it is the entire point of an unmarked patrol car. */
+RECIPE.hatch = { ...RECIPE.zivi_kompakt };
+RECIPE.van = { ...RECIPE.messwagen };
+
 /* Bodies available in the generic pack, by the pack's own node names. Kept
    separate from RECIPE because they all share one file and one fitting path.
 
@@ -147,8 +193,6 @@ RECIPE.amg = {
 const PACK = {
   taxi: 'Sedan_Body_Body_0',
   kombi: 'Wagon_Body_Body_0',
-  hatch: 'Compact_Body_Body_0',
-  van: 'minivan_body_Body_0',
 };
 for (const [id, node] of Object.entries(PACK)) {
   RECIPE[id] = {
