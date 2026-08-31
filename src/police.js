@@ -25,7 +25,13 @@ import { TrafficCar } from './vehicles.js';
 const KMH = 3.6;
 
 /* --------------------------------------------------- Bußgeldkatalog (BKat)
-   [excess km/h over, fine €, Punkte, Fahrverbot months]                    */
+   Speeding outside built-up areas, cars, post-2021 rates.
+   [excess km/h over, fine €, Punkte, Fahrverbot months]
+
+   Note the ceiling: two points and 700 € is as bad as a *speeding*
+   Ordnungswidrigkeit ever gets, no matter how far over you were. 180 km/h over
+   the limit is the same entry as 71. That is genuinely how the catalogue works
+   — see assessSpeeding() for where it stops being a mere fine.               */
 const BKAT = [
   [10, 20, 0, 0], [15, 40, 0, 0], [20, 60, 0, 0], [25, 100, 1, 0],
   [30, 150, 1, 0], [40, 200, 1, 0], [50, 320, 2, 1], [60, 480, 2, 1],
@@ -37,6 +43,39 @@ export function penaltyFor(excessKmh) {
     if (e <= cap) return { excess: e, fine, points: pts, ban };
   }
   return { excess: e, fine: 700, points: 2, ban: 3 };
+}
+
+/* ------------------------------------------- § 315d StGB, Alleinrennen
+   Above roughly twice the posted limit you are no longer committing an
+   administrative offence at all. Since October 2017, § 315d Abs. 1 Nr. 3 StGB
+   covers a driver alone who travels "mit nicht angepasster Geschwindigkeit und
+   grob verkehrswidrig und rücksichtslos ... um eine höchstmögliche
+   Geschwindigkeit zu erreichen" — a criminal offence carrying up to two years,
+   THREE points, revocation of the licence under § 69 StGB (not a temporary
+   Fahrverbot) and confiscation of the car under § 315f.
+
+   There is no statutory km/h figure — it is a judicial assessment — but German
+   courts have found it at around double the limit, so that is the rule here.  */
+export const RACING_MULTIPLE = 2.0;
+
+/**
+ * What the offence actually is. Returns null if you were legal.
+ * `criminal` entries end the run: your licence is gone, not suspended.
+ */
+export function assessSpeeding(kmh, limit) {
+  if (limit === Infinity || !(kmh > limit)) return null;
+  const excess = Math.round(kmh - limit);
+  if (kmh >= limit * RACING_MULTIPLE) {
+    // Geldstrafe is set in Tagessätze (daily units), not a fixed sum
+    const over = kmh - limit * RACING_MULTIPLE;
+    const days = Math.min(90, 40 + Math.floor(over / 15) * 5);
+    return {
+      criminal: true, excess, days, fine: days * 50,
+      points: 3, ban: 0, revoked: true, seized: true,
+    };
+  }
+  const b = penaltyFor(excess);
+  return { criminal: false, ...b, revoked: false, seized: false };
 }
 
 /* Measurement ranges.
@@ -190,10 +229,13 @@ export class Enforcement {
         const camLim = limitAt(cam.s);
         if (camLim !== Infinity && pKmh > camLim + 4) {
           cam.fired = true;
-          const p = penaltyFor(pKmh - camLim);
-          this._ticket(player, p, 'blitzer', sectionAt(cam.s).name, camLim, pKmh);
+          const a = assessSpeeding(pKmh, camLim);
+          this._ticket(player, a, a.criminal ? 'racing' : 'blitzer', sectionAt(cam.s).name, camLim, pKmh);
           this.camFlashT = 0.45;
-          this.events.push({ type: 'flash', penalty: p, limit: camLim, speed: pKmh });
+          this.events.push({
+            type: a.criminal ? 'criminal' : 'flash',
+            penalty: a, limit: camLim, speed: pKmh, source: 'blitzer',
+          });
         } else {
           cam.fired = true;
           this.events.push({ type: 'camera-pass-clean' });
@@ -263,12 +305,15 @@ export class Enforcement {
           // a valid ProViDa measurement needs a sustained follow, up close
           z.measure += dt / 4.2;
           if (z.measure >= 1) {
-            const p = penaltyFor(z.measurePeak - zLim);
-            this._ticket(player, p, 'provida', sectionAt(player.s).name, zLim, z.measurePeak);
+            const a = assessSpeeding(z.measurePeak, zLim);
+            this._ticket(player, a, a.criminal ? 'racing' : 'provida', sectionAt(player.s).name, zLim, z.measurePeak);
             z.state = COP_STATE.PURSUE;
             z.pursueClose = 0;
             z.setLights(true);
-            this.events.push({ type: 'measure-done', cop: z, penalty: p, limit: zLim, speed: z.measurePeak });
+            this.events.push({
+              type: a.criminal ? 'criminal' : 'measure-done',
+              cop: z, penalty: a, limit: zLim, speed: z.measurePeak, source: 'provida',
+            });
           }
         }
         active = z;
@@ -447,6 +492,7 @@ export class Enforcement {
     player.tickets.push({
       src, place, limit: Math.round(limit), speed: Math.round(speed),
       excess: p.excess, fine: p.fine, points: p.points, ban: p.ban,
+      days: p.days, criminal: !!p.criminal, revoked: !!p.revoked, seized: !!p.seized,
     });
   }
 

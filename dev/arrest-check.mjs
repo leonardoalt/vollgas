@@ -115,7 +115,10 @@ const escape = await page.evaluate(async () => {
   return [run('run'), run('lift')];
 });
 escape.forEach(r => console.log('escape', JSON.stringify(r)));
-console.log('  flat out still gets reported:', escape[0].outcome === 'pursue' ? 'PASS' : 'FAIL (' + escape[0].outcome + ')');
+// past twice the limit the measurement becomes a § 315d charge, which forces a
+// stop rather than a pursuit — either way you did not get away with it
+console.log('  flat out still gets caught  :',
+  ['pursue', 'stop'].includes(escape[0].outcome) ? 'PASS' : 'FAIL (' + escape[0].outcome + ')');
 console.log('  lifting off still saves you :', escape[1].outcome === 'done' ? 'PASS' : 'FAIL (' + escape[1].outcome + ')');
 console.log('  bar never fills off-radar   :', escape.every(r => r.offRadar === 0) ? 'PASS' : 'FAIL');
 

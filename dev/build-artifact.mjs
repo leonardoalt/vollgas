@@ -18,7 +18,7 @@ const body = html.slice(html.indexOf('<body>') + 6, html.lastIndexOf('</body>'))
    does not send a charset header the browser decodes it as Latin-1 and every
    one of them turns to mojibake. Must land inside the first 1024 bytes. */
 const out = `<meta charset="utf-8" />
-<title>A 81 Autobahn Racer</title>
+<title>Vollgas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&display=swap" />

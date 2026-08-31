@@ -1,13 +1,14 @@
 {
-  "name": "autobahn-a81",
+  "name": "vollgas",
   "private": true,
   "version": "0.1.0",
-  "description": "A81 Stuttgart-Singen: race the German Autobahn while dodging unmarked police with mobile speed cameras.",
+  "description": "Vollgas — a time trial down the A81 from Stuttgart to Singen, dodging unmarked ProViDa patrols and mobile speed cameras.",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview --port 4173"
+    "preview": "vite preview --port 4173",
+    "deploy": "bash dev/deploy-pages.sh"
   },
   "dependencies": {
     "three": "^0.169.0"
@@ -15,5 +16,6 @@
   "devDependencies": {
     "puppeteer-core": "^23.11.1",
     "vite": "^5.4.10"
-  }
+  },
+  "homepage": "https://leonardoalt.github.io/vollgas/"
 }

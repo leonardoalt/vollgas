@@ -396,7 +396,7 @@ export class Game {
       if (e.showT > 2.9) {
         const reason = {
           arrest: 'dnf.stopped', points: 'dnf.points',
-          wreck: 'dnf.wreck', rammed: 'dnf.rammed',
+          wreck: 'dnf.wreck', rammed: 'dnf.rammed', racing: 'dnf.racing',
         }[e.kind];
         this.outOfRace(t(reason));
         return true;
@@ -457,12 +457,14 @@ export class Game {
       : (r.isBest ? t('res.newbest') : `${t('res.best.l')} ${fmt(r.prev)}`);
 
     const avg = r.time ? (LENGTH / 1000) / (r.time / 3600) : null;
+    // a § 315d case is a prosecution, not an administrative penalty notice
+    const criminal = p.tickets.some(x => x.criminal);
     const rows = [
       [t('res.time.l'), fmt(r.time)],
       [t('res.best.l'), fmt(r.isBest ? r.time : r.prev)],
       [t('res.vmax.l'), `${Math.round(p.vmaxSeen)} km/h`],
       [t('res.avg.l'), avg ? `${Math.round(avg)} km/h` : t('res.none')],
-      [t('res.fines.l'), money(p.fines)],
+      [criminal ? t('res.fines.crim') : t('res.fines.l'), money(p.fines)],
       [t('res.points.l'), String(p.points)],
       [t('res.damage.l'), `${Math.round(p.damage)} %`],
     ];
@@ -477,17 +479,19 @@ export class Game {
     } else {
       tk.className = 'dirty';
       const ban = Math.max(...p.tickets.map(x => x.ban));
-      tk.innerHTML = `<h4>${t('res.ticket')}</h4>` +
+      tk.innerHTML = `<h4>${t(criminal ? 'res.ticket.crim' : 'res.ticket')}</h4>` +
         p.tickets.map(x =>
           `<div class="tk-row"><span>${x.plain
             ? t('res.rowplain', { where: `${t('src.' + x.src)} · ${x.place}` })
             : t('res.row', {
                 where: `${t('src.' + x.src)} · ${x.place}`,
                 speed: x.speed, limit: x.limit, excess: x.excess,
-              })}</span><span>${money(x.fine)}</span></div>`
+              })}</span><span>${x.days ? `${t('res.days', { n: x.days })} · ${money(x.fine)}` : money(x.fine)}</span></div>`
         ).join('') +
         `<div class="tk-row"><span>${t('res.pointsrow')}</span><span>${p.points}</span></div>` +
         (ban > 0 ? `<div class="tk-row"><span>${t('res.ban')}</span><span>${t(ban > 1 ? 'res.months' : 'res.month', { n: ban })}</span></div>` : '') +
+        (p.tickets.some(x => x.revoked) ? `<div class="tk-row"><span>${t('res.revoked')}</span><span>§ 69 StGB</span></div>` : '') +
+        (p.tickets.some(x => x.seized) ? `<div class="tk-row"><span>${t('res.seized')}</span><span>§ 315f StGB</span></div>` : '') +
         `<div class="tk-total"><span>${t('res.total')}</span><span>${money(p.fines)}</span></div>`;
     }
     $('results').classList.remove('hidden');
@@ -518,6 +522,14 @@ export class Game {
           }) + (p.ban ? t('a.charge.ban', { n: p.ban }) : '');
           this.hud.alert(t('a.charge', { fine: p.fine }), sub, 'bad', 6, 'charge');
           this.hud.alert(t('a.follow'), t('a.follow.sub'), 'bad', 6, 'pursuit');
+          break;
+        }
+        case 'criminal': {
+          const p = ev.penalty;
+          if (ev.source === 'blitzer') { this.hud.blitzFlash(); this.audio.flash(); }
+          this.hud.alert(t('a.racing'),
+            t('a.racing.sub', { speed: Math.round(ev.speed), limit: ev.limit }), 'bad', 9, 'charge');
+          this.beginEnding('racing');
           break;
         }
         case 'flash': {

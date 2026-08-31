@@ -1,4 +1,4 @@
-# A 81 · Autobahn Racer
+# Vollgas
 
 A browser racing game on the **Bundesautobahn 81, Stuttgart → Singen (Bodensee)**,
 built with Three.js and no art assets — every mesh, texture and sign is generated
@@ -101,22 +101,46 @@ where limits start and through the roadworks. No in-car warning — radar detect
 are illegal in Germany. The only warning you get is the real one: **Lichthupe**
 from oncoming traffic on the far carriageway, once per hazard.
 
-**Fines** follow the actual Bußgeldkatalog for outside built-up areas, from €20
-for 10 over to €700, 2 Punkte and a 3-month Fahrverbot past 70 over. Eight points
-in Flensburg and your run is over. The rivals run the same gauntlet and their
-fines show up on the results sheet next to yours.
+**Penalties** come in two tiers, because in Germany they genuinely do.
+
+*Bußgeldkatalog* (administrative), outside built-up areas: €20 for 10 over up to
+€700, **2 Punkte** and a 3-month Fahrverbot past 70 over. Note the ceiling — two
+points is as bad as a speeding *Ordnungswidrigkeit* ever gets. 180 over is the
+same entry as 71.
+
+*§ 315d StGB* (criminal). Above roughly **twice the posted limit** it stops being
+an administrative offence at all: since October 2017, § 315d Abs. 1 Nr. 3 covers
+a driver alone travelling "mit nicht angepasster Geschwindigkeit und grob
+verkehrswidrig und rücksichtslos … um eine höchstmögliche Geschwindigkeit zu
+erreichen". That carries **3 Punkte**, a Geldstrafe in Tagessätze, revocation of
+the licence under § 69 StGB — not a temporary ban — and confiscation of the car
+under § 315f. In game it ends the run immediately, on its own card, and the
+results sheet becomes a Strafverfahren rather than a Bußgeldbescheid.
+
+So: 300 in a 120 is not two points. It is a criminal charge, your licence, and
+your car. Eight points in Flensburg also ends a run.
 
 ## Cars
 
 Four you drive, evocative rather than licensed — a rear-engined fastback, a
 notchback super-saloon, a fast estate and a long-bonnet four-door coupé:
 
-| | Layout | V max | 0–100 (measured in-engine) |
-|---|---|---|---|
-| Zuffenhausen 9 Turbo S | rear engine, AWD | 330 | 2.6 s |
-| Bayern M-Sport M5 CS | AWD saloon | 305 | 2.8 s |
-| Ingolstadt RS-6 Avant | AWD estate, 2.1 t | 305 | 2.8 s |
-| Affalterbach AMG 63 S | RWD, long bonnet | 315 | 3.5 s |
+| | reference car | layout | V max | 0–100 |
+|---|---|---|---|---|
+| Zuffenhausen 9 Turbo S | 911 Turbo S (992) | AWD, 8-sp | 330 | 2.7 s |
+| Bayern M-Sport M5 CS | M5 CS (F90) | AWD, 8-sp | 305 | 3.0 s |
+| Ingolstadt RS-6 Avant | RS6 Avant (C8) | AWD, 8-sp | 305 | 3.6 s |
+| Affalterbach AMG 63 S | C 63 S (W205) | **RWD, 7-sp** | 290 | 3.9 s |
+
+Every figure is the real car's: power, kerb weight, top speed, gearbox, driven
+axles, rev limit. Three of the four genuinely are 8-speed automatics with
+all-wheel drive — that is real convergence among 300 km/h German saloons, not a
+shortcut. The AMG is the outlier and drives like it.
+
+In-engine measurements land within a tenth of the published 0–100 figures. That
+needs a per-car `launch` factor in the drivetrain (the fraction of available grip
+that reaches the road off the line), because a 2.1 t estate does not get away
+like a rear-engined 911 on identical nominal grip.
 
 Bodies are **lofted hulls**: a list of stations along the length, each giving a
 lower-body half-width and beltline plus an optional narrower cabin tier, and each
@@ -187,6 +211,7 @@ hold on a full-screen card so you can see *why*, then show the numbers.
 | Eight points | FÜHRERSCHEIN WEG / LICENCE GONE | a patrol car closes in and stops you |
 | 100 % damage | SCHROTT / WRECKED | you coast to a halt; no police involved |
 | Hitting a camera van | GERAMMT / RAMMED | the vans are solid: €1000, 3 points, run over |
+| Twice the limit, caught | STRAFTAT / CRIMINAL OFFENCE | § 315d StGB: licence revoked, car seized |
 
 ### Time trial
 

@@ -1,0 +1,5 @@
+- Random NPC car shows up on the left blinking left and flashing, with a few rings or other recognizable behavior showing big on your mirror.
+- Baustelle
+- Stau
+- Rain/etc?
+- Multiplayer

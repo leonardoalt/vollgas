@@ -30,7 +30,12 @@ export function derive(perf) {
   const k = Math.max(0.05, (P / vmax - roll) / (vmax * vmax));
   const gearTop = [];
   for (let i = 0; i < perf.gears; i++) gearTop.push(vmax * Math.pow((i + 1) / perf.gears, 0.72));
-  return { vmax, P, roll, k, gearTop, aMax: perf.grip * G, drive: perf.awd ? 0.78 : 0.62 };
+  /* `launch` is the fraction of the tyres' grip that actually reaches the road
+     off the line: a per-car figure, because a 2.1 t estate does not get away
+     like a rear-engined 911 even with the same nominal grip. Falls back to a
+     sensible default by driven axles. */
+  const drive = perf.launch ?? (perf.awd ? 0.78 : 0.62);
+  return { vmax, P, roll, k, gearTop, aMax: perf.grip * G, drive };
 }
 
 export class Vehicle {
