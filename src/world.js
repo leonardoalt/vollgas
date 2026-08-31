@@ -12,10 +12,15 @@ import {
   ENTRY_LEN, entryRamp, outerBarrier,
 } from './track.js';
 import {
-  asphaltTex, skyTex, facadeTex, signLimit, signEndAll, signAdvice,
+  asphaltTex, asphaltNormalTex, asphaltRoughTex,
+  markingTex, markingNormalTex, markingRoughTex,
+  railTex, railNormalTex, W_BEAM, BEAM_V, POST_V,
+  grassTex, grassNormalTex, concreteTex, concreteNormalTex,
+  noiseWallTex, noiseWallNormalTex, tunnelLiningTex,
+  skyTex, facadeTex, signLimit, signEndAll, signAdvice,
   signAusfahrt, signGantry, signRast, signBaustelle, signKm, signTunnel,
 } from './textures.js';
-import { buildTerrain, buildVegetation, buildLandmarks } from './scenery.js';
+import { buildTerrain, buildVegetation, buildLandmarks, buildVergeGrass } from './scenery.js';
 
 const CHUNK = 512;                    // metres per road chunk
 /** True where the entry slip road still has usable width. */
@@ -23,10 +28,12 @@ const rampAt = (s) => { const e = entryRamp(s); return !!e && e.width > 0.5; };
 /* Where the sun sits relative to the car. Late-afternoon, over your shoulder. */
 const SUN_OFFSET = new THREE.Vector3(-165, 225, 250);
 const CROSSFALL = 0.025;              // 2.5 %, drains to the outside
+/** Overbridges, as fractions of the route. Shared with the verge blocker. */
+const BRIDGE_AT = [0.176, 0.312, 0.419, 0.533, 0.643, 0.774, 0.910];
 
 /* ------------------------------------------------------------- mesh helper */
 class Mesher {
-  constructor() { this.p = []; this.uv = []; this.idx = []; this.n = 0; }
+  constructor() { this.p = []; this.uv = []; this.idx = []; this.col = null; this.n = 0; }
   /** a,b,c,d are [x,y,z] in winding order; uv is [u0,v0,u1,v1] corners */
   quad(a, b, c, d, u0 = 0, v0 = 0, u1 = 1, v1 = 1) {
     const i = this.n;
@@ -35,15 +42,39 @@ class Mesher {
     this.idx.push(i, i + 1, i + 2, i, i + 2, i + 3);
     this.n += 4;
   }
+  /**
+   * As quad(), plus one rgb triple per corner. The first call switches the
+   * mesh to vertex colours; geo() back-fills white for anything emitted
+   * without them, so the two calls can be mixed on one mesher.
+   */
+  quadC(a, b, c, d, u0, v0, u1, v1, ca, cb, cc, cd) {
+    if (!this.col) this.col = [];
+    while (this.col.length < this.n * 3) this.col.push(1);
+    this.quad(a, b, c, d, u0, v0, u1, v1);
+    this.col.push(...ca, ...cb, ...cc, ...cd);
+  }
   get empty() { return this.n === 0; }
   geo() {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
+    if (this.col) {
+      while (this.col.length < this.n * 3) this.col.push(1);
+      g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
+    }
     g.setIndex(this.idx);
     g.computeVertexNormals();
     return g;
   }
+}
+
+/* Integer hash for the spatial variation baked into vertex colours. Kept in
+   int32 with Math.imul — a plain `*` overflows and collapses the range. */
+function hash1(i, j) {
+  let h = Math.imul(i | 0, 374761393) ^ Math.imul(j | 0, 668265263);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
 }
 
 /** Point on the road surface at (s,u), including crossfall. */
@@ -67,32 +98,138 @@ function ribbon(m, s, s2, u1, u2, dy = 0, vScale = 0, uRep = 1) {
   else m.quad(b, a, d, c, 0, s * vScale, uRep, s2 * vScale);
 }
 
+/**
+ * ribbon() with a per-corner tint from `tint(s,u)`. The colours have to follow
+ * the winding flip, not the argument order, or the shading mirrors itself on
+ * the oncoming carriageway.
+ */
+function ribbonC(m, s, s2, u1, u2, dy, vScale, uRep, tint) {
+  const a = lift(roadPt(s, u1), dy), b = lift(roadPt(s, u2), dy);
+  const c = lift(roadPt(s2, u2), dy), d = lift(roadPt(s2, u1), dy);
+  const ca = tint(s, u1), cb = tint(s, u2), cc = tint(s2, u2), cd = tint(s2, u1);
+  if (u2 > u1) m.quadC(a, b, c, d, 0, s * vScale, uRep, s2 * vScale, ca, cb, cc, cd);
+  else m.quadC(b, a, d, c, 0, s * vScale, uRep, s2 * vScale, cb, ca, cd, cc);
+}
+
+/**
+ * The four vertical sides of a prism through the horizontal corners `pts`
+ * (each [x,y,z]), from `yBot` to `yTop` relative to each corner's own y — so
+ * a post standing on the crossfall stays planted. The loop is re-wound to
+ * counter-clockwise in xz so the normals come out facing outward whichever
+ * order the corners arrived in.
+ */
+function prismSides(m, pts, yBot, yTop, u0, v0, u1, v1) {
+  let a2 = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], q = pts[(i + 1) % pts.length];
+    a2 += p[0] * q[2] - q[0] * p[2];
+  }
+  const loop = a2 > 0 ? pts : pts.slice().reverse();
+  for (let i = 0; i < loop.length; i++) {
+    const A = loop[i], B = loop[(i + 1) % loop.length];
+    m.quad([A[0], A[1] + yTop, A[2]], [B[0], B[1] + yTop, B[2]],
+      [B[0], B[1] + yBot, B[2]], [A[0], A[1] + yBot, A[2]], u0, v0, u1, v1);
+  }
+}
+
+/* ------------------------------------------------------- carriageway tints
+   Lateral cut lines across one carriageway. The extra lines bracket the four
+   wheel tracks; everything else just gives the vertex colours somewhere to
+   land. They exist because the asphalt UV repeats 2.7× across the width, so
+   anything lateral drawn into the tiling texture would come out 2.7 times
+   over — the wheel tracks, the repairs and the pale hard shoulder have to be
+   geometry and vertex colour, not texture. */
+const LANE_CUTS = [
+  2.00, 2.50, 3.26, 3.60, 3.94, 4.81, 5.15, 5.49,
+  6.25, 7.01, 7.35, 7.69, 8.56, 8.90, 9.24, 10.00, 11.25, 12.50,
+];
+const TRACKS = [3.60, 5.15, 7.35, 8.90];   // wheel-track centres
+const isTrack = (mid) => TRACKS.some(t => Math.abs(mid - t) < 0.30);
+
+function asphaltTone(s, u) {
+  const au = Math.abs(u);
+  let k = 1;
+  let dmin = 9;
+  for (const t of TRACKS) dmin = Math.min(dmin, Math.abs(au - t));
+  const pol = Math.max(0, 1 - dmin / 0.52);           // polished, so darker
+  k *= 1 - 0.155 * pol * pol * (3 - 2 * pol);
+  if (au > 10) k *= 1 + 0.14 * Math.min(1, (au - 10) / 1.7);   // dusty shoulder
+  k *= 0.93 + 0.14 * hash1(Math.floor(s / 41), Math.floor(au / 2.7));
+  k *= 0.975 + 0.05 * hash1(Math.floor(s / 13) + 601, Math.floor(au * 1.7));
+  return [k, k, k * 1.01];
+}
+
 /* =============================================================== materials */
 function makeMaterials(env) {
   const asph = asphaltTex([1, 1]);
+  const asphN = asphaltNormalTex([3, 3]);
+  const asphR = asphaltRoughTex([3, 3]);
+  const surface = (extra) => new THREE.MeshStandardMaterial({
+    map: asph, normalMap: asphN, roughnessMap: asphR,
+    roughness: 1, metalness: 0.02, envMap: env, envMapIntensity: 0.3, ...extra,
+  });
+  const markMaps = {
+    map: markingTex(), normalMap: markingNormalTex(), roughnessMap: markingRoughTex(),
+    normalScale: new THREE.Vector2(0.7, 0.7),
+  };
+  const grass = grassTex([1, 1]);
   return {
-    asphalt: new THREE.MeshStandardMaterial({ map: asph, roughness: 0.93, metalness: 0.02, envMap: env, envMapIntensity: 0.25 }),
-    concrete: new THREE.MeshStandardMaterial({ color: 0xb9b6ae, roughness: 0.9 }),
-    concreteIn: new THREE.MeshStandardMaterial({ color: 0x9d9a95, roughness: 0.9, side: THREE.DoubleSide }),
-    concreteBoth: new THREE.MeshStandardMaterial({ color: 0xb0aca4, roughness: 0.9, side: THREE.DoubleSide }),
-    median: new THREE.MeshStandardMaterial({ color: 0x5f7245, roughness: 0.96 }),
+    asphalt: surface({ vertexColors: true }),
+    /* The wheel tracks are their own material: 25 years of tyres polish the
+       binder, so they are darker *and* glossier than the surface either side.
+       Costs one extra draw call per chunk and does most of the work of making
+       the road look like it has been used. */
+    asphaltPolished: surface({ vertexColors: true, roughness: 0.72, envMapIntensity: 0.55 }),
+    /** Tar-band seams and machine-laid repairs, tinted by vertex colour. */
+    asphaltDark: surface({
+      vertexColors: true,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    }),
+    concrete: new THREE.MeshStandardMaterial({
+      map: concreteTex([2, 1]), normalMap: concreteNormalTex([2, 1]), roughness: 0.92,
+    }),
+    tunnelLining: new THREE.MeshStandardMaterial({
+      map: tunnelLiningTex(), normalMap: concreteNormalTex([9, 3]),
+      color: 0xa8a5a0, roughness: 0.9, side: THREE.DoubleSide,
+    }),
+    concreteBoth: new THREE.MeshStandardMaterial({
+      map: concreteTex([3, 3]), normalMap: concreteNormalTex([3, 3]),
+      color: 0xb8b4ac, roughness: 0.9, side: THREE.DoubleSide,
+    }),
+    barrier: new THREE.MeshStandardMaterial({
+      map: concreteTex([1, 2]), normalMap: concreteNormalTex([2, 4]), roughness: 0.92,
+    }),
+    median: new THREE.MeshStandardMaterial({
+      color: 0x5f7245, map: grass, normalMap: grassNormalTex([3, 3]),
+      vertexColors: true, roughness: 0.96, metalness: 0,
+    }),
     markWhite: new THREE.MeshStandardMaterial({
-      color: 0xf0efe9, roughness: 0.62, metalness: 0,
+      ...markMaps, color: 0xf6f5ef, roughness: 0.62, metalness: 0,
       polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3,
     }),
     markYellow: new THREE.MeshStandardMaterial({
-      color: 0xf0c21a, roughness: 0.6, metalness: 0,
+      ...markMaps, color: 0xf2c419, roughness: 0.6, metalness: 0,
       polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3,
+    }),
+    /** Stahlschutzplanke: beam and post share one atlas, so one draw call. */
+    rail: new THREE.MeshStandardMaterial({
+      map: railTex(), normalMap: railNormalTex(),
+      roughness: 0.52, metalness: 0.42, envMap: env, envMapIntensity: 1.0,
     }),
     steel: new THREE.MeshStandardMaterial({
       color: 0xaeb4b9, roughness: 0.58, metalness: 0.32,
       envMap: env, envMapIntensity: 0.9, side: THREE.DoubleSide,
     }),
-    postDark: new THREE.MeshStandardMaterial({ color: 0x5a6066, roughness: 0.6, metalness: 0.5, side: THREE.DoubleSide }),
     white: new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.7 }),
     dark: new THREE.MeshStandardMaterial({ color: 0x22262a, roughness: 0.8 }),
     lamp: new THREE.MeshBasicMaterial({ color: 0xffd9a0 }),
-    noiseWall: new THREE.MeshStandardMaterial({ map: facadeTex('#9aa093', '#7d8478', 5, 3), roughness: 0.93, side: THREE.DoubleSide }),
+    noiseWall: new THREE.MeshStandardMaterial({
+      map: noiseWallTex(), normalMap: noiseWallNormalTex(),
+      roughness: 0.93, side: THREE.DoubleSide,
+    }),
+    wallPost: new THREE.MeshStandardMaterial({
+      color: 0x74797d, roughness: 0.62, metalness: 0.35, envMap: env, envMapIntensity: 0.7,
+    }),
     baken: new THREE.MeshStandardMaterial({ color: 0xf5f3ee, roughness: 0.75, side: THREE.DoubleSide }),
     bakenRed: new THREE.MeshStandardMaterial({ color: 0xc41f1f, roughness: 0.75, side: THREE.DoubleSide }),
   };
