@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>A81 &middot; Autobahn Racer</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23004a99'/><text y='24' x='16' text-anchor='middle' font-family='sans-serif' font-weight='bold' font-size='18' fill='white'>81</text></svg>" />
+</head>
+<body>
+  <div id="app">
+    <canvas id="scene"></canvas>
+
+    <!-- ============================ HUD ============================ -->
+    <div id="hud" class="hidden">
+      <!-- top left: route / section -->
+      <div id="hud-route">
+        <div class="sign-ab" id="hud-ab">A 81</div>
+        <div id="hud-section">
+          <div id="hud-section-name">Stuttgart-Zuffenhausen</div>
+          <div id="hud-section-sub">Richtung Singen (Bodensee)</div>
+        </div>
+      </div>
+
+      <!-- top center: race state -->
+      <div id="hud-race">
+        <div class="race-row">
+          <div class="race-cell"><span class="lbl">Zeit</span><span class="val" id="hud-time">0:00.0</span></div>
+          <div class="race-cell"><span class="lbl">Platz</span><span class="val" id="hud-pos">1/4</span></div>
+          <div class="race-cell"><span class="lbl">Ziel</span><span class="val" id="hud-dist">42.0 km</span></div>
+          <div class="race-cell"><span class="lbl">V&nbsp;max</span><span class="val" id="hud-vmax">0</span></div>
+        </div>
+        <div id="hud-progress"><div id="hud-progress-fill"></div><div id="hud-progress-me"></div></div>
+      </div>
+
+      <!-- top right: legal status -->
+      <div id="hud-legal">
+        <div id="hud-limit" class="limit-sign limit-none"><span>ENDE</span></div>
+        <div id="hud-legal-stats">
+          <div class="legal-row"><span class="lbl">Bu&szlig;geld</span><span class="val" id="hud-fine">0 &euro;</span></div>
+          <div class="legal-row"><span class="lbl">Flensburg</span><span class="val" id="hud-points">0 P</span></div>
+          <div class="legal-row"><span class="lbl">Schaden</span><span class="val" id="hud-damage">0 %</span></div>
+        </div>
+      </div>
+
+      <!-- bottom right: speedo -->
+      <div id="hud-cluster">
+        <canvas id="tacho" width="440" height="440"></canvas>
+      </div>
+
+      <!-- bottom left: mirror / rear radar -->
+      <div id="hud-rear">
+        <div id="hud-rear-title">R&Uuml;CKRAUM</div>
+        <canvas id="radar" width="240" height="240"></canvas>
+      </div>
+
+      <!-- center: alerts -->
+      <div id="hud-alerts"></div>
+
+      <!-- provida measurement -->
+      <div id="hud-provida" class="hidden">
+        <div class="pv-head"><span class="pv-dot"></span> P R O V I D A &nbsp;&middot;&nbsp; MESSUNG L&Auml;UFT</div>
+        <div class="pv-bar"><div class="pv-fill"></div></div>
+        <div class="pv-sub">Zivilfahrzeug hinter dir &mdash; abbremsen oder abh&auml;ngen</div>
+      </div>
+
+      <div id="flash"></div>
+      <div id="vignette"></div>
+    </div>
+
+    <!-- ============================ MENU ============================ -->
+    <div id="menu">
+      <div class="menu-bg"></div>
+      <div class="menu-inner">
+        <header id="menu-head">
+          <div class="sign-ab big">A 81</div>
+          <div class="menu-title">
+            <h1>AUTOBAHN RACER</h1>
+            <p>Stuttgart &rarr; Singen (Bodensee) &middot; 42&nbsp;km &middot; Streckenabschnitte ohne Limit</p>
+          </div>
+        </header>
+
+        <div id="car-select">
+          <div id="car-list"></div>
+          <div id="car-detail">
+            <div id="car-detail-name">&nbsp;</div>
+            <div id="car-detail-sub">&nbsp;</div>
+            <div id="car-stats"></div>
+            <p id="car-blurb">&nbsp;</p>
+          </div>
+        </div>
+
+        <div id="menu-foot">
+          <div id="briefing">
+            <div class="brief-col">
+              <h3>Steuerung</h3>
+              <ul>
+                <li><b>W</b> / <b>&uarr;</b> Gas &middot; <b>S</b> / <b>&darr;</b> Bremse</li>
+                <li><b>A</b> <b>D</b> / <b>&larr;</b> <b>&rarr;</b> Lenken</li>
+                <li><b>Leer</b> Handbremse &middot; <b>C</b> Kamera wechseln</li>
+                <li><b>M</b> Ton &middot; <b>R</b> Neustart &middot; <b>P</b> Pause</li>
+              </ul>
+            </div>
+            <div class="brief-col">
+              <h3>Zivile Streifen &amp; Blitzer</h3>
+              <ul>
+                <li>Unauff&auml;llige Passats, A6 und 3er fahren mit &mdash; Blaulicht sitzt hinter dem K&uuml;hlergrill.</li>
+                <li><b>ProViDa</b>: h&auml;ngt sich an dich, misst per Video. Balken voll = Anzeige.</li>
+                <li>Mobile <b>Blitzer</b>-Transporter stehen im Seitenstreifen.</li>
+                <li><b>Lichthupe</b> vom Gegenverkehr = Messung voraus. Danke, Kollege.</li>
+                <li>Auf freien Abschnitten gilt kein Limit &mdash; da darf gerannt werden.</li>
+              </ul>
+            </div>
+          </div>
+          <button id="start-btn">RENNEN STARTEN</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================ RESULTS ============================ -->
+    <div id="results" class="hidden">
+      <div class="menu-bg"></div>
+      <div id="results-inner">
+        <h2 id="results-title">ZIEL &middot; SINGEN</h2>
+        <div id="results-place">&nbsp;</div>
+        <table id="results-table"></table>
+        <div id="results-ticket"></div>
+        <button id="again-btn">NOCH EINMAL</button>
+      </div>
+    </div>
+
+    <div id="loading"><div class="load-inner"><div class="sign-ab big">A 81</div><p id="load-text">Strecke wird gebaut&hellip;</p></div></div>
+    <div id="pause" class="hidden"><div>PAUSE<small>P zum Fortsetzen</small></div></div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
