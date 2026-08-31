@@ -1,148 +1,118 @@
 # HANDOFF — car visuals
 
 Branch: `worktree-agent-a6340a3413cc4f8e9` (pushed to `origin`).
-Task: make the cars look like renders from a good car game, without breaking the
-perf budget or the "no external assets" property.
 
-## Decision: procedural, not imported models
+Two things happened here. The cars got a real rendering pipeline — HDR
+environment, clearcoat paint, panel gaps, better geometry, bloom — and then
+they got **real glTF bodies** under a licence we can actually ship.
 
-Researched exhaustively first. **No viable set of permissively-licensed,
-verifiable, badge-free, sub-2 MB realistic car models exists.** Full evidence
-with URLs and quoted licence text is in `CREDITS.md` — read that rather than
-redoing the search; it is the most expensive part to repeat. One-paragraph
-summary:
+## What ships
 
-* Clean CC0 sets exist (Kenney Car Kit 690 kB for 4 cars, OGA Lyricsz pack,
-  Quaternius) but they are stylised toy geometry — a visual *downgrade* on what
-  the game already renders.
-* three.js's `ferrari.glb` has no licence at all (MIT covers the code, not
-  example media, cf. three.js#23089) and its credited Sketchfab source has been
-  taken down. Hard no.
-* Sketchfab's CC0 filter contains literally no cars; its "CC0" realistic cars
-  have a contradicting structured licence field; its CC-BY vehicle results
-  include obvious rips from shipped games.
-* TurboSquid/CGTrader licences *specifically* forbid serving assets in an
-  extractable open format, which is what a browser game does.
-* Open-source racing sims (VDrift, TORCS, Stunt Rally, Speed Dreams, STK) are
-  GPL / Free Art / CC-BY-SA: copyleft, not permissive.
-* The single genuinely viable realistic option is **Daniel Zhabotinsky's CC-BY
-  fictional-marque cars** (<https://sketchfab.com/DanielZhabotinsky>, 15–28 k
-  faces, invented brands so trademark-clean by design). Rejected only because
-  each needs a manual authenticated download. Worth reopening later.
+| | before | now |
+|---|---|---|
+| player's car | procedural loft, ~14 k tris | **CC-BY Porsche 930 Turbo**, 38.8 k tris + our wheels |
+| traffic (taxi/kombi/hatch/van) | procedural loft | **CC-BY generic pack** bodies, ~2.7 k tris each |
+| Zivilstreifen, trucks, `m5`/`rs6`/`amg` | procedural | procedural (see "gaps") |
 
-So: all effort went into lighting, materials and geometry.
+Licences, the required attribution strings and the full rejection record are in
+`CREDITS.md`. The CC-BY credit is also rendered in the menu (`src/credits.js`),
+because that licence requires it visibly wherever the work is shared.
 
-## What is implemented
-
-New files (all mine, no conflicts):
+## New files
 
 | file | what |
 |---|---|
-| `src/carEnv.js` | Procedural **HDR** equirectangular environments → PMREM. `roadEnv()` = sky with a real sun disc (~200× the sky, which is what makes clearcoat glint), Mie aureole, faint cloud banding, a crisp horizon band and a dark ground half. `studioEnv()` = photo studio: three softboxes + a long overhead strip, dark surround, sweep floor. Half-float `DataTexture`, so the sun is genuinely brighter than 1.0 — an 8-bit canvas cannot do this and that was the core problem with the old env. |
-| `src/carPaint.js` | The whole material set. Paint is `MeshPhysicalMaterial` with `clearcoat: 1` — metallic basecoat holds the colour, near-mirror lacquer holds the sky. Also glass (tinted, `depthWrite:false` so near/far screens blend), chrome, satin trim, tyre with tread normal map, two rim finishes, discs, calipers, lamps + always-on DRLs, contact shadow. Plus `retargetEnv()`. |
-| `src/carTextures.js` | `bodyDetail()` draws **panel gaps in loft UV space** (u = once round the cross-section, v = tail→nose): door shut lines, bonnet and boot-lid outlines, sill shading, shoulder creases, and a roughness map with large-scale blotching. Two canvases: one sRGB for `map`, one linear for `roughnessMap`/`aoMap`. Also `flakeNormal()` (orange peel), `tyreNormal()` (tread), `contactShadow()` (car-shaped, not a circle in a rectangle). |
-| `src/postfx.js` | Hand-rolled 5-pass bloom (MSAA half-float scene target → bright pass → separable blur ×2 widths → composite with its own sRGB conversion). Deliberately *not* EffectComposer: the game renders three times per frame and drives `toneMappingExposure`, and `OutputPass` would tone-map twice. Returns `null` if the device can't give a float target, so callers fall back. |
-| `dev/carsx.html` + `dev/carsx.js` | New bench that lights cars the way the game and menu actually do (`?env=road|studio&post=0|1`). `dev/cars.js` deliberately untouched. |
-| `CREDITS.md` | Licence research record. |
+| `src/carEnv.js` | Procedural **HDR** equirect environments → PMREM. `roadEnv()` has a real sun disc ~200× the sky, aureole, cloud banding, a crisp horizon and a dark ground half. `studioEnv()` is three softboxes and an overhead strip. Half-float, because an 8-bit canvas cannot make the sun brighter than the sky and then clearcoat has nothing to glint off. |
+| `src/carPaint.js` | Material set: clearcoat paint, tinted glass, tread-mapped tyres, two rim finishes, lamp/DRL materials, contact shadow. Plus `retargetEnv()`. |
+| `src/carTextures.js` | Panel gaps drawn in **loft UV space** (door shut lines, bonnet and boot outlines, sill shading), flake/orange-peel normal, tyre tread, car-shaped contact shadow. |
+| `src/carModels.js` | The glTF pipeline. Loads meshopt GLBs, strips badges/plates/decals, bakes world transforms into float geometry, auto-detects each body's yaw, fits to the rig, and hands off to `finishCar`. Registers itself with carFactory so the procedural path has no dependency on it. |
+| `src/postfx.js` | Five-pass bloom with a GPU self-test. |
+| `src/carHero.js` | The four car-select photographs, with a FOTO/3D toggle. 3D is the default. |
+| `src/credits.js` | CC-BY attribution line in the menu. |
+| `src/perfHud.js` | fps / frame-time / draw-call readout. **F**, or `?stats=1`. |
+| `dev/model.html`, `dev/model.js` | glTF bench (`?cars=&mode=&env=&grid=1`). |
+| `dev/carsx.html`, `dev/carsx.js` | Car bench lit the way the game lights them. |
+| `dev/tricheck.mjs`, `dev/netcheck.mjs`, `dev/probe.mjs`, `dev/timecheck.mjs` | Per-vehicle triangle breakdown, failed-request log, in-page probe, load timing. |
 
-Rewritten (owned): `src/carFactory.js`, `src/showroom.js`.
+## `src/game.js` — every line touched
 
-`src/carFactory.js` changes:
-* **Detail tiers.** `TIERS.hi/mid/lo` set loft resolution, station count, wheel
-  detail and *how many materials* a car uses. `hi` = the four player cars,
-  `mid` = Zivilstreifen + Messwagen, `lo` = traffic. Traffic cars came out
-  *cheaper* than before (fewer draw calls) which paid for the player's car.
-* Loft: `section()`/`loft()` now take a resolution object instead of the module
-  constant. Haunches added — the body swells over each axle (`hipAt`), more at
-  the rear, which is what stops the flank highlight being dead straight.
-* Wheels rewritten: `revolveX()` builds tyre and rim as solids of revolution
-  (smooth sidewall bulge, and UVs the tread normal map wants). The rim is
-  deliberately **open** at the front — barrel + lip + spokes, so you see the
-  brake disc through the gaps; a closed annulus reads as a hubcap. Twin-spoke
-  blades, polished lip ring and lug bolts on `hi`, discs + calipers on `hi`/`mid`.
-* Front/rear ends rebuilt: recessed lamp housings, chrome reflectors, **daytime
-  running lights** (biggest single readability win at distance), horizontal
-  chrome bars inside grille apertures, dark inset tail band, reversing lamps,
-  reflectors, diffuser fins, exhaust tips with a dark bore, plate recesses.
-* Side detail: rounded mirror shells, sunken door handles, **window surround
-  and wheel-arch lips laid along the actual loft stations** (`TubeGeometry`
-  through sampled station points), roof rails on estates, shark fin, wipers.
-* Interior: floor, bulkhead, dashboard, steering wheel, two front seats with
-  headrests, rear bench. You look through the glass on the turntable and from
-  the cockpit camera, so an empty shell was very obvious.
-* Front and rear number plates merged into one mesh (same texture) — one draw
-  call instead of two, thirty times over.
+Additive only, all marked `[car visuals]`:
 
-`src/showroom.js`: uses `studioEnv()` on its own context and `retargetEnv()` to
-re-point each car's materials at it. **This fixes a real pre-existing bug**: a
-PMREM result is a render target and lives on the GPU of the renderer that made
-it, so the menu cars had been carrying an envMap from the *game's* context and
-were lit entirely by four directional lights. Directional lights reduced to two
-now the environment does the work.
+* imports: `roadEnv`, `createPostFX`, `mountHero`, `mountCredits`,
+  `preloadCarModels`, `createPerfHud`
+* `initMaterials(this.world.env)` → `this.carEnv = roadEnv(renderer); initMaterials(this.carEnv);`
+* `await preloadCarModels(...)` reporting into the existing `setText`
+* `this.post = createPostFX(...)`, `this.perf = createPerfHud(...)`
+* `onResize`: `if (this.post) this.post.setSize(...)`
+* `buildMenu`: `mountHero(...)`
+* after `applyDom()`: `mountCredits($('car-detail'))`
+* language button also re-mounts the credits
+* render loop: `this.post ? this.post.render(...) : this.renderer.render(...)`, and
+  `this.perf.update(dt, this.frameStats)`
 
-`src/game.js` — only these additive edits:
-* line 7: `import { roadEnv } from './carEnv.js';`
-* the `initMaterials(this.world.env)` call replaced by
-  `this.carEnv = roadEnv(renderer); initMaterials(this.carEnv);` plus a comment.
-  Deliberately does **not** touch `scene.environment`, so world.js's own
-  materials keep exactly the env they had — zero risk to the other agents' work.
+It deliberately does **not** touch `scene.environment`, so world.js's own
+materials keep exactly the env they had.
 
-## Numbers
+## Numbers (all on headless Chromium / SwiftShader, same session)
 
-Baseline before any change (`node dev/prod-check.mjs http://localhost:5201/`):
-**516 772 tris / 1428 draw calls**, load 4157 ms, 522 geometries, 60 textures.
+| | tris/frame | calls/frame | load |
+|---|---|---|---|
+| main | 516,772 | 1,428 | 4.2 s |
+| this branch, `?nomodels=1` | 558,632 | **1,152** | 8.0 s |
+| this branch, with models | 1,062,814 | 1,751 | ~11 s |
 
-Budget: ~2× either figure (≈1.03 M tris / ≈2860 calls).
+Frame counts include the shadow pass and the 30 Hz mirror pass, so they are
+roughly 2–3× the scene's unique geometry (590 k). Load time on this machine is
+inflated — the no-models figure was 4.9 s earlier in the session and 8.0 s at
+the end, on identical code.
 
-Current: see the last line of the report / re-run prod-check. The design intent
-is roughly break-even on draw calls (player car up, thirty traffic cars down)
-and a modest triangle increase.
+**fps is not measured here and cannot be** — SwiftShader renders this at about
+1 fps. Use the in-game readout (F) on real hardware.
 
-## Left to do, in priority order
+## Gaps and known issues
 
-1. **Wire `postfx` into `game.js`** (3 more additive lines: create in `init`,
-   `setSize` in `onResize`, and `this.post ? this.post.render(...) :
-   this.renderer.render(...)` in the loop). Written and used by `dev/carsx.js`
-   but **not yet wired into the game** at the time of writing.
-2. Tune: lamp lens brightness (the round lamps on the 911 still read a little
-   like googly eyes), front splitter/apron reads as a black slab, spoilers are
-   still floating plates.
-3. Verify the cockpit camera is not blocked by the new dashboard / wheel
-   (`dev/race-shot.mjs ... 12 2`).
-4. Re-run `dev/prod-check.mjs`, `dev/lang-check.mjs`, `dev/flash-check.mjs`
-   (it asserts on `userData.headMat.emissiveIntensity` and `userData.glows`),
-   `dev/cop-shot.mjs` (blue LEDs), `npm run build`.
-5. Save before/after pairs into `dev/shots/`.
+* **No good body for `m5`, `rs6`, `amg`.** No credibly-licensed, well-authored
+  modern German super-saloon, fast estate or four-door coupé exists — every
+  candidate failed provenance (see `CREDITS.md`). They stay procedural.
+* **Zivilstreifen stay procedural.** Putting them on the pack saloon/estate
+  saved 222 k tris and 264 calls, but the rig's wheelbase-to-length ratio for
+  those four cars does not match the pack's, so the wheels sat outside the
+  arches. Reverted deliberately.
+* The 930 is a **1975 car** wearing 992 performance figures. It is the only
+  legitimately-licensed 911 available. Flagged for the owner.
+* `dev/lang-check.mjs` referenced `hud-rear-title`, which exists neither here
+  nor on main; it now reads such ids defensively instead of throwing.
+* The 404 in every harness log is `favicon.ico` and predates this work.
 
-## Gotchas found the hard way
+## Rebuilding the models
 
-* Rollup rejects `-x ** 2`; write `-(x ** 2)`.
-* `dev/cars.js` bench builds its own flat-gradient env, so it does **not** show
-  the new environment. Use `dev/carsx.js` for that.
-* External contracts that must not break (grepped): `userData.paintMat.color`,
-  `userData.tailMat.emissiveIntensity` (0.55 + brake·2.6),
-  `userData.headMat.emissiveIntensity` (0.4 / 2.2 / 16 for a Lichthupe),
-  `userData.glows[].material.opacity`, `userData.wheels[].userData.spin`
-  (rotated about **X**) and `.userData.radius`, `userData.blues[].material`,
-  `userData.led.userData.{on,off}`. `MAT.make(hex, metal, rough)` is still used
-  by `buildTruck`.
-* `aoMap` uses UV channel 0 in three r169, so no `uv1` attribute is needed.
-* The loft's station table runs **t = 0 at the tail, t = 1 at the nose**
-  (`z = (t - 0.5) * L`, +Z is the nose). Every shut-line position depends on
-  this.
-* The 404 in every harness log predates this work (a favicon); it is not an
-  error introduced here.
-
-## Build and verify
+Sources and licences are in `CREDITS.md`. The optimisation used was:
 
 ```bash
-ln -s /home/leo/devel/autobahn/node_modules node_modules   # do not npm install
-npx vite --port 5201 --strictPort &                        # dev server
-npm run build                                              # must pass
-
-node dev/shot.mjs "http://localhost:5201/dev/carsx.html?cars=turbo,m5,rs6,amg&mode=side" out.png
-node dev/shot.mjs "http://localhost:5201/dev/carsx.html?cars=turbo&mode=front34&env=studio" out.png
-node dev/race-shot.mjs "http://localhost:5201/" out.png 12 0
-node dev/prod-check.mjs "http://localhost:5201/" out.png   # trisPerFrame / callsPerFrame
-node dev/lang-check.mjs "http://localhost:5201/" /tmp/lang
+npx @gltf-transform/cli simplify in.glb a.glb --ratio 0.42 --error 0.0012
+npx @gltf-transform/cli resize   a.glb  b.glb --width 512 --height 512
+npx @gltf-transform/cli meshopt  b.glb  out.glb
 ```
+
+meshopt rather than Draco on purpose: `MeshoptDecoder` is an ES module that
+bundles, so there is no extra decoder file to fetch at runtime.
+
+## Gotchas paid for the hard way
+
+* Rollup rejects `-x ** 2`; write `-(x ** 2)`.
+* meshopt gives **normalised int16, interleaved** attributes.
+  `BufferGeometry.applyMatrix4` writes floats straight back into that array and
+  ignores the `normalized` flag, so baking a world matrix turns the car into a
+  cube of confetti. Convert via `getX/getY/getZ` first (`toFloat`).
+* GLTFLoader replaces spaces in node names with underscores.
+* An asset pack does not lay bodies out in a row facing one way — this one uses
+  a ring, each at its own yaw. Always square a body up before measuring it.
+* `.glb` is not in Vite's default `assetsInclude`; without it the import 500s.
+* Three injects `colorspace_pars_fragment` into ShaderMaterial prologues
+  already — including it again fails to compile, and a full-screen pass that
+  fails to compile is a black frame with no error.
+* External contracts that must not break: `userData.paintMat.color`,
+  `tailMat.emissiveIntensity`, `headMat.emissiveIntensity` (0.4/2.2/16),
+  `glows[].material.opacity`, `wheels[].userData.spin` (rotated about **X**)
+  and `.radius`, `blues[].material`, `led.userData.{on,off}`.
+  `MAT.make(hex, metal, rough)` is still used by `buildTruck`.
