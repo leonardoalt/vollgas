@@ -47,15 +47,73 @@ they got **real glTF bodies** under a licence we can actually ship.
 
 ## What ships
 
-| | before | now |
-|---|---|---|
-| player's car | procedural loft, ~14 k tris | **CC-BY Porsche 930 Turbo**, 38.8 k tris + our wheels |
-| traffic (taxi/kombi/hatch/van) | procedural loft | **CC-BY generic pack** bodies, ~2.7 k tris each |
-| Zivilstreifen, trucks, `m5`/`rs6`/`amg` | procedural | procedural (see "gaps") |
+Thirteen of the fourteen vehicles are on licensed glTF models. Only the
+articulated lorry is still procedural.
+
+| id | model | author | tris | file |
+|---|---|---|---|---|
+| `turbo` | FREE 1975 Porsche 911 (930) Turbo | Lionsharp Studios | 38.8 k | `car-930.glb` 1035 kB |
+| `m5`, `zivi_limo` | Generic sedan 2010 | Daniel Zhabotinsky | 8.1 k | `car-sedan10.glb` 215 kB |
+| `amg` | '07 Generic Coupe | Daniel Zhabotinsky | 12.9 k | `car-coupe07.glb` 277 kB |
+| `rs6`, `zivi_touring`, `zivi_avant`, `kombi` | Generic USA/EU Station wagon | Anserkon | 8.2 k | `car-wagon-eu.glb` 149 kB |
+| `zivi_kompakt`, `hatch` | Modern Hatchback | Daniel Zhabotinsky | 9.4 k | `car-hatch11.glb` 248 kB |
+| `messwagen`, `van` | Light Commercial Truck '07 | Daniel Zhabotinsky | 9.4 k | `car-lcv07.glb` 322 kB |
+| `taxi` | Generic SUV | Daniel Zhabotinsky | 12.0 k | `car-suv10.glb` 263 kB |
+| `truck` | — | — | 7.5 k | procedural, `buildTruck` |
+
+All CC BY 4.0. Every marque is invented or generic, so nothing had to be
+de-badged. 2.5 MB of models in total.
+
+Reusing one file across several vehicles is deliberate: the second template
+costs no bytes and shares its textures on the GPU, and an unmarked patrol car
+that looks like the hatchback beside it is the point of an unmarked patrol car.
 
 Licences, the required attribution strings and the full rejection record are in
 `CREDITS.md`. The CC-BY credit is also rendered in the menu (`src/credits.js`),
 because that licence requires it visibly wherever the work is shared.
+
+## Where the models come from — read this before hunting for more
+
+Sketchfab's download endpoint needs OAuth. The previous research recorded that
+as the end of the road. It is not.
+
+**AllenAI's Objaverse 1.0** on HuggingFace is a public snapshot of CC-licensed
+Sketchfab models, fetchable by uid with no account, token or referrer:
+
+```
+https://huggingface.co/datasets/allenai/objaverse/resolve/main/glbs/<shard>/<uid>.glb
+```
+
+The shard for a uid comes from `object-paths.json.gz` in the same dataset
+(798,759 entries; a local copy is at `/tmp/carhunt/github/`). Sketchfab's *search*
+API is open and is how you find uids:
+
+```
+https://api.sketchfab.com/v3/search?type=models&q=<query>&downloadable=true&count=24&cursor=0
+https://api.sketchfab.com/v3/search?type=models&user=DanielZhabotinsky&downloadable=true&count=24
+```
+
+Do **not** pass `&licenses=<uid>` — the ids float and a wrong one makes the API
+reject the whole request. Read `license.label` off each result instead and keep
+`CC Attribution`, rejecting anything with `Share Alike`.
+
+The files are Sketchfab's own exports, so each carries author, licence and
+source URL in `asset.extras`. `node dev/glb-licence.mjs <file>` prints it. A
+CC BY grant is irrevocable and travels with the work.
+
+Three things that cost time to learn:
+
+* **The snapshot is December 2022.** Anything uploaded later is not in it. Of
+  the four Zhabotinsky models originally named as targets, two are (Ace '11,
+  Saba V12 '95) and two are not (Shvan 92 Traveller, Urban '10 Cop Enforcer).
+* **Zhabotinsky's catalogue is 133 models, 47 of which are mirrored, and all 47
+  are already downloaded** to `/tmp/carhunt/zhabotinsky*`. That seam is fully
+  mined; `dev/scratch/zhabcat.mjs` in the branch history is the script that
+  proves it. For more of his work you need a different mirror.
+* He later **renamed** many models to invented marques, so the 2022 snapshot
+  carries the original titles — and some of those are recognisable real cars.
+  Titles naming a real vehicle are rejected on trademark grounds regardless of
+  licence. CREDITS.md lists them.
 
 ## New files
 
@@ -75,6 +133,10 @@ because that licence requires it visibly wherever the work is shared.
 | `src/carFit.js` | **New.** The fitting geometry, as pure functions over `BufferGeometry` — no assets, no DOM, no renderer, so it can be exercised straight from Node. `squareYaw`, `noseSign`, `archAxles`, `envelopeOf`, `roofHeight`, `sliceProfile`, `clipToFootprint`, `wheelCorners`, `halfWidthAt`. |
 | `dev/fleet.html`, `dev/fleet.js` | **New.** Builds every id in `CARS` plus the truck through the real path. `?ids=&mode=&layout=row\|grid\|stack&env=&grid=1&paint=`. |
 | `dev/fleet-check.mjs` | **New.** The gate. Asserts facing, wheels-in-arches, wheels-on-ground, envelope and the `userData` contract for all 14 vehicles; `--shots <dir>` also writes the contact sheets. Exits non-zero on any failure. |
+| `dev/optimise-model.sh` | **New.** Prepare a downloaded GLB for shipping. 1.3–4.5 MB → 150–330 kB with the geometry untouched. |
+| `dev/rename-glb.mjs` | **New.** Rewrite a model's material and node names in place, for authors who ship `.001`, `material`, `Material` and Cyrillic node names. `--list` first. |
+| `dev/glb-licence.mjs` | **New.** Print the author/licence/source a GLB carries in `asset.extras`. |
+| `dev/credits-check.mjs` | **New.** Gate for provenance: every shipped GLB must declare an acceptable licence *and* have its source URL cited in CREDITS.md, and every URL in CREDITS.md must resolve. |
 
 ## `src/game.js` — every line touched
 
@@ -99,9 +161,14 @@ materials keep exactly the env they had.
 
 | | tris/frame | calls/frame | load |
 |---|---|---|---|
-| main | 516,772 | 1,428 | 4.2 s |
-| this branch, `?nomodels=1` | 558,632 | **1,152** | 8.0 s |
-| this branch, with models | 1,062,814 | 1,751 | ~11 s |
+| main, before any of this | 516,772 | 1,428 | 4.2 s |
+| `?nomodels=1` (procedural fallback) | 558,632 | **1,152** | 8.0 s |
+| end of Phase A — 5 vehicles on models | 1,062,814 | 1,751 | ~11 s |
+| **now — 13 vehicles on models** | **1,188,376** | **1,799** | ~11 s |
+
+Eight more real vehicles cost +126 k triangles and **+48 draw calls**, because
+`fitTemplate` merges bodies per material and these models carry few materials.
+Unique scene geometry is 675 k.
 
 Frame counts include the shadow pass and the 30 Hz mirror pass, so they are
 roughly 2–3× the scene's unique geometry (590 k). Load time on this machine is
@@ -113,20 +180,29 @@ the end, on identical code.
 
 ## Gaps and known issues
 
-* **No good body for `m5`, `rs6`, `amg`.** No credibly-licensed, well-authored
-  modern German super-saloon, fast estate or four-door coupé exists — every
-  candidate failed provenance (see `CREDITS.md`). They stay procedural.
-* **Zivilstreifen stay procedural** *(as of Phase A — being addressed in Phase
-  B)*. The earlier note here said the pack's wheelbase-to-length ratio did not
-  fit those four cars. That conclusion was drawn from the broken wheel
-  measurement described above; measured correctly, the pack's saloon fits `m5`
-  to within 7% and its estate fits `rs6` to within 6%. The reasoning was wrong,
-  not just the numbers.
+* **The artic lorry is still procedural.** It is the last one. Replacing it is
+  a bigger job than it looks: `buildTruck` is bespoke, has no `CARS` entry, and
+  produces 22 individually spinning wheels, while every candidate artic in
+  `/tmp/carhunt/trucks/` is a single mesh with its wheels baked in — so a model
+  truck would gain detail and lose rolling wheels, which on a vehicle you
+  overtake at 250 km/h is a bad trade. Deliberately left.
+* **Four vehicles share the estate body** (`rs6`, `kombi`, both Zivi estates)
+  and three pairs share other files. Traffic paint is randomised so it reads as
+  variety on the road, but a fifth traffic shape would be an easy win if a
+  modern generic saloon that tints turns up.
+* `zivi_touring` and `zivi_avant` are the same model at 1.10× and 1.07× scale.
+  Side by side in a contact sheet that is obvious; in a mirror at speed it is
+  not. A different estate for one of them would fix it.
 * The 930 is a **1975 car** wearing 992 performance figures. It is the only
   legitimately-licensed 911 available. Flagged for the owner.
+* The menu still shows the owner's photographs of real M5 / RS6 / AMG cars on
+  the FOTO toggle, which no longer match the 3D models behind them. Left alone
+  — they are the owner's own photographs, supplied deliberately.
 * `dev/lang-check.mjs` referenced `hud-rear-title`, which exists neither here
   nor on main; it now reads such ids defensively instead of throwing.
-* The 404 in every harness log is `favicon.ico` and predates this work.
+* `vite preview` could not serve the built bundle on this machine — it answered
+  404 for an asset `curl` fetched happily from the same URL. `prod-check` is run
+  against a plain static server instead; see "Running the gates".
 
 ## Rebuilding the models
 
@@ -177,6 +253,7 @@ node dev/busted-check.mjs   http://localhost:5301/ /tmp
 node dev/physics2-check.mjs http://localhost:5301/ /tmp/p2.png
 node dev/penalty-check.mjs  http://localhost:5301/ /tmp/pen.png
 node dev/prod-check.mjs     http://127.0.0.1:4374/vollgas/ /tmp/prod.png
+node dev/credits-check.mjs
 ```
 
 `vite preview` could not be used for `prod-check` on this machine — it answered
