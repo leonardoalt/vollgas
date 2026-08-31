@@ -293,4 +293,7 @@ bench; `dev/world.html?km=12&view=drive|cockpit|air|sign` is a world bench.
 - The Engelbergtunnel is modelled as a single bore over your carriageway, and
   there is no hillside over it — you drive into a portal standing in open ground.
 - Slip roads are visual — you cannot actually leave the Autobahn.
-- Marque names and models are fictional stand-ins; no licensed trademarks are used.
+- Marque names and model designations are fictional stand-ins, and every badge is
+  stripped from the models and menu images. Car *shapes* remain recognisable —
+  that is deliberate. All third-party models are CC-BY and attributed in
+  `CREDITS.md` and in the menu.
