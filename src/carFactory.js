@@ -1207,11 +1207,24 @@ function bakeCar(id) {
   return res;
 }
 
+/* A loaded glTF body, if one is available for this id.
+
+   carModels.js registers itself here rather than carFactory importing it, so
+   there is no import cycle and the procedural path has no dependency on the
+   loader at all: if models are switched off, not licensed, or fail to
+   download, buildCar simply never asks. */
+let _modelProvider = null;
+export function setModelProvider(fn) { _modelProvider = fn; }
+
 /**
  * Build a complete car.
  * opts: { paint, plate, police:{blue:true, led:true}, marked }
  */
 export function buildCar(id, opts = {}) {
+  if (_modelProvider) {
+    const m = _modelProvider(id, opts);
+    if (m) return m;
+  }
   const spec = CARS[id];
   const dims = spec.dims;
   const { geos, detail, tier } = bakeCar(id);
@@ -1250,6 +1263,21 @@ export function buildCar(id, opts = {}) {
     }
   }
 
+  finishCar(g, { id, spec, dims, wheels, paintMat, headMat, tailMat, tier, opts });
+  return g;
+}
+
+/**
+ * Everything a car needs that is not its bodywork: plates, contact shadow,
+ * police kit, headlamp glow sprites, and the `userData` contract that
+ * vehicles.js, police.js, hud.js and the collision code all read.
+ *
+ * Extracted so a loaded glTF body can be dressed by exactly the same code —
+ * if these two paths ever diverge, the police lights or the plates break on
+ * one of them and it is very hard to see why.
+ */
+export function finishCar(g, ctx) {
+  const { id, spec, dims, wheels, paintMat, headMat, tailMat, tier, opts } = ctx;
   // ---- plates, front and rear, in one mesh
   const plateTxt = opts.plate || spec.plate || 'S AB 81';
   const pw = Math.min(0.52, dims.width * 0.30);

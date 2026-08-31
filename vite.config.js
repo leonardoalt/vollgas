@@ -7,5 +7,10 @@ import { defineConfig } from 'vite';
  */
 export default defineConfig(({ command }) => ({
   base: command === 'build' ? '/vollgas/' : '/',
+  /* .glb is not in Vite's default asset list, so an `import x from './a.glb'`
+     is otherwise parsed as a module and 500s. Listing it here makes the import
+     resolve to a URL, which is what GLTFLoader wants, and lets the build hash
+     and emit the file. */
+  assetsInclude: ['**/*.glb'],
   build: { chunkSizeWarningLimit: 900 },
 }));
