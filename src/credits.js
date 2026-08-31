@@ -31,6 +31,22 @@ export const ATTRIBUTIONS = [
     licence: 'CC BY 4.0',
     licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
   },
+  {
+    title: 'Generic sedan 2010',
+    author: 'Daniel Zhabotinsky',
+    authorUrl: 'https://sketchfab.com/DanielZhabotinsky',
+    source: 'https://sketchfab.com/3d-models/generic-sedan-2010-low-poly-model-7fd6e15785fa4aa9bfd6e31eb7c97ba6',
+    licence: 'CC BY 4.0',
+    licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
+  },
+  {
+    title: "'07 Generic Coupe",
+    author: 'Daniel Zhabotinsky',
+    authorUrl: 'https://sketchfab.com/DanielZhabotinsky',
+    source: 'https://sketchfab.com/3d-models/07-generic-coupe-low-poly-model-22abe5284d4c4b55920b8462eb24a8c1',
+    licence: 'CC BY 4.0',
+    licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
+  },
 ];
 
 const CSS = 'margin:12px 0 0;padding-top:9px;'
@@ -53,8 +69,19 @@ export function mountCredits(container) {
     container.appendChild(el);
   }
   const a = (href, text) => `<a href="${href}" target="_blank" rel="noopener" style="${LINK}">${text}</a>`;
+
+  /* Grouped by author. One model per author was a readable line; a dozen is a
+     paragraph of repeated names. CC BY asks for the author, the title and the
+     licence — grouping keeps all three and stays legible. */
+  const byAuthor = [];
+  for (const x of ATTRIBUTIONS) {
+    let g = byAuthor.find(q => q.author === x.author && q.licence === x.licence);
+    if (!g) { g = { ...x, titles: [] }; byAuthor.push(g); }
+    g.titles.push(x);
+  }
   el.innerHTML = (lang === 'en' ? 'Car models: ' : 'Fahrzeugmodelle: ')
-    + ATTRIBUTIONS.map(x =>
-      `${a(x.source, x.title)} — ${a(x.authorUrl, x.author)}, ${a(x.licenceUrl, x.licence)}`
+    + byAuthor.map(g =>
+      `${g.titles.map(t => a(t.source, t.title)).join(', ')} — `
+      + `${a(g.authorUrl, g.author)}, ${a(g.licenceUrl, g.licence)}`
     ).join(' · ');
 }

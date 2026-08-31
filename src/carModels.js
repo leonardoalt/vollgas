@@ -37,12 +37,16 @@ import {
 
 import url930 from './assets/models/car-930.glb';
 import urlPack from './assets/models/car-generic-pack.glb';
+import urlSedan10 from './assets/models/car-sedan10.glb';
+import urlCoupe07 from './assets/models/car-coupe07.glb';
 
 
 /* ------------------------------------------------------------- the sources */
 const FILES = {
   p930: url930,
   pack: urlPack,
+  sedan10: urlSedan10,
+  coupe07: urlCoupe07,
 };
 
 /**
@@ -79,6 +83,56 @@ const RECIPE = {
     paintMat: [/^paint$/i],
     glassMat: [/glass/i],
   },
+};
+
+/* --------------------------------------------------- the fictional marques
+
+   Daniel Zhabotinsky's catalogue is the find that made the rest of the fleet
+   possible: mid-poly, consistently built, and drawn as *invented* marques, so
+   there is no badge to strip and no trade dress to worry about. His models
+   share a material vocabulary — `*_body` is the paint, `UCB_GLASS*`/`glass` is
+   the glazing, `*_INTERIOR`/`void` is the cabin, `GENERIC_BADGES` and
+   `Numberplates` are exactly what they say — which is why the recipes below
+   look so much like each other.
+
+   Obtained from the Objaverse mirror; licence, author and Sketchfab URL are
+   embedded in each file's `asset.extras` and recorded in CREDITS.md.        */
+const ZHAB = {
+  /* Draw carFactory's wheels, not the model's. Three reasons: the coupe's
+     front wheels are modelled mid-steer, so bolting them on gives a car that
+     corners in the showroom; the rig's revolved wheels carry the per-marque
+     spoke count and caliper colour, which is most of what makes the fleet look
+     like one fleet; and they cost one material instead of two. The model's
+     wheels are still measured — they are what the wheelbase and the arch
+     radius come from — they are simply not drawn. */
+  ownWheels: true,
+  paintMat: [/_body$/i, /^body$/i, /bodycolou?r/i],
+  glassMat: [/^glass$/i, /_glass$/i, /GLASS_CLEAN/i],
+  /* Badges and plates go on principle even where the marque is invented: the
+     plates are the modeller's, and we fit a German one over the top. */
+  strip: [/BADGE/i, /Numberplate/i],
+  stripNode: [/numberplate/i, /licenc?eplate/i, /badge/i],
+  coat: [],
+};
+
+RECIPE.m5 = {
+  ...ZHAB,
+  file: 'sedan10',
+  /* The rims share `solar_bottom` with the headlight housings and the plastic
+     trim, so here they can only be found by node name. */
+  wheelMat: [],
+  wheelNode: [/^wheels?[_\d]/i],
+  paintMat: [/^solar_body$/i],
+  glassMat: [/^solar_glass$/i],
+};
+
+RECIPE.amg = {
+  ...ZHAB,
+  file: 'coupe07',
+  wheelMat: [/^rimstock/i],
+  wheelNode: [/^wheel_\d/i],
+  paintMat: [/^body$/i],
+  glassMat: [/^glass$/i],
 };
 
 /* Bodies available in the generic pack, by the pack's own node names. Kept
@@ -119,7 +173,7 @@ for (const [id, node] of Object.entries(PACK)) {
 const _templates = new Map();      // car id -> fitted THREE.Group template
 let _enabled = true;
 
-const matches = (name, list) => list.some(re => re.test(name || ''));
+const matches = (name, list) => !!list && list.some(re => re.test(name || ''));
 
 /* ------------------------------------------------------------ geometry ops */
 
@@ -270,12 +324,19 @@ function fitTemplate(id, gltfScene, envMap) {
   gltfScene.traverse((o) => {
     if (!o.isMesh) return;
     const matName = o.material ? o.material.name : '';
-    if (matches(matName, rec.strip)) { roles.strip++; return; }
-    if (rec.coat.length && matches(matName, rec.coat)) { roles.strip++; return; }
+    const nodeName = o.name || '';
+    if (matches(matName, rec.strip) || matches(nodeName, rec.stripNode)) { roles.strip++; return; }
+    if (matches(matName, rec.coat)) { roles.strip++; return; }
 
-    /* Wheels are identified by material, never by node name. The pack has a
-       node called `Wheel_E_Body_0` which is a minibus. */
-    if (matches(matName, rec.wheelMat)) { wheelEntries.push(o); return; }
+    /* Wheels go by material where the material belongs only to them. Where it
+       does not — Kiri's rims share `solar_bottom` with the headlight housings
+       and the plastic trim — the recipe names the nodes instead. Node matching
+       is opt-in per model and never on by default: the generic pack has a node
+       called `Wheel_E_Body_0` which is a minibus, and trusting the name there
+       put a bus in the wheel set and a 1.48 m wheelbase on a 4.4 m car. */
+    if (matches(matName, rec.wheelMat) || matches(nodeName, rec.wheelNode)) {
+      wheelEntries.push(o); return;
+    }
 
     if (picked) {
       let keep = false;
@@ -486,17 +547,34 @@ function fitTemplate(id, gltfScene, envMap) {
      wheels — is measured off the body rather than off the rig. Width is taken
      below the waist: the mirrors are 25 cm wider than the car and a wheel
      lined up with them hangs outside the arch. */
+  /* The model's own wheel radius, per axle. carFactory's wheels are the ones
+     we draw — they are consistent across the fleet, they carry the coloured
+     calipers, and unlike some models' they are not frozen mid-steer — but they
+     have to be the size of the hole they go in, and the rig's nominal radius
+     was drawn for the procedural body. A 3 cm error here is an empty arch. */
+  const radiusOf = (keys) => {
+    if (!corners) return null;
+    const c = keys.map(k => corners[k]).filter(Boolean);
+    if (!c.length) return null;
+    return c.reduce((t, w) => t + (w.yhi - w.ylo) / 2, 0) / c.length;
+  };
+  const modelRF = radiusOf(['LF', 'RF']);
+  const modelRR = radiusOf(['LR', 'RR']);
+
   const env = envelopeOf(roles.body);
   const sill = env.halfWidth;
   const archHalf = (z) => {
     const w = halfWidthAt(roles.body, z, Math.max(0.25, wheelR * 0.9), env.waist);
     return w > sill * 0.5 ? w : sill;
   };
+  const sane = (r, fallback) => (r && r > fallback * 0.55 && r < fallback * 1.7 ? r : fallback);
   const bounds = {
     halfWidth: sill,
     wideHalf: env.wideHalf,
     halfWidthF: archHalf(spec.axleF),
     halfWidthR: archHalf(spec.axleR),
+    wheelRF: sane(modelRF, spec.wheelRF),
+    wheelRR: sane(modelRR, spec.wheelRR),
     nose: env.nose,
     tail: env.tail,
     top: env.top,
@@ -511,6 +589,8 @@ function fitTemplate(id, gltfScene, envMap) {
     fit: {
       nose, noseConf: +ns.conf.toFixed(3), yaw: +(yaw * 180 / Math.PI).toFixed(1),
       wheelbase: +(modelWB * scale).toFixed(3), rigWheelbase: +rigWB.toFixed(3),
+      wheelRF: +bounds.wheelRF.toFixed(3), wheelRR: +bounds.wheelRR.toFixed(3),
+      rigWheelRF: spec.wheelRF, rigWheelRR: spec.wheelRR,
       length: +env.length.toFixed(3), width: +env.width.toFixed(3),
       height: +env.height.toFixed(3),
       notes,
@@ -546,9 +626,15 @@ function assemble(id, tpl, opts) {
        what we wanted from a pack; carFactory's own revolved wheels are good
        now, so use those and mount them on the rig where they belong. */
     const bnd = tpl.bounds || {};
+    /* Fill the arch the model actually has, not the one the rig imagined. The
+       spec is cloned rather than mutated because CARS is shared and the
+       procedural path still wants the original numbers. */
+    const wspec = (bnd.wheelRF || bnd.wheelRR)
+      ? { ...spec, wheelRF: bnd.wheelRF ?? spec.wheelRF, wheelRR: bnd.wheelRR ?? spec.wheelRR }
+      : spec;
     for (const [front, zAxle, track] of [[true, spec.axleF, spec.trackF], [false, spec.axleR, spec.trackR]]) {
       for (const sx of [-1, 1]) {
-        const w = buildWheel(spec, front, tpl.wheelTier || 'lo');
+        const w = buildWheel(wspec, front, tpl.wheelTier || 'lo');
         const ww = front ? spec.wheelWF : spec.wheelWR;
         /* The tyre's outer wall goes just inside the arch lip, measured at this
            axle rather than at the widest point of the car. Bolting wheels to
@@ -559,7 +645,7 @@ function assemble(id, tpl, opts) {
         const x = arch > 0.4
           ? Math.max(arch * 0.55, Math.min(track / 2, arch - ww * 0.5 - 0.02))
           : track / 2;
-        w.position.set(sx * x, front ? spec.wheelRF : spec.wheelRR, zAxle);
+        w.position.set(sx * x, front ? wspec.wheelRF : wspec.wheelRR, zAxle);
         w.userData.front = front;
         g.add(w); wheels.push(w);
       }
