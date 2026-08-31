@@ -24,6 +24,14 @@
    ========================================================================== */
 import { PlayerEngine, WaveEngine, doppler } from './engineSound.js';
 import { ENGINES, CAR_ENGINE, engineFor } from './engineSpec.js';
+import { CARS } from './carFactory.js';
+
+/* A vehicle knows its `CARS` entry but not its own id, and the meshes only
+   carry an id for the Sattelzug — so map spec object back to id once, by
+   identity, and read the engine off that. */
+const SPEC_ENGINE = new Map();
+for (const [id, spec] of Object.entries(CARS)) SPEC_ENGINE.set(spec, engineFor(id));
+const engineOf = (v) => SPEC_ENGINE.get(v.spec) || (v.kind === 'truck' ? ENGINES.diesel6 : ENGINES.four);
 
 const MASTER = 0.85;
 
@@ -353,7 +361,7 @@ export class Audio {
       if (vc.g.gain.value < 0.02 || !vc._t || Math.abs(vc._t.s - ps) > 110) {
         vc._t = tgt;
         // safe to change wave here and only here: the voice is quiet
-        if (tgt) vc.setEngine(engineFor(tgt.spec && tgt.spec.id ? tgt.spec.id : tgt.kind));
+        if (tgt) vc.setEngine(engineOf(tgt));
       }
       const o = vc._t;
       if (!o) { vc.set(900, 0, 0); return; }

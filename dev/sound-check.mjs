@@ -320,7 +320,13 @@ await page.evaluate(() => {
    loop clamps dt to 50 ms — so simulated time runs far behind wall time. Wait
    on the car actually being fast rather than on a stopwatch. */
 await page.keyboard.down('w');
-await page.waitForFunction('window.__game.player.v * 3.6 > 235', { timeout: 180000, polling: 400 });
+/* Under software GL this renders at a couple of frames a second and the main
+   loop clamps dt to 50 ms, so simulated time runs far behind wall time and the
+   car cannot be relied on to reach any particular speed while ploughing through
+   traffic. Take whatever it gives; the speed-dependent curves are measured
+   deterministically in section G instead. */
+await page.waitForFunction('window.__game.player.v * 3.6 > 110', { timeout: 120000, polling: 400 })
+  .catch(() => {});
 await page.evaluate(() => window.__reset());
 await new Promise(r => setTimeout(r, 2000));
 
@@ -367,8 +373,43 @@ const tunnel = await page.evaluate(() => {
     meanRms: +(window.__rms / Math.max(1, window.__n)).toFixed(4),
   };
 });
-await page.evaluate(() => { clearInterval(window.__pin); clearInterval(window.__poll); });
+await page.evaluate(() => { clearInterval(window.__pin); });
 await page.keyboard.up('w');
+
+/* ---------------------------------------------------------- G: the mix curves
+   The physics cannot be driven to a chosen speed in a headless renderer, so
+   drive the mixer directly instead: stop the game loop stepping, feed
+   audio.update() a synthetic state at each speed, and let the AudioParam ramps
+   settle before reading them back. This is the wind law under test. */
+const curves = await page.evaluate(async () => {
+  const g = window.__game, a = g.audio;
+  g.state = 'probe';                       // the loop renders but stops stepping
+  const base = {
+    rpm: 4000, throttle: 0.9, slip: 0, offroad: false, scrape: 0, engineOn: true,
+    siren: false, sirenNear: 0, gear: 6, shiftT: 0, redline: 7000,
+    tunnel: 0, cam: 0, others: [], playerS: 1000, playerU: 0, copS: 0, copV: 0,
+  };
+  const res = [];
+  for (const kmh of [60, 125, 200, 250, 320]) {
+    const st = Object.assign({}, base, { speed: kmh / 3.6 });
+    for (let i = 0; i < 26; i++) { a.update(1 / 60, st); await new Promise(r => setTimeout(r, 16)); }
+    res.push({
+      kmh,
+      wind: +a.wind.g.gain.value.toFixed(4),
+      buffet: +a.windLow.g.gain.value.toFixed(4),
+      road: +a.road.g.gain.value.toFixed(4),
+      engine: +a.engine.gain.value.toFixed(4),
+      peak: +window.__peak.toFixed(4),
+    });
+    window.__reset();
+  }
+  // and the scrub, which is what a slide sounds like
+  const slid = Object.assign({}, base, { speed: 60, slip: 0.9 });
+  for (let i = 0; i < 26; i++) { a.update(1 / 60, slid); await new Promise(r => setTimeout(r, 16)); }
+  const scrub = { tyre: +a.tyre.g.gain.value.toFixed(4), squeal: +a.squealG.gain.value.toFixed(4) };
+  clearInterval(window.__poll);
+  return { res, scrub };
+});
 
 /* ------------------------------------------------------------------- report */
 const L = [];
@@ -470,9 +511,8 @@ say(`--- F. live mix, tunnel    : ${JSON.stringify(tunnel)}`);
 check('live: engine is running', openRoad.engine > 0.01);
 check('live: worklet engine in the real game', openRoad.engineMode === 'worklet',
   openRoad.engineMode);
-check('live: the car actually got fast', openRoad.kmh > 200, `${openRoad.kmh} km/h`);
-check('live: wind dominates at speed', openRoad.wind > 0.10 && openRoad.wind > openRoad.road,
-  `wind ${openRoad.wind} vs road ${openRoad.road} at ${openRoad.kmh} km/h`);
+check('live: wind responds to road speed', openRoad.wind > 0.001,
+  `${openRoad.wind} at ${openRoad.kmh} km/h`);
 check('live: master bus does not clip', openRoad.peak < 1.0 && tunnel.peak < 1.0,
   `open ${openRoad.peak}, tunnel ${tunnel.peak}`);
 check('live: reverb is dry outside the tunnel', openRoad.revSend < 0.02, `${openRoad.revSend}`);
@@ -480,6 +520,28 @@ check('live: reverb comes up inside the tunnel', tunnel.inTunnel && tunnel.revSe
   `inTunnel=${tunnel.inTunnel} revSend=${tunnel.revSend}`);
 check('live: the tunnel is louder than the open road', tunnel.meanRms > openRoad.meanRms,
   `${tunnel.meanRms} vs ${openRoad.meanRms}`);
+
+say('');
+say('--- G. mix curves, measured by driving audio.update() directly');
+say('     km/h    wind  buffet    road  engine  masterPeak');
+for (const r of curves.res) {
+  say(`    ${String(r.kmh).padStart(5)}  ${String(r.wind).padStart(6)}  ${String(r.buffet).padStart(6)}`
+    + `  ${String(r.road).padStart(6)}  ${String(r.engine).padStart(6)}  ${String(r.peak).padStart(10)}`);
+}
+const C = {}; for (const r of curves.res) C[r.kmh] = r;
+check('wind rises monotonically with speed',
+  C[60].wind < C[125].wind && C[125].wind < C[200].wind
+  && C[200].wind < C[250].wind && C[250].wind < C[320].wind);
+check('wind is superlinear (doubling speed more than quadruples it)',
+  C[250].wind / C[125].wind > 4.0, `x${(C[250].wind / C[125].wind).toFixed(2)} from 125 to 250`);
+check('wind overtakes road roar above 200 km/h', C[200].wind > C[200].road,
+  `wind ${C[200].wind} vs road ${C[200].road}`);
+check('road roar is the floor at low speed', C[60].road > C[60].wind,
+  `road ${C[60].road} vs wind ${C[60].wind}`);
+check('no clipping at 320 km/h', C[320].peak < 1.0, `peak ${C[320].peak}`);
+say(`     scrub at 60 km/h, slip 0.9: ${JSON.stringify(curves.scrub)}`);
+check('a slide makes scrub noise and a squeal',
+  curves.scrub.tyre > 0.05 && curves.scrub.squeal > 0.01, JSON.stringify(curves.scrub));
 
 say('');
 say(errs.length ? errs.slice(0, 10).join('\n') : 'no page errors');
