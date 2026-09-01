@@ -1,5 +1,5 @@
 /* ==========================================================================
-   i18n.js — UI language. German is the default; English is a full alternative.
+   i18n.js — UI language. English is the default; German is a full alternative.
 
    Deliberately NOT translated: the road signs, gantries, licence plates and
    place names in the world itself. A German Autobahn has German signage, and
@@ -391,14 +391,14 @@ const EN = {
 const TABLES = { de: DE, en: EN };
 const STORE = 'a81.lang';
 
-/* German is the default: the game is set on a German motorway and the signage
-   is German either way. English is a deliberate choice, not a fallback. */
+/* Keep a returning player's explicit choice, but make English the first-run
+   language. World signage remains German in either interface language. */
 function detect() {
   try {
     const saved = localStorage.getItem(STORE);
     if (saved && TABLES[saved]) return saved;
   } catch { /* private mode */ }
-  return 'de';
+  return 'en';
 }
 
 export let lang = detect();
