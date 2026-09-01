@@ -22,6 +22,8 @@
    ========================================================================== */
 import * as THREE from 'three';
 
+const BLUR_SCALES = [1.0, 2.4];
+
 const QUAD_VERT = /* glsl */`
 varying vec2 vUv;
 void main() {
@@ -258,7 +260,7 @@ export function createPostFX(renderer, w, h, opts = {}) {
 
       const w4 = targets.a.width, h4 = targets.a.height;
       // two passes at widening radius: a tight core plus a soft halo
-      for (const scale of [1.0, 2.4]) {
+      for (const scale of BLUR_SCALES) {
         mats.blur.uniforms.tSrc.value = targets.a.texture;
         mats.blur.uniforms.dir.value.set(scale / w4, 0);
         blit(mats.blur, targets.b);

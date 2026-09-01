@@ -839,29 +839,44 @@ function buildNoiseWalls(mats) {
 /** The roadworks at Empfingen: beacons, barrier, works plant. */
 function buildRoadworks(mats) {
   const group = new THREE.Group();
+  group.name = 'roadworks';
   const sec = SECTIONS.find(x => x.works);
   if (!sec) return group;
   const i = SECTIONS.indexOf(sec);
   const s0 = sec.km * 1000, s1 = SECTIONS[i + 1].km * 1000 - 60;
 
-  // Leitbaken — red/white striped boards along the closed shoulder
-  const bak = new THREE.Group();
+  // Leitbaken — red/white striped boards along the closed shoulder. These
+  // used to be five individual meshes per beacon: about 575 drawables in one
+  // short section, enough to cut frame rate to the teens as the roadworks
+  // entered view. Three instanced batches render the same geometry.
+  const stripGeo = new THREE.PlaneGeometry(0.55, 0.18);
+  const legGeo = new THREE.BoxGeometry(0.09, 0.45, 0.09);
+  const redMatrices = [], whiteMatrices = [], legMatrices = [];
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion();
+  const one = new THREE.Vector3(1, 1, 1), pos = new THREE.Vector3();
+  const up = new THREE.Vector3(0, 1, 0);
   for (let s = s0; s < s1; s += 14) {
     const p = roadPt(s, 9.9);
     const c = sample(s);
-    const g = new THREE.Group();
+    q.setFromAxisAngle(up, c.head + Math.PI);
     for (let b = 0; b < 4; b++) {
-      const strip = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.18), b % 2 ? mats.bakenRed : mats.baken);
-      strip.position.set(0, 0.42 + b * 0.19, 0);
-      g.add(strip);
+      pos.set(p[0], p[1] + 0.42 + b * 0.19, p[2]);
+      m4.compose(pos, q, one);
+      (b % 2 ? redMatrices : whiteMatrices).push(m4.clone());
     }
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.45, 0.09), mats.dark);
-    leg.position.y = 0.22; g.add(leg);
-    g.position.set(p[0], p[1], p[2]);
-    g.rotation.y = c.head + Math.PI;
-    bak.add(g);
+    pos.set(p[0], p[1] + 0.22, p[2]);
+    m4.compose(pos, q, one); legMatrices.push(m4.clone());
   }
-  group.add(bak);
+  const batch = (geo, mat, matrices) => {
+    const mesh = new THREE.InstancedMesh(geo, mat, matrices.length);
+    matrices.forEach((m, i) => mesh.setMatrixAt(i, m));
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+    group.add(mesh);
+  };
+  batch(stripGeo, mats.bakenRed, redMatrices);
+  batch(stripGeo, mats.baken, whiteMatrices);
+  batch(legGeo, mats.dark, legMatrices);
 
   // concrete separator down the closed lane edge
   const barr = new Mesher();

@@ -8,16 +8,14 @@
    published figure — 0-100, top speed, braking distance — comes out of
    stepLong(), and stepLong() is unchanged.
 
-   Laterally there are two models.
+   Laterally there are three models.
 
-   The player runs a *dynamic* single-track model with genuine yaw inertia:
-   slip angles at each axle, a saturating tyre curve, per-axle vertical load
-   from real weight transfer, and a friction circle per axle so the newtons
-   spent accelerating or braking are newtons the tyres cannot spend cornering.
-   The car therefore rotates with mass, settles on its own through the tyres
-   rather than by having its heading forced back to parallel, and has a real
-   understeer/oversteer balance — including throttle-induced oversteer for the
-   rear-drive AMG.
+   The player uses a forgiving arcade bicycle model: grip still limits the
+   available turn, but there is no persistent sideslip/yaw state to make a
+   keyboard correction progressively heavier or trap the rear-drive AMG in an
+   endless oscillation. A small curvature feed-forward keeps neutral steering
+   neutral relative to the road. The more detailed dynamic model remains below
+   as an isolated experimental path, but is not the default driving model.
 
    Traffic and patrol cars run the original cheap *kinematic* model, verbatim.
    Their AI is tuned around its damping, they are only ever seen from outside
@@ -103,8 +101,11 @@ export class Vehicle {
     this.wheelbase = (spec.axleF ?? 1.4) - (spec.axleR ?? -1.4);
 
     this.ch = chassis(spec, opts.id);
-    /* dynamic lateral model: the player only. See the header. */
+    /* Optional detailed and forgiving lateral paths. See the header. */
     this.dyn = !!opts.dyn;
+    /* The player keeps the sprung-body presentation and rack telemetry of the
+       dynamic car, but may use the deliberately forgiving lateral path. */
+    this.arcade = !!opts.arcade;
 
     this.s = 0; this.u = LANES[1]; this.v = 30;
     this.psi = 0; this.dir = opts.dir ?? 1;          // +1 with us, -1 oncoming
@@ -204,9 +205,57 @@ export class Vehicle {
 
   /* -------------------------------------------------------------- lateral */
   stepLat(dt, steer, ctx) {
-    if (this.dyn) this._latDynamic(dt, steer, ctx);
+    if (this.arcade) this._latArcade(dt, steer, ctx);
+    else if (this.dyn) this._latDynamic(dt, steer, ctx);
     else this._latKinematic(dt, steer, ctx);
     this._surface(dt);
+  }
+
+  /* ----------------------------------------------------- arcade player car
+     Stable by construction: one steering state, no sideslip state to retain
+     after a saturated turn, and gentle road-curvature feed-forward when the
+     driver is near centre. The tyre grip still limits the turn, so the four
+     cars keep their different cornering performance without one of them
+     becoming unrecoverable. */
+  _latArcade(dt, steer, ctx) {
+    const c = sample(this.s);
+    const v = this.v;
+    const used = Math.min(1, Math.abs(this.aLong) / this.d.aMax);
+    const gripMul = (this.offroad ? 0.45 : 1) * (1 - 0.42 * this.hand);
+    const latMax = this.d.aMax * gripMul
+      * Math.sqrt(Math.max(0.12, 1 - used * used * 0.80));
+
+    /* Input already has a hand-speed rate limit. A second spring/rack filter
+       was what made corrections progressively heavier, so the arcade rack
+       follows that shaped demand directly. */
+    if (this.rack) { this.rack.pos = steer; this.rack.vel = 0; }
+    const dMax = 0.52 / (1 + v * 0.040);
+    const roadDelta = Math.atan(-c.curv * this.dir * this.wheelbase);
+    const roadHelp = Math.max(0, 1 - Math.abs(steer) * 2);
+    let delta = steer * dMax + roadDelta * roadHelp;
+    if (v > 4) {
+      const maxDelta = Math.atan(latMax * this.wheelbase / (v * v));
+      delta = Math.max(-maxDelta, Math.min(maxDelta, delta));
+    }
+
+    const yawRate = (v / this.wheelbase) * Math.tan(delta);
+    this.aLat = v * yawRate;
+    this.steerAngle = delta;
+    this._wheelAngle = delta;
+    this.r = yawRate;
+    this.vy = 0;
+    this.slipF = 0; this.slipR = 0; this.balance = 0; this._align = 0;
+
+    this._prevS = this.s; this._prevU = this.u;
+    this.psi += (yawRate + v * c.curv * this.dir) * dt;
+    this.psi *= Math.exp(-dt * 3.2);
+    this.psi = Math.max(-0.62, Math.min(0.62, this.psi));
+    this.u += v * Math.sin(this.psi) * this.dir * dt;
+    this.s += v * Math.cos(this.psi) * this.dir * dt;
+
+    const demand = Math.abs(this.aLat) / Math.max(1, latMax);
+    const targetSlip = Math.max(0, Math.min(1, (demand - 0.88) / 0.25));
+    this.slip += (targetSlip - this.slip) * Math.min(1, dt * 7);
   }
 
   /* ------------------------------------------------ kinematic lateral model
@@ -237,8 +286,10 @@ export class Vehicle {
 
     const yawRate = (v / this.wheelbase) * Math.tan(delta);
     this.aLat = v * yawRate;
-    // heading relative to the road: subtract the road's own rotation
-    this.psi += (yawRate - v * c.curv * this.dir) * dt;
+    /* `track.curv` follows THREE's yaw convention: positive bends local +Z
+       towards +X, which is left on the road. Vehicle yaw is right-positive,
+       so the road's yaw rate has the opposite sign. */
+    this.psi += (yawRate + v * c.curv * this.dir) * dt;
     this.psi = Math.max(-0.7, Math.min(0.7, this.psi));
 
     // sliding: rear-drive cars step out when you ask too much
@@ -330,7 +381,8 @@ export class Vehicle {
        20 fps frame produces the same car as a 144 fps one. */
     const n = Math.min(14, Math.max(1, Math.ceil(dt / 0.006)));
     const h = dt / n;
-    const rot = c.curv * this.dir;              // road's own yaw rate per m/s
+    /* Track curvature is left-positive; vehicle yaw is right-positive. */
+    const rot = -c.curv * this.dir;             // road yaw rate per m/s
     let fyF = 0, fyR = 0, af = 0, ar = 0;
 
     for (let i = 0; i < n; i++) {
@@ -445,8 +497,11 @@ export class Vehicle {
       this._wheelAngle = this._wheelAngle || 0;
       for (const wh of ws) {
         const r = wh.userData.radius || 0.34;
-        if (wh.userData.spin) wh.userData.spin.rotation.x -= (this.v / r) * dt;
-        if (wh.userData.front) wh.rotation.y = this._wheelAngle;
+        /* Local +Z is forward. No-slip rolling therefore rotates about +X;
+           steering is negated because THREE's +Y yaw points +Z towards the
+           car's left, while the physics angle is right-positive. */
+        if (wh.userData.spin) wh.userData.spin.rotation.x += (this.v / r) * dt;
+        if (wh.userData.front) wh.rotation.y = -this._wheelAngle;
       }
     }
     if (m.userData.tailMat) {
@@ -471,7 +526,7 @@ export class Player extends Vehicle {
   constructor(id, paint) {
     const spec = CARS[id];
     const mesh = buildCar(id, { paint });
-    super(mesh, spec, { kind: 'player', id, dyn: true });
+    super(mesh, spec, { kind: 'player', id, dyn: true, arcade: true });
     this.id = id;
     this.u = LANES[0];
     this.vmaxSeen = 0;
@@ -517,7 +572,7 @@ export class Player extends Vehicle {
         /* The automated stop has the equivalent of ESC: damp excess yaw and
            sideslip around the road yaw rate while braking. This operates only
            during the non-interactive police deceleration phase. */
-        const roadR = this.v * sample(this.s).curv * this.dir;
+        const roadR = -this.v * sample(this.s).curv * this.dir;
         const esc = Math.exp(-dt * 7);
         this.r = roadR + (this.r - roadR) * esc;
         this.vy *= esc;
@@ -540,6 +595,11 @@ export class Player extends Vehicle {
       * (1 - 0.60 * brk)
       * (1 - 0.72 * this.hand);
     this.stepLat(dt, steerWhileStopping, ctx);
+    if (this.arcade) {
+      if (this.hand) this.slip = Math.min(1, this.slip + dt * 1.2);
+      this.vmaxSeen = Math.max(this.vmaxSeen, this.v * KMH);
+      return;
+    }
     const stopping = Math.max(brk, this.hand);
     if (stopping > 0.02) {
       /* A binary key can ask for full lock and full braking indefinitely.
@@ -850,7 +910,17 @@ export class Traffic {
 
   _placeSame(t, playerS, initial) {
     const ahead = initial ? 170 + this.rand() * 1500 : 700 + this.rand() * 800;
-    t.s = Math.min(LENGTH - 60, Math.max(30, playerS + ahead));
+    const spawnS = playerS + ahead;
+    /* Near the finish there is no safe road left ahead. Clamping every
+       recycler to the same last 60 metres spawned traffic almost on top of
+       the player and made cars visibly teleport into a crash. */
+    if (spawnS > LENGTH - 60) {
+      t.active = false; t.mesh.visible = false;
+      t.s = LENGTH + 1000; t.resetSweep();
+      return;
+    }
+    t.active = true; t.mesh.visible = true;
+    t.s = Math.max(30, spawnS);
     t.isTruck = t.isTruck || false;
     t.lane = t.isTruck ? 1 : (this.rand() < 0.72 ? 1 : 0);
     t.u = LANES[t.lane];
@@ -865,7 +935,14 @@ export class Traffic {
   }
   _placeOpp(t, playerS, initial) {
     const ahead = initial ? 220 + this.rand() * 1700 : 900 + this.rand() * 900;
-    t.s = Math.min(LENGTH - 20, Math.max(20, playerS + ahead));
+    const spawnS = playerS + ahead;
+    if (spawnS > LENGTH - 20) {
+      t.active = false; t.mesh.visible = false;
+      t.s = LENGTH + 1000; t.resetSweep();
+      return;
+    }
+    t.active = true; t.mesh.visible = true;
+    t.s = Math.max(20, spawnS);
     t.lane = t.isTruck ? 1 : (this.rand() < 0.75 ? 1 : 0);
     t.u = -LANES[t.lane];
     t.cruise = t.isTruck ? 22.5 + this.rand() * 2 : (30 + this.rand() * 16);
@@ -886,6 +963,12 @@ export class Traffic {
       if (gap <= 0 || gap > 420) continue;
       if (!best || gap < best.gap) best = { v: o, gap };
     }
+    const p = this.player;
+    if (p && p !== me && p.active && p.dir === me.dir
+      && Math.abs(p.u - laneU) <= GEO.laneWidth * 0.72) {
+      const gap = (p.s - me.s) * me.dir;
+      if (gap > 0 && gap <= 420 && (!best || gap < best.gap)) best = { v: p, gap };
+    }
     return best;
   }
   laneClear(me, lane, back, front) {
@@ -894,6 +977,12 @@ export class Traffic {
       if (o === me || !o.active || o.dir !== me.dir) continue;
       if (Math.abs(o.u - laneU) > GEO.laneWidth * 0.8) continue;
       const rel = (o.s - me.s) * me.dir;
+      if (rel > back && rel < front) return false;
+    }
+    const p = this.player;
+    if (p && p !== me && p.active && p.dir === me.dir
+      && Math.abs(p.u - laneU) <= GEO.laneWidth * 0.8) {
+      const rel = (p.s - me.s) * me.dir;
       if (rel > back && rel < front) return false;
     }
     return true;
@@ -908,18 +997,27 @@ export class Traffic {
       if (o.v < me.v + 4) continue;
       if (!best || rel < best) best = rel;
     }
+    const p = this.player;
+    if (p && p !== me && p.active && p.dir === me.dir
+      && Math.abs(p.u - me.u) <= GEO.laneWidth * 0.85) {
+      const rel = (me.s - p.s) * me.dir;
+      if (rel > 0 && rel <= 220 && p.v >= me.v + 4 && (!best || rel < best)) best = rel;
+    }
     return best;
   }
 
   /* ------------------------------------------------------------- stepping */
   update(dt, player, ctx) {
     this.playerS = player.s;               // so drivers know when you are past
+    this.player = player;                  // include the player in following/lane checks
     for (const t of this.same) {
+      if (!t.active) continue;
       t.drive(dt, ctx);
       if (t.s < player.s - 260 || t.s > player.s + 2100) this._placeSame(t, player.s, false);
       t.sync(dt);
     }
     for (const t of this.opp) {
+      if (!t.active) continue;
       t.drive(dt, ctx);
       if (t.s < player.s - 320 || t.s > player.s + 2300) this._placeOpp(t, player.s, false);
       t.sync(dt);
@@ -1031,7 +1129,7 @@ export function resolveCollisions(player, list, onHit, dt = 0.016) {
     const widSum = pe.lateral + oe.lateral;
     const overlapNow = Math.abs(ds) <= lenSum && Math.abs(du) <= widSum;
 
-    let hitAxis = null;
+    let hitAxis = null, sweptHit = null;
     if (!overlapNow) {
       const ps0 = player._prevS ?? player.s, pu0 = player._prevU ?? player.u;
       const os0 = o._prevS ?? o.s, ou0 = o._prevU ?? o.u;
@@ -1045,6 +1143,7 @@ export function resolveCollisions(player, list, onHit, dt = 0.016) {
       o.u = ou0 + (o.u - ou0) * swept.t;
       ds = o.s - player.s; du = o.u - player.u;
       hitAxis = swept.axis;
+      sweptHit = swept;
     }
 
     const closing = player.v * player.dir - o.v * o.dir;
@@ -1091,6 +1190,14 @@ export function resolveCollisions(player, list, onHit, dt = 0.016) {
         o._hitCool = 0.55;
         onHit('rear', sev * blame);
       }
+    }
+    if (sweptHit) {
+      /* Continue the unused part of the frame at the post-impact velocities.
+         Previously both bodies stayed at the contact point, visibly snapping
+         the player backwards by the entire unused frame. */
+      const remain = Math.max(0, dt * (1 - sweptHit.t));
+      player.s += player.v * player.dir * remain;
+      o.s += o.v * o.dir * remain;
     }
     // This impact ended the frame's movement. Do not sweep the player's old
     // pre-impact path through a second, more distant vehicle in this loop.

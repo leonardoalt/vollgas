@@ -17,7 +17,7 @@ await page.waitForFunction('window.__ready === true', { timeout: 90000 });
 const report = await page.evaluate(async () => {
   const g = window.__game;
   const { footprintExtents, resolveCollisions } = await import('/src/vehicles.js');
-  const { GEO, LANES, outerBarrier, toWorld } = await import('/src/track.js');
+  const { GEO, LANES, LENGTH, outerBarrier, toWorld } = await import('/src/track.js');
 
   // ---- full yawed body stays between both guardrail faces
   g.startRace(); g.countdown = 0;
@@ -65,6 +65,17 @@ const report = await page.evaluate(async () => {
   let recycleHits = 0;
   resolveCollisions(p, [recycled], () => { recycleHits++; }, 0.05);
 
+  // ---- no recycler may be clamped into the short piece of road at the finish
+  g.traffic._placeSame(recycled, LENGTH - 100, false);
+  const finishRecycle = { active: recycled.active, visible: recycled.mesh.visible };
+
+  // ---- ordinary traffic must see and follow the player, not drive through it
+  const follower = g.traffic._make('hatch', 1);
+  follower.s = 7000; follower.u = LANES[1]; follower.v = 38;
+  p.s = follower.s + 35; p.u = LANES[1]; p.v = 22; p.active = true;
+  g.traffic.player = p;
+  const playerAhead = g.traffic.nearestAhead(follower, 1)?.v === p;
+
   // ---- a forced criminal stop may select a cop ahead; it must be staged behind
   g.startRace(); g.countdown = 0;
   const stopped = g.player;
@@ -100,7 +111,7 @@ const report = await page.evaluate(async () => {
     barriers: { outerClearance, innerClearance },
     sweptTruck: { hits, clearance: truckClearance, playerV: truckPlayerV, truckV, meshError: truckMeshError },
     car: { hits: carHits, clearance: carClearance },
-    recycle: { hits: recycleHits, playerV: p.v },
+    recycle: { hits: recycleHits, playerV: p.v, finishRecycle, playerAhead },
     police: {
       requiredGap, aheadStagedGap, summonedGap, minGap, minClearance,
       playerV: stoppedFar.v, copV: cop.v, playerU: stoppedFar.u, copU: cop.u,
@@ -128,7 +139,12 @@ check('other vehicle transform is corrected in the collision frame', report.swep
 check('angled car-to-car overlap is fully separated', report.car.hits === 1 && report.car.clearance >= 0.05,
   JSON.stringify(report.car));
 check('traffic recycle cannot create a phantom swept impact',
-  report.recycle.hits === 0 && report.recycle.playerV === 70, JSON.stringify(report.recycle));
+  report.recycle.hits === 0, JSON.stringify(report.recycle));
+check('traffic retires instead of spawning on top of the finish',
+  !report.recycle.finishRecycle.active && !report.recycle.finishRecycle.visible,
+  JSON.stringify(report.recycle.finishRecycle));
+check('traffic following includes the player', report.recycle.playerAhead,
+  JSON.stringify(report.recycle));
 check('police ahead is staged safely behind', report.police.aheadStagedGap >= report.police.requiredGap,
   `gap=${report.police.aheadStagedGap.toFixed(2)} required=${report.police.requiredGap.toFixed(2)}`);
 check('police far behind is staged close enough to finish the stop',

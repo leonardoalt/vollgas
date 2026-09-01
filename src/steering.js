@@ -102,7 +102,9 @@ export function laneAssist(car, targetU, o = {}) {
      manufacture the whole cornering acceleration out of lane error, so it can
      only hold a bend by sitting several metres wide of the line — which is
      what a driver would call not looking where they are going. */
-  const ff = o.ff === false ? 0 : v * v * sample(car.s).curv * dir;
+  /* Track curvature is left-positive, while tyre acceleration and steering
+     demand are right-positive. */
+  const ff = o.ff === false ? 0 : -v * v * sample(car.s).curv * dir;
 
   let ay = ff + kp * err - kd * rate;
   const cap = o.ay ?? (ch ? 0.95 * ch.ayMax : 11);

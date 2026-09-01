@@ -258,7 +258,15 @@ export class Enforcement {
   _park(z, playerS, initial) {
     // drop a patrol car into the stream well ahead of the player
     const ahead = initial ? 600 + this.rand() * 2200 : 1100 + this.rand() * 2400;
-    z.s = Math.min(LENGTH - 200, playerS + ahead);
+    const spawnS = playerS + ahead;
+    if (spawnS > LENGTH - 200) {
+      z.active = false; z.mesh.visible = false;
+      z.s = LENGTH + 1000; z.state = COP_STATE.DONE;
+      z.resetSweep();
+      return;
+    }
+    z.active = true; z.mesh.visible = true;
+    z.s = spawnS;
     z.lane = this.rand() < 0.72 ? 1 : 0;
     z.u = LANES[z.lane];
     const lim = limitAt(z.s);
@@ -306,6 +314,7 @@ export class Enforcement {
     /* ---- unmarked patrol cars -------------------------------------- */
     let active = null;
     for (const z of this.cops) {
+      if (!z.active) continue;
       const rel = z.s - player.s;
 
       if (z.state === COP_STATE.DONE) {
@@ -591,6 +600,9 @@ export class Enforcement {
       if (d < bd) { bd = d; best = z; }
     }
     if (!best) return;
+    /* A patrol retired near the finish can still be staged for a mandatory
+       stop; make the selected actor visible again before repositioning it. */
+    best.active = true; best.mesh.visible = true;
     const safeGap = player.halfLen + best.halfLen + 1.5;
     const behindGap = player.s - best.s;
     // The nearest available patrol may be beside or ahead of the player. A

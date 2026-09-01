@@ -53,6 +53,12 @@ export class Game {
     this.tutorial = null;
     this._camPos = new THREE.Vector3();
     this._camLook = new THREE.Vector3();
+    this._camTarget = new THREE.Vector3();
+    this._camLocal = new THREE.Vector3();
+    this._camLookTarget = new THREE.Vector3();
+    this._camBackWorld = { x: 0, y: 0, z: 0 };
+    this._camLookWorld = { x: 0, y: 0, z: 0 };
+    this._tunnelColor = new THREE.Color(0x14161a);
     this._tunnelMix = 0;
   }
 
@@ -404,19 +410,20 @@ export class Game {
     const speedF = Math.min(1, p.v / 80);
 
     if (mode.cockpit) {
-      const local = new THREE.Vector3(...mode.cockpit);
+      const local = this._camLocal.set(...mode.cockpit);
       p.mesh.localToWorld(local);
       this._camPos.copy(local);
     } else {
-      const back = toWorld(p.s - mode.dist, p.u * mode.uf);
-      const target = new THREE.Vector3(back.x, back.y + mode.height, back.z);
+      const back = toWorld(p.s - mode.dist, p.u * mode.uf, this._camBackWorld);
+      const target = this._camTarget.set(back.x, back.y + mode.height, back.z);
       if (this._camPos.lengthSq() === 0) this._camPos.copy(target);
       const a = 1 - Math.exp(-dt * mode.lag);
       this._camPos.lerp(target, a);
     }
 
-    const look = toWorld(p.s + mode.look * (0.55 + speedF * 0.45), p.u * 0.55);
-    const lookT = new THREE.Vector3(look.x, look.y + mode.lookY, look.z);
+    const look = toWorld(p.s + mode.look * (0.55 + speedF * 0.45), p.u * 0.55,
+      this._camLookWorld);
+    const lookT = this._camLookTarget.set(look.x, look.y + mode.lookY, look.z);
     if (this._camLook.lengthSq() === 0) this._camLook.copy(lookT);
     this._camLook.lerp(lookT, 1 - Math.exp(-dt * 6.5));
 
@@ -449,7 +456,7 @@ export class Game {
     this.baseSun.intensity = L.sun * (1 - m * 0.94);
     this.scene.fog.near = L.fogNear * (1 - m) + 40 * m;
     this.scene.fog.far = L.fogFar * (1 - m) + 340 * m;
-    this.scene.fog.color.copy(L.fogCol).lerp(new THREE.Color(0x14161a), m);
+    this.scene.fog.color.copy(L.fogCol).lerp(this._tunnelColor, m);
     this.renderer.toneMappingExposure = 1.06 + m * 0.5;
   }
 

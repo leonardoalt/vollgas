@@ -166,14 +166,13 @@ speed* so each car actually tops out where it should, rolling resistance, and
 gradient from the road profile. Gears have a 5 % hysteresis band and a shift
 torque cut.
 
-The player uses a dynamic single-track model in track coordinates: separate
-front and rear slip angles and tyre forces, real yaw inertia, longitudinal load
-transfer, and a friction circle per axle. Braking therefore costs front cornering
-grip, power costs grip at the driven axle, and the rear-drive AMG can move its
-balance differently from the AWD estate. Steering passes through a rate-limited,
-self-aligning rack instead of snapping straight to the grip limit. Traffic and
-patrol cars retain the cheaper kinematic model. Minimum corner radius on the
-route is 815 m, which is 0.87 g at 300 km/h.
+The player uses a stable arcade bicycle model in track coordinates. Per-car grip
+and longitudinal demand still limit cornering, but the player path deliberately
+favours quick recovery and predictable keyboard control over retained yaw and
+sideslip. A correction therefore settles instead of becoming an endless
+left-right oscillation, including in the rear-drive AMG. Traffic and patrol cars
+retain their cheaper kinematic model. Minimum corner radius on the route is
+815 m, which is 0.87 g at 300 km/h.
 
 ## Layout
 
