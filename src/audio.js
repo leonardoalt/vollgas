@@ -22,7 +22,7 @@
       are load-bearing: dev/audio-check.mjs reads them to prove the mixer
       really goes quiet on pause and on the results screen.
    ========================================================================== */
-import { PlayerEngine, WaveEngine, doppler } from './engineSound.js';
+import { PlayerEngine, WaveEngine, doppler, radialClosing } from './engineSound.js';
 import { ENGINES, CAR_ENGINE, engineFor } from './engineSpec.js';
 import { CARS } from './carFactory.js';
 
@@ -378,10 +378,13 @@ export class Audio {
       const lateral = Math.abs((o.u || 0) - (st.playerU || 0));
       const r = Math.sqrt(d * d + lateral * lateral) + 2.5;
       const gain = Math.max(0, Math.min(1, 22 / r - 0.12));
-      // closing rate: +ve when the gap is shrinking
       const rel = (o.dir < 0 ? -o.v : o.v) - v;         // their speed in our frame
-      const closing = (o.s > ps ? -rel : rel);
-      vc.set(o.rpm || 2200, o.kind === 'truck' ? 0.55 : 0.35, gain, doppler(closing));
+      const closing = radialClosing(o.s - ps, lateral, rel);
+      // Lorries have much more low-frequency energy than cars, and oncoming
+      // vehicles are heard through distance/median clutter rather than from
+      // the listener's own lane. Keep the character without overpowering us.
+      const trim = (o.kind === 'truck' ? 0.72 : 1) * (o.dir < 0 ? 0.78 : 1);
+      vc.set(o.rpm || 2200, o.kind === 'truck' ? 0.55 : 0.35, gain * trim, doppler(closing));
     };
     voice(this.nCar, bc);
     voice(this.nTruck, bt);
@@ -394,9 +397,10 @@ export class Audio {
       const lateral = Math.abs((o.u || 0) - (st.playerU || 0));
       const r = Math.sqrt(ad * ad + lateral * lateral) + 2.0;
       const rel = (o.dir < 0 ? -o.v : o.v) - v;
-      const closing = (d > 0 ? -rel : rel);
+      const closing = radialClosing(d, lateral, rel);
       const speed = Math.min(1, Math.abs(rel) / 40);
-      const g = Math.max(0, Math.min(0.30, (16 / r - 0.18) * (0.25 + speed * 0.95)));
+      const trim = (o.kind === 'truck' ? 0.82 : 1) * (o.dir < 0 ? 0.85 : 1);
+      const g = Math.max(0, Math.min(0.24, (16 / r - 0.18) * (0.25 + speed * 0.95))) * trim;
       slot.g.gain.setTargetAtTime(g, now, 0.05);
       slot.f.frequency.setTargetAtTime((330 + Math.min(1, 24 / r) * 700) * doppler(closing), now, 0.05);
       slot.f.Q.setTargetAtTime(0.6 + speed * 0.8, now, 0.1);

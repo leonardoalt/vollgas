@@ -402,4 +402,14 @@ export function doppler(closingRate) {
   return Math.max(0.55, Math.min(1.9, C_AIR / (C_AIR - v)));
 }
 
+/**
+ * Project longitudinal relative speed onto the line between listener/source.
+ * This approaches zero as a vehicle draws alongside instead of flipping the
+ * Doppler shift abruptly from approaching to receding at the passing point.
+ */
+export function radialClosing(longitudinal, lateral, relativeLongitudinal) {
+  const range = Math.hypot(longitudinal, lateral);
+  return range > 0.001 ? -(longitudinal / range) * relativeLongitudinal : 0;
+}
+
 export { engineFor };

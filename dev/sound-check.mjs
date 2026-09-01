@@ -116,7 +116,7 @@ const HELPERS = `
 /* ------------------------------------------------------- A/B/C/D: the engine */
 const engineReport = await page.evaluate(async (helpers) => {
   eval(helpers);
-  const { PlayerEngine, enginePeriodicWave, engineCycleWaveform, WaveEngine, doppler } =
+  const { PlayerEngine, enginePeriodicWave, engineCycleWaveform, WaveEngine, doppler, radialClosing } =
     await import('/src/engineSound.js');
   const { ENGINES, fireHz, cycleHz } = await import('/src/engineSpec.js');
   const { derive, rpmForGear } = await import('/src/vehicles.js');
@@ -292,6 +292,9 @@ const engineReport = await page.evaluate(async (helpers) => {
     closing70: +doppler(70).toFixed(3),
     receding70: +doppler(-70).toFixed(3),
     still: +doppler(0).toFixed(3),
+    approach: +doppler(radialClosing(80, 12, -100)).toFixed(3),
+    alongside: +doppler(radialClosing(0, 12, -100)).toFixed(3),
+    recede: +doppler(radialClosing(-80, 12, -100)).toFixed(3),
   };
   const perf = { vmax: 330, power: 478, mass: 1640, grip: 1.42, gears: 8, redline: 7200, awd: true };
   const drive = derive(perf);
@@ -535,6 +538,10 @@ check('doppler: 70 m/s closing raises pitch ~25%',
   Math.abs(engineReport.doppler.closing70 - 1.256) < 0.02);
 check('doppler: 70 m/s receding lowers pitch ~17%',
   Math.abs(engineReport.doppler.receding70 - 0.83) < 0.02);
+check('a pass moves smoothly through neutral alongside the listener',
+  engineReport.doppler.approach > 1 && engineReport.doppler.alongside === 1
+  && engineReport.doppler.recede < 1,
+  `${engineReport.doppler.approach} -> ${engineReport.doppler.alongside} -> ${engineReport.doppler.recede}`);
 
 say('');
 say(`--- gearbox: rpm immediately after each upshift ${JSON.stringify(engineReport.gearbox)}`);
