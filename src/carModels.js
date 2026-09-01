@@ -724,7 +724,7 @@ function assemble(id, tpl, opts) {
       : spec;
     for (const [front, zAxle, track] of [[true, spec.axleF, spec.trackF], [false, spec.axleR, spec.trackR]]) {
       for (const sx of [-1, 1]) {
-        const w = buildWheel(wspec, front, tpl.wheelTier || 'lo');
+        const w = buildWheel(wspec, front, tpl.wheelTier || 'lo', sx < 0);
         const ww = front ? spec.wheelWF : spec.wheelWR;
         /* The tyre's outer wall goes just inside the arch lip, measured at this
            axle rather than at the widest point of the car. Bolting wheels to

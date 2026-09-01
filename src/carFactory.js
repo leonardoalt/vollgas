@@ -586,20 +586,45 @@ function wheelGeoms(radius, width, spokes, tier) {
   return res;
 }
 
-export function buildWheel(spec, front, tier = 'lo') {
+/**
+ * One wheel. `flip` turns it to face the other way.
+ *
+ * A revolved wheel is only detailed on one face — the rim dish, the bright lip
+ * and the caliper all sit outboard — and both wheels of an axle are built from
+ * the same geometry. Without the turn, the wheels on one side of the car show
+ * the blank back of the rim, which on the menu turntable reads as a plain white
+ * disc where a wheel should be.
+ *
+ * The turn is a half rotation about y, and it goes on wrappers *inside* the
+ * spinner rather than on the wheel itself, for two reasons. `scale.x = -1`
+ * inverts the winding and blackens the wheel, which is why mirroring was taken
+ * out in the first place. And rotating the spinner's parent would leave the
+ * spin axis pointing the other way, so that side of the car would roll
+ * backwards. A half turn about y is a proper rotation, and applied under the
+ * spinner it leaves the roll axis exactly where it was.
+ */
+export function buildWheel(spec, front, tier = 'lo', flip = false) {
   const g = new THREE.Group();
   const r = front ? spec.wheelRF : spec.wheelRR;
   const w = front ? spec.wheelWF : spec.wheelWR;
   const geo = wheelGeoms(r, w, spec.spokes || 5, tier);
   const spin = new THREE.Group();
-  spin.add(new THREE.Mesh(geo.tyre, MAT.tyre));
-  if (geo.rim) spin.add(new THREE.Mesh(geo.rim, spec.rimDark ? MAT.rimDark : MAT.rim));
-  if (geo.bright) spin.add(new THREE.Mesh(geo.bright, MAT.rimLip));
+  const face = new THREE.Group();
+  if (flip) face.rotation.y = Math.PI;
+  face.add(new THREE.Mesh(geo.tyre, MAT.tyre));
+  if (geo.rim) face.add(new THREE.Mesh(geo.rim, spec.rimDark ? MAT.rimDark : MAT.rim));
+  if (geo.bright) face.add(new THREE.Mesh(geo.bright, MAT.rimLip));
+  spin.add(face);
   g.add(spin);
-  if (geo.disc) g.add(new THREE.Mesh(geo.disc, MAT.disc));
+  /* The disc and the caliper do not turn with the wheel, but they are just as
+     one-sided, so they get the same treatment on their own wrapper. */
+  const fixed = new THREE.Group();
+  if (flip) fixed.rotation.y = Math.PI;
+  if (geo.disc) fixed.add(new THREE.Mesh(geo.disc, MAT.disc));
   if (geo.cal && spec.caliper) {
-    g.add(new THREE.Mesh(geo.cal, spec.caliper === 'yellow' ? MAT.caliperYel : MAT.caliperRed));
+    fixed.add(new THREE.Mesh(geo.cal, spec.caliper === 'yellow' ? MAT.caliperYel : MAT.caliperRed));
   }
+  if (fixed.children.length) g.add(fixed);
   g.name = 'wheel';
   g.userData.spin = spin;
   g.userData.radius = r;
@@ -1286,7 +1311,7 @@ export function buildCar(id, opts = {}) {
   const wheels = [];
   for (const [front, zAxle, track] of [[true, spec.axleF, spec.trackF], [false, spec.axleR, spec.trackR]]) {
     for (const s of [-1, 1]) {
-      const w = buildWheel(spec, front, tier);
+      const w = buildWheel(spec, front, tier, s < 0);
       w.position.set(s * track / 2, front ? spec.wheelRF : spec.wheelRR, zAxle);
       w.userData.front = front;
       g.add(w); wheels.push(w);
@@ -1464,7 +1489,7 @@ export function buildTruck(opts = {}) {
   const addAxle = (z, twin, r = 0.52) => {
     for (const s of [-1, 1]) {
       for (let t = 0; t < (twin ? 2 : 1); t++) {
-        const w = buildWheel({ wheelRF: r, wheelRR: r, wheelWF: 0.30, wheelWR: 0.30, spokes: 6, rimDark: true }, true, 'truck');
+        const w = buildWheel({ wheelRF: r, wheelRR: r, wheelWF: 0.30, wheelWR: 0.30, spokes: 6, rimDark: true }, true, 'truck', s < 0);
         /* Dual tyres tuck *inside* the 2.55 m body: at the old 1.02/1.36
            the outer wall stood 23 cm proud of the trailer. */
         w.position.set(s * ((twin ? 0.75 : 1.02) + t * 0.34), r, z);
