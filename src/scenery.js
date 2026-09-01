@@ -11,7 +11,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { track, N, LENGTH, SECTIONS, BIOME, sectionAt, toWorld, sample } from './track.js';
-import { groundTex } from './textures.js';
+import { groundTex, tuftTex } from './textures.js';
 
 /* ------------------------------------------------------------ small noise */
 /* Integer hash. Must stay inside int32 via Math.imul — plain `*` overflows
@@ -476,6 +476,152 @@ export function buildLandmarks(rand, facadeTex) {
   }
 
   return { group, turbines };
+}
+
+/* ============================================================= verge grass
+   Cross-billboard tufts along the mown verges and the median.
+
+   Blanket coverage is not affordable: tufts dense enough to read across the
+   whole 12 m verge over 26 km is well over a million triangles. This is a
+   fringe instead — four narrow bands where the eye actually rests (either side
+   of the median barriers, and at the foot of each outer barrier) at ~3.5 tufts
+   per metre of route. All of it is bucketed and switched off until the player
+   is close, so the ~360 k triangles in the full set never render at once. */
+const GRASS_BUCKET = 200;            // metres of route per InstancedMesh
+/** Buckets whose centre is further than this from the player stay dark. */
+export const GRASS_VIS = 240;
+/** Must track the median ribbon's own lift in world.js, or the tufts sink. */
+export const MEDIAN_DY = -0.13;
+
+/** Two crossed quads with their base on the ground: four triangles a tuft. */
+function tuftGeo() {
+  const a = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0);
+  const b = a.clone().rotateY(Math.PI / 2);
+  return mergeGeometries([a, b]);
+}
+
+/**
+ * The terrain ribbon's own y at one RING distance, computed exactly as
+ * buildTerrain() computes it. Only valid for |d| <= 40, where levelOf() is 0
+ * and the ring therefore sits on the real centreline rather than on a blurred
+ * phantom one — which is all the verge bands need.
+ */
+function ringY(s, d, p) {
+  const ad = Math.abs(d);
+  const w = toWorld(s, d, p);
+  return w.y + hillHeight(w.x, w.z, ad) - (ad <= 14.5 ? 0.30 : 0);
+}
+
+/**
+ * The height of the terrain *as meshed*. The ribbon only has vertices at the
+ * RING distances, so between two rings its surface is the straight line
+ * between them. Evaluating hillHeight() at the tuft's own lateral distance
+ * instead leaves a tuft up to 20 cm off the ground out past 14.5 m — and
+ * because hillHeight() returns 0 for ad <= 14.5 while the -0.30 verge drop
+ * applies only there, the naive sum also has a 30 cm step at 14.5 that the
+ * mesh does not have.
+ */
+function vergeY(s, u, p) {
+  const ad = Math.abs(u), sgn = u < 0 ? -1 : 1;
+  let d0 = 0, d1 = RING[0];
+  for (let i = 0; i + 1 < RING.length && ad >= RING[i]; i++) { d0 = RING[i]; d1 = RING[i + 1]; }
+  const y0 = ringY(s, sgn * d0, p), y1 = ringY(s, sgn * d1, p);
+  return y0 + (y1 - y0) * ((ad - d0) / (d1 - d0));
+}
+
+/* Verge grass is mown and fertilised by the Autobahnmeisterei, so it stays a
+   tidier, brighter green than the biome behind it — but it still picks up the
+   season: dusty gold on the Gäu and the Alb, deep and damp in the forest. */
+const GRASS_TINT = {
+  [BIOME.URBAN]:    [0.90, 0.96, 0.80],
+  [BIOME.VINEYARD]: [1.02, 1.00, 0.74],
+  [BIOME.FOREST]:   [0.74, 0.92, 0.70],
+  [BIOME.FARM]:     [1.06, 1.02, 0.72],
+  [BIOME.ALB]:      [1.00, 1.00, 0.76],
+  [BIOME.HEGAU]:    [0.92, 1.00, 0.78],
+};
+
+/**
+ * @param rand     the shared deterministic rng
+ * @param blocked  (s, u) => true where paving, a bridge or the tunnel bore
+ *                 means no grass may grow. u is signed.
+ * Returns a group whose userData.buckets is [{ mesh, x, y, z }] for the cull.
+ */
+export function buildVergeGrass(rand, blocked = () => false) {
+  const group = new THREE.Group();
+  group.name = 'vergeGrass';
+  const mat = new THREE.MeshStandardMaterial({
+    map: tuftTex(),
+    /* alphaTest rather than transparent: it writes depth, so it needs no
+       sorting against the terrain or against itself, and the mipmaps thin the
+       blades out with distance, which is a free LOD. */
+    alphaTest: 0.42, transparent: false,
+    side: THREE.DoubleSide, roughness: 0.95, metalness: 0,
+  });
+  const geo = tuftGeo();
+
+  const nBuckets = Math.ceil(LENGTH / GRASS_BUCKET);
+  const bins = Array.from({ length: nBuckets }, () => []);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+  const p = { x: 0, y: 0, z: 0 };
+  const UP = { x: 0, y: 1, z: 0 };
+  const c3 = new THREE.Color();
+
+  /* Median tufts stand on the median ribbon, which world.js lifts to
+     MEDIAN_DY; the outer bands stand on the terrain. Using the terrain height
+     for the median would bury them 17 cm. The outer band starts at 12.85 and
+     not at the 12.5 m paved edge so that a half-metre billboard cannot cross
+     onto the asphalt. */
+  const BANDS = [
+    { lo: 0.30, hi: 1.85, per: 0.65, median: true },   // each half of the median
+    { lo: 12.85, hi: 16.0, per: 1.10, median: false }, // each outer verge
+  ];
+
+  for (let s = 4; s < LENGTH - 4; s += 1) {
+    const b = Math.min(nBuckets - 1, Math.floor(s / GRASS_BUCKET));
+    const tint = GRASS_TINT[sectionAt(s).biome] || GRASS_TINT[BIOME.FARM];
+    for (const band of BANDS) {
+      for (const side of [1, -1]) {
+        const n = Math.floor(band.per) + (rand() < band.per % 1 ? 1 : 0);
+        for (let k = 0; k < n; k++) {
+          const u = side * (band.lo + rand() ** 0.8 * (band.hi - band.lo));
+          const ss = s + rand();
+          if (blocked(ss, u)) continue;
+          const w = toWorld(ss, u, p);
+          const y = band.median ? w.y + MEDIAN_DY : vergeY(ss, u, p);
+          const wide = 0.34 + rand() * 0.26;
+          q.setFromAxisAngle(UP, rand() * 6.283);
+          sc.set(wide, 0.20 + rand() ** 1.4 * 0.30, wide);
+          m4.compose({ x: w.x, y, z: w.z }, q, sc);
+          const v = 0.78 + rand() * 0.40;
+          c3.setRGB(tint[0] * v, tint[1] * v, tint[2] * v);
+          bins[b].push([m4.clone(), c3.clone()]);
+        }
+      }
+    }
+  }
+
+  const buckets = [];
+  let total = 0;
+  for (const arr of bins) {
+    if (!arr.length) continue;
+    total += arr.length;
+    const im = new THREE.InstancedMesh(geo, mat, arr.length);
+    arr.forEach(([m, c], i) => { im.setMatrixAt(i, m); im.setColorAt(i, c); });
+    im.instanceMatrix.needsUpdate = true;
+    if (im.instanceColor) im.instanceColor.needsUpdate = true;
+    im.computeBoundingSphere();
+    /* Off until update() says otherwise. Without this every bucket draws on
+       the first frame, which is the whole set in one go. */
+    im.visible = false;
+    im.name = 'vergeGrass';
+    const c = im.boundingSphere.center;
+    buckets.push({ mesh: im, x: c.x, y: c.y, z: c.z });
+    group.add(im);
+  }
+  group.userData.buckets = buckets;
+  group.userData.tufts = total;
+  return group;
 }
 
 export { hillHeight };

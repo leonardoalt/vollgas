@@ -38,6 +38,30 @@ function finish(c, { repeat = null, srgb = true, aniso = 8 } = {}) {
   return t;
 }
 
+/**
+ * Vertical mirror of a canvas.
+ *
+ * three.js uploads canvases with flipY, so texture V = 0 samples the *last*
+ * row of the canvas. That is invisible on a tiling surface, but an atlas whose
+ * bands mean something — the rail's beam-then-post layout, the noise wall's
+ * coping-to-foot — has to be mirrored once on the way out, or V addresses the
+ * opposite end of the image from the one it was drawn at. (The rail beam then
+ * samples the post band and the posts sample the beam's bright crest, which is
+ * exactly what they did before this existed.)
+ *
+ * Mirroring the canvas rather than negating the V coordinates keeps
+ * normalFromHeight's flipY sign convention valid, since the height field goes
+ * through the same mirror.
+ */
+function flipV(src) {
+  const out = canvas(src.width, src.height);
+  const ctx = out.getContext('2d');
+  ctx.translate(0, src.height);
+  ctx.scale(1, -1);
+  ctx.drawImage(src, 0, 0);
+  return out;
+}
+
 function cached(key, build) {
   if (!_cache.has(key)) _cache.set(key, build());
   return _cache.get(key);
@@ -676,7 +700,7 @@ function railHeight(W, H) {
   }
   return c;
 }
-const _railH = () => cached('railH', () => railHeight(512, 512));
+const _railH = () => cached('railH', () => flipV(railHeight(512, 512)));
 
 export function railTex() {
   return cached('railT', () => {
@@ -753,7 +777,7 @@ export function railTex() {
       ctx.fillStyle = `rgba(48,52,56,${a})`;
       ctx.fillRect(x0 * W, vy(POST_V[0]), (x1 - x0) * W, H - vy(POST_V[0]));
     }
-    return finish(c, { repeat: [1, 1], aniso: 16 });
+    return finish(flipV(c), { repeat: [1, 1], aniso: 16 });
   });
 }
 export function railNormalTex() {
@@ -938,7 +962,7 @@ function noiseWallHeight(W, H) {
   }
   return c;
 }
-const _wallH = () => cached('wallH', () => noiseWallHeight(256, 512));
+const _wallH = () => cached('wallH', () => flipV(noiseWallHeight(256, 512)));
 
 export function noiseWallTex() {
   return cached('nwall', () => {
@@ -977,7 +1001,7 @@ export function noiseWallTex() {
       ctx.fillStyle = `rgba(${64 + r() * 26},${58 + r() * 24},${44 + r() * 20},${0.2 + r() * 0.4})`;
       ctx.beginPath(); ctx.arc(r() * W, y, 0.8 + r() * 2, 0, 7); ctx.fill();
     }
-    return finish(c, { repeat: [1, 1], aniso: 16 });
+    return finish(flipV(c), { repeat: [1, 1], aniso: 16 });
   });
 }
 export function noiseWallNormalTex() {

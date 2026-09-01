@@ -20,7 +20,10 @@ import {
   skyTex, facadeTex, signLimit, signEndAll, signAdvice,
   signAusfahrt, signGantry, signRast, signBaustelle, signKm, signTunnel,
 } from './textures.js';
-import { buildTerrain, buildVegetation, buildLandmarks, buildVergeGrass } from './scenery.js';
+import {
+  buildTerrain, buildVegetation, buildLandmarks, buildVergeGrass,
+  GRASS_VIS, MEDIAN_DY,
+} from './scenery.js';
 
 const CHUNK = 512;                    // metres per road chunk
 /** True where the entry slip road still has usable width. */
@@ -159,6 +162,24 @@ function asphaltTone(s, u) {
   return [k, k, k * 1.01];
 }
 
+/* V scale for the lane markings: one tile of markingTex per 2 m, which is what
+   the bead grain and the chipped edges in that texture were drawn for. The old
+   call sites left vScale at its default of 0, which made V degenerate — the
+   marking then sampled a single stretched row of the texture. */
+const MARK_V = 1 / 2;
+/* Tar-band seams and machine-laid patches share mats.asphaltDark and are told
+   apart purely by vertex tint, so both are one draw call per chunk. A seam is
+   near-black bitumen; a patch is newer, slightly finer asphalt, so it is only a
+   little darker than the surface around it and very slightly bluer. */
+const SEAM_TINT = (s, u) => {
+  const k = 0.28 + 0.06 * hash1(Math.floor(s / 3), Math.floor(u * 2));
+  return [k, k, k * 1.04];
+};
+const PATCH_TINT = (s, u) => {
+  const k = 0.80 + 0.10 * hash1(Math.floor(s / 5) + 91, Math.floor(u));
+  return [k, k, k * 1.03];
+};
+
 /* =============================================================== materials */
 function makeMaterials(env) {
   const asph = asphaltTex([1, 1]);
@@ -175,6 +196,11 @@ function makeMaterials(env) {
   const grass = grassTex([1, 1]);
   return {
     asphalt: surface({ vertexColors: true }),
+    /* Same surface without vertex colours, for the slip roads and the rest-area
+       apron. Those are built with plain quad() and so carry no colour
+       attribute; on a `vertexColors: true` material WebGL then supplies the
+       default attribute (0,0,0) and the whole surface renders black. */
+    asphaltPlain: surface({}),
     /* The wheel tracks are their own material: 25 years of tyres polish the
        binder, so they are darker *and* glossier than the surface either side.
        Costs one extra draw call per chunk and does most of the work of making
@@ -304,6 +330,37 @@ function barrierGaps() {
   return gaps;
 }
 
+/**
+ * Where verge grass must not grow. Rectangles of [s0, s1, u0, u1] on *signed*
+ * u, because almost everything that paves the verge — slip roads, the rest
+ * area, the Baustelle, the tunnel bore — is on our side only.
+ *
+ * Grass poking up through paving is the failure mode to watch: the entry ramp
+ * is lifted only 7 cm while the flat mown verge sits 3.75 cm below the road
+ * edge, so at u ~ 14 a 30 cm tuft rooted on the verge would stand 23 cm
+ * through the tarmac. Hence the generous first rectangle.
+ */
+function vergeBlocker() {
+  const r = [[-10, ENTRY_LEN + 120, 9, 60]];              // the Auffahrt
+  for (const sec of SECTIONS) {
+    const i = SECTIONS.indexOf(sec);
+    const s = sec.km * 1000;
+    const next = SECTIONS[i + 1] ? SECTIONS[i + 1].km * 1000 : LENGTH;
+    if (sec.exit && i > 0) r.push([s - 90, s + 330, 9, 60]);
+    if (sec.rest) r.push([s - 170, s + 340, 9, 70]);
+    if (sec.works) r.push([s - 40, next - 20, 8.5, 22]);
+    /* The bore covers u 1.8..14.4 — our carriageway only — so this kills the
+       median and the right verge inside it and deliberately leaves the
+       oncoming carriageway's outer verge, which is out in open ground. */
+    if (sec.tunnel) r.push([s - 12, next - 120 + 12, -2.5, 20]);
+  }
+  for (const f of BRIDGE_AT) {
+    const s = LENGTH * f;
+    r.push([s - 8, s + 8, -60, 60]);
+  }
+  return (s, u) => r.some(([a, b, c, d]) => s >= a && s <= b && u >= c && u <= d);
+}
+
 /* ------------------------------------------------------- Stahlschutzplanke
    Profil A W-beam on Sigma posts. The old barrier was two flat 0.20 m
    DoubleSide quads, which from the driver's seat projected as three enormous
@@ -401,7 +458,7 @@ function buildRoadChunks(mats) {
       }
       // ---- Mittelstreifen, a shade lower than the carriageway
       for (let i = 0; i < MED_CUTS.length - 1; i++) {
-        ribbonC(med, s, s2, MED_CUTS[i], MED_CUTS[i + 1], -0.13, 1 / 4, 0.25, medianTone);
+        ribbonC(med, s, s2, MED_CUTS[i], MED_CUTS[i + 1], MEDIAN_DY, 1 / 4, 0.25, medianTone);
       }
 
       // ---- markings. Solid lines follow the curve segment by segment.
@@ -607,10 +664,10 @@ function buildTunnel(mats) {
     const s2 = Math.min(s1, s + SEG);
     for (let k = 0; k < RIB - 1; k++) {
       shell.quad(arcPt(s, k), arcPt(s2, k), arcPt(s2, k + 1), arcPt(s, k + 1),
-        k / RIB, s / 9, (k + 1) / RIB, s2 / 9);
+        k / (RIB - 1), s / 9, (k + 1) / (RIB - 1), s2 / 9);
     }
   }
-  const inner = new THREE.Mesh(shell.geo(), mats.concreteIn);
+  const inner = new THREE.Mesh(shell.geo(), mats.tunnelLining);
   inner.name = 'tunnelShell';
   group.add(inner);
 
@@ -703,19 +760,41 @@ function buildNoiseWalls(mats) {
     const s0 = Math.max(sec.km * 1000 + 60, sec === SECTIONS[0] ? ENTRY_LEN + 25 : 0);
     const s1 = (SECTIONS[i + 1] ? SECTIONS[i + 1].km * 1000 : LENGTH) - 60;
     if (sec.tunnel) continue;
-    const m = new Mesher();
+    const m = new Mesher(), posts = new Mesher();
+    /* U runs at one texture tile per 4 m because that is the bay the precast
+       panels, the coping and the weathering streaks were drawn at. At the old
+       s/5 the bay joints in the texture did not line up with the posts. */
+    const BAY = 4;
     for (let s = s0; s < s1; s += SEG) {
       const s2 = Math.min(s1, s + SEG);
       for (const sign of [1, -1]) {
         const u = sign * (GEO.pavedOut + 4.2);
         const a = roadPt(s, u), b = roadPt(s2, u);
-        m.quad(lift(a, 3.8), lift(b, 3.8), lift(b, -0.2), lift(a, -0.2), s / 5, 0, s2 / 5, 1);
+        m.quad(lift(a, 3.8), lift(b, 3.8), lift(b, -0.2), lift(a, -0.2), s / BAY, 0, s2 / BAY, 1);
+      }
+    }
+    /* The H-section steel posts the panels drop into, one per bay joint. They
+       stand a little proud of the panel face on both sides, which is what
+       gives the wall its rhythm when you drive past it. */
+    for (let s = Math.ceil(s0 / BAY) * BAY; s < s1; s += BAY) {
+      for (const sign of [1, -1]) {
+        const u = sign * (GEO.pavedOut + 4.2);
+        const pts = [
+          roadPt(s - 0.075, u - 0.10), roadPt(s + 0.075, u - 0.10),
+          roadPt(s + 0.075, u + 0.10), roadPt(s - 0.075, u + 0.10),
+        ];
+        prismSides(posts, pts, -0.2, 3.95, 0, 0, 1, 1);
       }
     }
     if (!m.empty) {
       const mesh = new THREE.Mesh(m.geo(), mats.noiseWall);
       mesh.matrixAutoUpdate = false;
       group.add(mesh);
+    }
+    if (!posts.empty) {
+      const pm = new THREE.Mesh(posts.geo(), mats.wallPost);
+      pm.matrixAutoUpdate = false;
+      group.add(pm);
     }
   }
   return group;
@@ -757,7 +836,7 @@ function buildRoadworks(mats) {
     barr.quad(lift(a, 0.95), lift(b, 0.95), lift(b, -0.1), lift(a, -0.1), s / 4, 0, s2 / 4, 1);
     barr.quad(lift(b, 0.95), lift(a, 0.95), lift(a, -0.1), lift(b, -0.1), s / 4, 0, s2 / 4, 1);
   }
-  const bm = new THREE.Mesh(barr.geo(), mats.concrete);
+  const bm = new THREE.Mesh(barr.geo(), mats.barrier);
   bm.matrixAutoUpdate = false;
   group.add(bm);
 
@@ -800,7 +879,7 @@ function buildRestArea(mats) {
     const cc = roadPt(s2, w1), d = roadPt(s, w0);
     apron.quad(a, d, cc, b, 0, s / 8, 3, s2 / 8);
   }
-  const am = new THREE.Mesh(apron.geo(), mats.asphalt);
+  const am = new THREE.Mesh(apron.geo(), mats.asphaltPlain);
   am.matrixAutoUpdate = false; am.receiveShadow = true;
   group.add(am);
 
@@ -851,7 +930,7 @@ function buildRamps(mats) {
       const cc = roadPt(s2, o1), d = roadPt(s, o0);
       m.quad(a, d, cc, b, 0, s / 8, 1.4, s2 / 8);
     }
-    const mesh = new THREE.Mesh(m.geo(), mats.asphalt);
+    const mesh = new THREE.Mesh(m.geo(), mats.asphaltPlain);
     mesh.matrixAutoUpdate = false; mesh.receiveShadow = true;
     group.add(mesh);
   }
@@ -881,7 +960,7 @@ function buildEntryRamp(mats) {
         lift(roadPt(s2, b.outer), LIFT + 0.015), lift(roadPt(s2, b.outer - w0), LIFT + 0.015));
     }
   }
-  const rm = new THREE.Mesh(road.geo(), mats.asphalt);
+  const rm = new THREE.Mesh(road.geo(), mats.asphaltPlain);
   rm.matrixAutoUpdate = false; rm.receiveShadow = true;
   group.add(rm);
   if (!mark.empty) {
@@ -953,6 +1032,9 @@ export function buildWorld(scene, renderer, onProgress = () => {}) {
   scene.add(buildTerrain());
   onProgress('Schwarzwald');
   scene.add(buildVegetation(rng));
+  const grass = buildVergeGrass(rng, vergeBlocker());
+  scene.add(grass);
+  const grassBuckets = grass.userData.buckets;
   onProgress('Wahrzeichen');
   const lm = buildLandmarks(rng, facadeTex);
   scene.add(lm.group);
@@ -968,6 +1050,14 @@ export function buildWorld(scene, renderer, onProgress = () => {}) {
       sun.target.position.copy(playerPos);
       sun.position.copy(playerPos).add(SUN_OFFSET);
       for (const t of lm.turbines) t.userData.hub.rotation.z += dt * 0.55;
+      /* Verge grass: only the two or three 200 m buckets around the player are
+         switched on. A world-space distance test against each bucket centre is
+         all this needs, which is why game.js does not have to change — it
+         already passes the player's position in. */
+      for (const b of grassBuckets) {
+        const dx = b.x - playerPos.x, dz = b.z - playerPos.z;
+        b.mesh.visible = dx * dx + dz * dz < GRASS_VIS * GRASS_VIS;
+      }
     },
     inTunnel(s) { return s > tunnelRange[0] && s < tunnelRange[1]; },
   };
