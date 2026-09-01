@@ -79,24 +79,28 @@ await expectStage('measure', '06-provida');
 await next();
 await page.evaluate(() => {
   const g = window.__game;
-  g.enf.dismissTutorialCop();
-  g.enf.events.push({ type: 'measure-abort' });
+  g.enf.events.push({
+    type: 'measure-done', speed: 126, limit: 80,
+    penalty: { fine: 320, points: 2, ban: 1 },
+  });
   g.handleEvents();
   g.tutorial.update(0.05);
 });
-await expectStage('provida-result', '06b-resolved');
+await expectStage('provida-result', '06b-caught');
 assert.equal(await page.evaluate(() => window.__game.tutorial.target?.element?.isConnected), true);
+assert.match(await page.evaluate(() => window.__game.tutorial.target.element.textContent), /PROVIDA.*(ANZEIGE|REPORT)/i);
+assert.doesNotMatch(await page.evaluate(() => window.__game.tutorial.target.element.textContent), /GEBLITZT|CAMERA/i);
 await next();
 await page.evaluate(() => {
   const g = window.__game;
-  g.player.s = g.tutorial.route.freeSignS + 2;
+  g.player.s = g.tutorial.route.freeSignS + 14;
   g._camPos.set(0, 0, 0); g._camLook.set(0, 0, 0);
   g.step(0.05);
 });
 await expectStage('free', '07-unrestricted');
 assert.equal(await page.evaluate(() => {
   const g = window.__game;
-  return g.player.s >= g.tutorial.route.freeSignS
+  return g.player.s >= g.tutorial.route.freeSignS + 12
     && g.hud._lastLimit === 'Infinity|false'
     && g.tutorial.target?.dom === '#hud-limit';
 }), true);

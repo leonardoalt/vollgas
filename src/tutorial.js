@@ -8,7 +8,7 @@
    drives the normal car through the normal world.
    ======================================================================== */
 import * as THREE from 'three';
-import { t } from './i18n.js';
+import { t, lang } from './i18n.js';
 
 export const TUTORIAL_ROUTE = {
   startS: 13200,
@@ -33,6 +33,7 @@ export class Tutorial {
     this.flashArmed = false;
     this.pendingCameraResult = null;
     this.pendingProvidaResult = null;
+    this.pendingProvidaTarget = null;
 
     this.el = $('tutorial');
     this.focus = $('tutorial-focus');
@@ -191,7 +192,9 @@ export class Tutorial {
 
     if (this.stage === 'provida-result-pending') {
       const result = this.pendingProvidaResult;
+      const resultTarget = this.pendingProvidaTarget;
       this.pendingProvidaResult = null;
+      this.pendingProvidaTarget = null;
       this.game.enf.dismissTutorialCop();
       this.game.hud.el.provida.classList.add('hidden');
       this.stage = 'provida-result';
@@ -202,7 +205,7 @@ export class Tutorial {
         step: 6,
         title: t(`tut.provida.${outcome}.title`),
         body: t(`tut.provida.${outcome}.body`),
-        target: this.alertTarget(outcome === 'caught' ? 'charge' : 'provida'),
+        target: resultTarget ? { element: resultTarget } : null,
         placement: 'right',
         next: () => {
           this.stage = 'measure-resolved';
@@ -212,7 +215,9 @@ export class Tutorial {
       return;
     }
 
-    if (this.stage === 'measure-resolved' && p.s >= this.route.freeSignS) {
+    if (this.stage === 'measure-resolved'
+        && p.s >= this.route.freeSignS + 12
+        && this.game.hud._lastLimit === 'Infinity|false') {
       this.game.enf.dismissTutorialCop();
       this.stage = 'free';
       this.show({
@@ -289,13 +294,14 @@ export class Tutorial {
 
     if (['measure-abort', 'measure-lost', 'measure-freed', 'measure-done'].includes(ev.type)
         && this.stage === 'measure') {
+      this.pendingProvidaTarget = this.addProvidaResultAlert(ev).el;
       this.pendingProvidaResult = ev;
       this.stage = 'provida-result-pending';
-      return false;                         // retain and spotlight the normal HUD result
+      return true;                          // tutorial owns this precisely targeted result row
     }
 
     if (ev.type === 'criminal' && ev.source === 'provida' && this.stage === 'measure') {
-      this.addCriminalAlert(ev);
+      this.pendingProvidaTarget = this.addProvidaResultAlert(ev).el;
       this.pendingProvidaResult = ev;
       this.stage = 'provida-result-pending';
       return true;                          // never end a lesson with an arrest
@@ -315,6 +321,32 @@ export class Tutorial {
     }
 
     return false;
+  }
+
+  addProvidaResultAlert(ev) {
+    const hud = this.game.hud;
+    if (ev.type === 'measure-abort') {
+      return hud.alert(t('a.abort'), t('a.abort.sub'), 'good', 6, 'tutorial-provida-result');
+    }
+    if (ev.type === 'measure-lost') {
+      return hud.alert(t('a.lost'), t('a.lost.sub'), 'good', 6, 'tutorial-provida-result');
+    }
+    if (ev.type === 'measure-freed') {
+      return hud.alert(t('a.freed'), t('a.freed.sub'), 'good', 6, 'tutorial-provida-result');
+    }
+    if (ev.type === 'criminal') {
+      return hud.alert(t('tut.provida.alert.criminal'), t('a.racing.sub', {
+        speed: Math.round(ev.speed), limit: ev.limit,
+      }), 'bad', 9, 'tutorial-provida-result');
+    }
+
+    const p = ev.penalty;
+    const sub = t('a.charge.sub', {
+      speed: Math.round(ev.speed), limit: ev.limit, points: p.points,
+      pl: p.points === 1 ? '' : (lang === 'de' ? 'e' : 's'),
+    }) + (p.ban ? t('a.charge.ban', { n: p.ban }) : '');
+    return hud.alert(t('tut.provida.alert.charge', { fine: p.fine }), sub,
+      'bad', 9, 'tutorial-provida-result');
   }
 
   addCriminalAlert(ev, key = 'charge') {
