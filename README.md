@@ -180,7 +180,12 @@ src/
   textures.js    every canvas texture: StVO signs, German plates, LED matrix,
                  asphalt, ground, foliage, sky
   carFactory.js  lofted car bodies, archetype station tables, wheels, faces,
-                 police kit, Sattelzug
+                 police kit, the lorry. Every one of these is the fallback now:
+                 buildCar and buildTruck both ask carModels.js first.
+  carFit.js      the pure geometry of fitting somebody else's model to our rig:
+                 squaring up, which end is the nose, where the axles are, and
+                 splitting merged wheels by connected component
+  carModels.js   the glTF pipeline — load, strip, bake, fit, hand back a body
   world.js       carriageways with crossfall, StVO markings, Stahlschutzplanken,
                  signage and gantries, Engelbergtunnel, bridges, Baustelle,
                  services, slip roads, sky/light/fog
