@@ -505,31 +505,44 @@ export class Player extends Vehicle {
     this.hand += (handWant - this.hand) * Math.min(1, dt * (handWant ? 7 : 12));
     if (!handWant && this.hand < 0.01) this.hand = 0;
     this.stepLong(dt, thr, brk, ctx);
-    this.stepLat(dt, input.steer, ctx);
-    if (brk > 0.02) {
-      /* Road-car ABS/ESC preserves the driver's requested turn while damping
-         the load-transfer yaw that otherwise makes combined braking and
-         steering either spin or wash straight on. Do not touch psi: the car
-         still keeps the heading the driver actually gave it. */
+    /* Do not feed a simultaneous pair of binary full-scale inputs straight
+       into the tyre model. A braking tyre has less useful steering range,
+       while the remaining 28-40 % is still well above the demand needed for
+       a decisive road turn. This prevents a one-frame force/yaw spike before
+       the stability controller below gets to act. */
+    const steerWhileStopping = input.steer
+      * (1 - 0.60 * brk)
+      * (1 - 0.72 * this.hand);
+    this.stepLat(dt, steerWhileStopping, ctx);
+    const stopping = Math.max(brk, this.hand);
+    if (stopping > 0.02) {
+      /* A binary key can ask for full lock and full braking indefinitely.
+         Road-car ABS/ESC must preserve the requested direction without
+         allowing that combination to wind the single-track model into a
+         spin. Follow the driver's kinematic yaw demand, but bound it to a
+         stable road-car turn rate. The handbrake gets the tighter envelope:
+         it has no front/rear brake balance and a keyboard has no proportional
+         counter-steer with which to catch a large rear slide. */
       const v = Math.max(6, this.v);
       const gripR = this.ch.ayMax / v;
       let rWant = (v / this.ch.L) * Math.tan(this.steerAngle);
       if (rWant > gripR) rWant = gripR;
       else if (rWant < -gripR) rWant = -gripR;
-      const esc = 1 - Math.exp(-dt * (5 + brk * 7));
+      const handMix = this.hand;
+      const rCap = 0.22 + (0.15 - 0.22) * handMix; // 12.6 down to 8.6 deg/s
+      if (rWant > rCap) rWant = rCap;
+      else if (rWant < -rCap) rWant = -rCap;
+      const esc = 1 - Math.exp(-dt * (8 + stopping * 10));
       this.r += (rWant - this.r) * esc;
-      this.vy *= Math.exp(-dt * brk * 4);
-    }
-    if (this.hand) {
-      /* A keyboard offers no proportional counter-steer, so cap the locked-
-         rear-axle breakaway at a catchable drift instead of letting the tyre
-         curve wind into a 150 deg/s spin. Braking strength is unaffected. */
-      const rCap = 0.48;                         // 27.5 deg/s
-      if (this.r > rCap) this.r = rCap;
-      else if (this.r < -rCap) this.r = -rCap;
-      const vyCap = 0.08 * this.v + 0.5;
+      const hardR = rCap * 1.08;
+      if (this.r > hardR) this.r = hardR;
+      else if (this.r < -hardR) this.r = -hardR;
+      this.vy *= Math.exp(-dt * stopping * 6);
+      const vyCap = 0.045 * this.v + 0.35;
       if (this.vy > vyCap) this.vy = vyCap;
       else if (this.vy < -vyCap) this.vy = -vyCap;
+    }
+    if (this.hand) {
       this.slip = Math.min(1, this.slip + dt * 1.6);
     }
     this.vmaxSeen = Math.max(this.vmaxSeen, this.v * KMH);

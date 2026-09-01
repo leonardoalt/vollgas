@@ -35,14 +35,15 @@ escape margins) must not drift.
   step steer) are now applied. The remaining feel-harness failures concern the
   unfinished balance/lane-controller tuning, not the corrected visual yaw.
 - Follow-up play testing found four control issues and they are now covered by
-  feel-harness cases 8–11. Handbrake yaw is capped at a catchable 27.5 deg/s
-  instead of reaching the model's 149 deg/s guard; steering crosses from full
-  left to full right in 0.25 s at the rack (was 0.34 s), reaches half-lock in
-  0.23 s, and produces visible yaw in 0.14 s; a police stop from 223 km/h brakes
-  in-lane before merging, peaks at 14.8 deg/s yaw, and parks in 13.6 s without
-  a scrape; and 80 % braking retains a stable 27–36 deg/s turn response instead
-  of exhausting the front axle. `physics2-check` and all three `busted-check`
-  endings pass with no page errors.
+  feel-harness cases 8–11. The tests use the actual full keyboard combinations,
+  not the old 30 % direct-steer approximation. At 150 km/h, full steering plus
+  handbrake peaks at 10.2–10.3 deg/s yaw and 26.0–26.8 degrees heading; full
+  steering plus footbrake peaks at 13.6 deg/s and 37.0–39.2 degrees. Neither
+  approaches the 60-degree heading safety clamp, and straight handbraking has
+  zero spontaneous yaw. Steering crosses full left to full right in 0.25 s at
+  the rack (was 0.34 s), reaches half-lock in 0.23 s, and produces visible yaw
+  in 0.14 s. A police stop from 223 km/h peaks at 14.8 deg/s yaw and parks in
+  13.6 s without a scrape. `physics2-check` passes with no page errors.
 
 ## Diagnosis — what is actually wrong in the old code
 
@@ -153,8 +154,10 @@ Rejected alternatives:
   (roll 1.30 Hz/ζ0.44, pitch 1.55 Hz/ζ0.52, heave 1.20 Hz/ζ0.38).
 - **`dev/feel.mjs`** — the feel harness. 11 sub-tests with numeric verdicts:
   step steer, keyboard lane change, skidpad, tightest-corner-flat-out, balance
-  (throttle/brake shift), timestep robustness (1/120…1/20), stability (yaw kick).
-  Drives the real `Player` through the real `input.js` with real key presses.
+  (throttle/brake shift), timestep robustness (1/120…1/20), stability (yaw kick),
+  full-key handbrake/steering, steering reversal, police stop and full-key
+  footbrake/steering. Drives the real `Player` through the real `input.js` with
+  real key presses.
 
 ### `src/vehicles.js`
 
@@ -300,13 +303,19 @@ node dev/drive.mjs         "http://localhost:5203/" /tmp/out 200 fast
 
 ## Risk register / do-not-merge-blind
 
-- `dev/feel.mjs` numbers are **not yet validated**; the first run was invalid.
-  Do not trust any feel claim until step 1 above is done.
+- `dev/feel.mjs` now has valid pinned open-loop cases and full-key braking
+  regressions. It still reports 17 known WIP failures in the unrelated residual
+  lane drift, sweeper controller/scrape, AMG throttle-balance and timestep
+  lane-change checks. Cases 8–11 all pass; do not mistake the total failure
+  count for a braking regression.
 - The handbrake's full longitudinal retardation is preserved, but only 45 % of
   that force is charged to the simplified rear friction circle and its extra
-  lateral cut is 7 %. A soft yaw/sideslip guard keeps sustained keyboard input
-  at a catchable drift instead of allowing a full spin; feel test 8 exercises
-  30 % steering demand on all four cars.
+  lateral cut is 7 %. While either brake is active, player steering demand is
+  reduced before the tyre model and a road-car stability envelope follows the
+  requested yaw while damping sideslip. Full footbrake is capped around
+  12.6 deg/s sustained yaw and full handbrake around 8.6 deg/s. Feel tests 8
+  and 11 exercise the actual full keyboard combinations on all four cars for
+  2.5 s; test 8 also verifies straight handbraking cannot create yaw.
 - Removing the `delta` friction-circle clamp means full lock at speed now
   over-drives the front. `steerLock()` is tuned to make that ratio ~2:1, but
   that ratio is the main driveability knob and is unvalidated.

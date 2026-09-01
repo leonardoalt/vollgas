@@ -23,8 +23,8 @@
                         the car must end up in the same place
      7  stability       release everything from a yaw disturbance and watch the
                         tyres damp it out on their own
-     8  handbrake       a mild turn with the rear brake held must remain a
-                        catchable slide rather than becoming a full spin
+     8  handbrake       full keyboard steering with the rear brake held must
+                        remain a catchable turn rather than becoming a spin
      9  reversal        left-to-right key reversal time at input and rack
     10  police stop     high-speed automatic stop must brake, merge and park
                         without spinning or touching a barrier
@@ -101,7 +101,8 @@ const out = await page.evaluate(async () => {
   function stepWith(p, dt, key, holdV, opts = {}) {
     if (opts.pin !== undefined) { p.u = opts.pin; p.offroad = false; p.scrape = 0; }
     g.input.keys.clear();
-    if (key) g.input.keys.add(key);
+    if (Array.isArray(key)) key.forEach(k => g.input.keys.add(k));
+    else if (key) g.input.keys.add(key);
     g.input.update(dt);
     let thr = 0, brk = 0;
     if (opts.throttle !== undefined) { thr = opts.throttle; brk = opts.brake || 0; }
@@ -110,15 +111,21 @@ const out = await page.evaluate(async () => {
       if (e > 0.15) thr = Math.min(1, e * 0.25);
       else if (e < -0.15) brk = Math.min(0.6, -e * 0.06);
     }
+    else { thr = g.input.throttle; brk = g.input.brake; }
     const steer = opts.steer !== undefined ? opts.steer : g.input.steer;
-    p.control(dt, { throttle: thr, brake: brk, steer, handbrake: !!opts.hand }, null);
+    const handbrake = opts.hand !== undefined ? opts.hand : g.input.handbrake;
+    p.control(dt, { throttle: thr, brake: brk, steer, handbrake }, null);
     p.sync(dt);
   }
 
   function place(p, s, u, v) {
     p.s = s; p.u = u; p.v = v;
     p.psi = 0; p.vy = 0; p.r = 0; p.aLat = 0; p.aLong = 0;
-    p.slip = 0; p.damage = 0;
+    p.slip = 0; p.damage = 0; p.hand = 0;
+    p.fxF = 0; p.fxR = 0; p.steerAngle = 0; p._wheelAngle = 0; p._align = 0;
+    g.input.keys.clear();
+    g.input.throttle = 0; g.input.brake = 0; g.input.steer = 0;
+    g.input.handbrake = false;
     if (p.rack) p.rack.reset();
     p.sRoll.reset(); p.sPitch.reset(); if (p.sHeave) p.sHeave.reset();
   }
@@ -423,22 +430,34 @@ const out = await page.evaluate(async () => {
   }
 
   /* ========================================================== 8. handbrake
-     Hold substantial lock, then pull the handbrake. Pin u so a barrier
-     cannot hide an unstable car by damping its yaw for us. */
+     Hold the actual full right + handbrake keys. Pin u so a barrier cannot
+     hide an unstable car by damping its yaw for us. This deliberately uses
+     the complete keyboard range: the old 30 % direct-input test missed the
+     exact case a player can trigger. */
   function handbrake(id) {
     const p = useCar(id);
-    const dt = 1 / 100, V = 120 / 3.6;
+    const dt = 1 / 100, V = 150 / 3.6;
     place(p, SITE.straight, LANES[0], V);
-    let maxR = 0, maxVy = 0;
-    for (let i = 0; i < 3 / dt; i++) {
-      stepWith(p, dt, null, null, {
-        pin: LANES[0], steer: 0.30, hand: i >= 0.8 / dt,
-      });
+    let maxR = 0, maxVy = 0, maxPsi = 0;
+    for (let i = 0; i < 2.5 / dt; i++) {
+      stepWith(p, dt, ['d', ' '], null, { pin: LANES[0] });
       maxR = Math.max(maxR, Math.abs(p.r));
       maxVy = Math.max(maxVy, Math.abs(p.vy));
+      maxPsi = Math.max(maxPsi, Math.abs(p.psi));
+    }
+    place(p, SITE.straight, LANES[0], V);
+    let straightR = 0, straightPsi = 0;
+    for (let i = 0; i < 2.5 / dt; i++) {
+      stepWith(p, dt, ' ', null, { pin: LANES[0] });
+      straightR = Math.max(straightR, Math.abs(p.r));
+      straightPsi = Math.max(straightPsi, Math.abs(p.psi));
     }
     return { car: id, peak_yaw_deg_s: +(maxR * R2D).toFixed(1),
-             peak_sideslip_ms: +maxVy.toFixed(2), exit_kmh: Math.round(p.v * 3.6) };
+             peak_heading_deg: +(maxPsi * R2D).toFixed(1),
+             peak_sideslip_ms: +maxVy.toFixed(2),
+             straight_yaw_deg_s: +(straightR * R2D).toFixed(2),
+             straight_heading_deg: +(straightPsi * R2D).toFixed(2),
+             exit_kmh: Math.round(p.v * 3.6) };
   }
 
   /* =========================================================== 9. reversal
@@ -490,21 +509,21 @@ const out = await page.evaluate(async () => {
   }
 
   /* ====================================================== 11. brake + steer
-     Modern ABS/ESC must leave the front axle useful. At 150 km/h, 80 % brake
-     and 30 % steering should turn decisively without becoming a spin. */
+     Hold the actual full right + footbrake keys at 150 km/h. The car must
+     turn decisively without winding all the way into the heading safety cap. */
   function brakeSteer(id) {
     const p = useCar(id);
     const dt = 1 / 100, V = 150 / 3.6;
     place(p, SITE.straight, LANES[0], V);
-    let maxR = 0, maxAy = 0;
-    for (let i = 0; i < 0.8 / dt; i++) {
-      stepWith(p, dt, null, null, {
-        pin: LANES[0], steer: 0.30, throttle: 0, brake: 0.80,
-      });
+    let maxR = 0, maxAy = 0, maxPsi = 0;
+    for (let i = 0; i < 2.5 / dt; i++) {
+      stepWith(p, dt, ['d', 's'], null, { pin: LANES[0] });
       maxR = Math.max(maxR, Math.abs(p.r));
       maxAy = Math.max(maxAy, Math.abs(p.aLat));
+      maxPsi = Math.max(maxPsi, Math.abs(p.psi));
     }
     return { car: id, peak_yaw_deg_s: +(maxR * R2D).toFixed(1),
+             peak_heading_deg: +(maxPsi * R2D).toFixed(1),
              peak_ay_g: +(maxAy / 9.81).toFixed(2), exit_kmh: Math.round(p.v * 3.6) };
   }
 
@@ -555,13 +574,13 @@ if (JSON_OUT) {
   }
   console.log('\n=== 7. STABILITY  (8 deg/s yaw kick, hands off) ===');
   console.table(out.stability);
-  console.log('\n=== 8. HANDBRAKE  (30 % steer, rear brake held) ===');
+  console.log('\n=== 8. HANDBRAKE  (full keyboard steer + rear brake, 150 km/h) ===');
   console.table(out.handbrake);
   console.log('\n=== 9. STEERING REVERSAL  (full left to full right) ===');
   console.table([out.reversal]);
   console.log('\n=== 10. POLICE STOP  (223 km/h to parked shoulder) ===');
   console.table([out.policeStop]);
-  console.log('\n=== 11. BRAKE + STEER  (80 % brake, 30 % steer, 150 km/h) ===');
+  console.log('\n=== 11. BRAKE + STEER  (full keyboard steer + footbrake, 150 km/h) ===');
   console.table(out.brakeSteer);
 
   /* -------------------------------------------------------------- verdicts */
@@ -620,8 +639,16 @@ if (JSON_OUT) {
       `the car does NOT magically realign with the road`);
   }
   for (const h of out.handbrake) {
-    ok(h.peak_yaw_deg_s < 35,
-      `${h.car}: handbrake peak yaw = ${h.peak_yaw_deg_s} deg/s (want < 35: catchable, no spin)`);
+    ok(h.peak_yaw_deg_s > 4 && h.peak_yaw_deg_s < 14,
+      `${h.car}: handbrake peak yaw = ${h.peak_yaw_deg_s} deg/s (want 4-14: steers, no spin)`);
+    ok(h.peak_heading_deg < 35,
+      `${h.car}: handbrake heading = ${h.peak_heading_deg} deg (want < 35: never nearly sideways)`);
+    /* SITE.straight falls back to a gently curved road when the generated A81
+       has no 1.6 km zero-curvature span. Heading relative to that road may
+       therefore change even when the car has exactly zero yaw; spontaneous
+       yaw rate is the stability property this case is meant to catch. */
+    ok(h.straight_yaw_deg_s < 1,
+      `${h.car}: straight handbrake yaw = ${h.straight_yaw_deg_s} deg/s (want < 1: no spontaneous turn)`);
   }
   ok(out.reversal.input_cross_s !== null && out.reversal.input_cross_s <= 0.17,
     `steering input crosses centre in ${out.reversal.input_cross_s} s (want <= 0.17)`);
@@ -638,8 +665,10 @@ if (JSON_OUT) {
   ok(out.policeStop.parked_at_s !== null && out.policeStop.parked_at_s < 20,
     `police stop parks in ${out.policeStop.parked_at_s} s (want < 20)`);
   for (const b of out.brakeSteer) {
-    ok(b.peak_yaw_deg_s > 8 && b.peak_yaw_deg_s < 40,
-      `${b.car}: braking turn yaw = ${b.peak_yaw_deg_s} deg/s (want 8-40: steers without spinning)`);
+    ok(b.peak_yaw_deg_s > 7 && b.peak_yaw_deg_s < 17,
+      `${b.car}: braking turn yaw = ${b.peak_yaw_deg_s} deg/s (want 7-17: steers without spinning)`);
+    ok(b.peak_heading_deg < 45,
+      `${b.car}: braking turn heading = ${b.peak_heading_deg} deg (want < 45: never hits safety clamp)`);
   }
   console.log(`\n${fail.length ? fail.length + ' FAILURES' : 'ALL CHECKS PASS'}`);
 }
