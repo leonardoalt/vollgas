@@ -118,6 +118,7 @@ export class Vehicle {
     this._dGds = 0;
     this.damage = 0; this.offroad = false; this.scrape = 0;
     this.hand = 0;                          // handbrake, 0..1
+    this._counterDir = 0;                   // latched ESC direction during a reversal
     this.kind = opts.kind || 'traffic';
     this.name = opts.name || spec.name;
     this.active = true;
@@ -541,6 +542,40 @@ export class Player extends Vehicle {
       const vyCap = 0.045 * this.v + 0.35;
       if (this.vy > vyCap) this.vy = vyCap;
       else if (this.vy < -vyCap) this.vy = -vyCap;
+    }
+    /* Once the rack has crossed centre, counter-steering should cancel the
+       old turn promptly. Saturated tyres otherwise limit the reversal to the
+       old corner's yaw rate, making a 30-degree left-to-right correction take
+       almost three seconds even though the controls themselves moved in
+       0.25 s. Model the yaw-moment intervention of road-car ESC only while
+       the driver's demand opposes the current velocity direction. */
+    const travelHeading = this.psi + Math.atan2(this.vy, Math.max(4, this.v));
+    const steerDir = Math.sign(input.steer);
+    if (stopping > 0.02 || Math.abs(input.steer) <= 0.2) this._counterDir = 0;
+    else if (!this._counterDir
+      && this.v > 15
+      && input.steer * travelHeading < -0.02
+      && input.steer * this.steerAngle > 0) this._counterDir = steerDir;
+    else if (this._counterDir && (steerDir !== this._counterDir
+      || input.steer * this.psi >= 12 * Math.PI / 180)) this._counterDir = 0;
+    if (this._counterDir) {
+      const rWant = this._counterDir * 0.62; // 35.5 deg/s during correction
+      this.r += (rWant - this.r) * (1 - Math.exp(-dt * 7));
+    }
+    /* The saturating tyre curve deliberately permits under/oversteer, but a
+       road car with ESC must not retain 20 degrees of body sideslip through a
+       direction reversal. That made the nose point left while the velocity
+       vector was still moving right, so no amount of faster keyboard/rack
+       response could make the car obey. Leave ordinary sub-limit handling
+       untouched and progressively trim only sideslip beyond three degrees. */
+    const beta = Math.atan2(this.vy, Math.max(4, this.v));
+    const betaSoft = 3 * Math.PI / 180;
+    if (Math.abs(beta) > betaSoft) {
+      const excess = Math.min(1, (Math.abs(beta) - betaSoft) / (6 * Math.PI / 180));
+      const targetVy = Math.sign(beta) * Math.tan(betaSoft) * Math.max(4, this.v);
+      const esc = 1 - Math.exp(-dt * (5 + 18 * excess));
+      this.vy += (targetVy - this.vy) * esc;
+      this.slip = Math.max(this.slip, excess);
     }
     if (this.hand) {
       this.slip = Math.min(1, this.slip + dt * 1.6);

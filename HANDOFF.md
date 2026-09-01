@@ -34,8 +34,8 @@ escape margins) must not drift.
 - The harness fixes described below (pinned open-loop tests and a sub-limit
   step steer) are now applied. The remaining feel-harness failures concern the
   unfinished balance/lane-controller tuning, not the corrected visual yaw.
-- Follow-up play testing found four control issues and they are now covered by
-  feel-harness cases 8–11. The tests use the actual full keyboard combinations,
+- Follow-up play testing found five control issues and they are now covered by
+  feel-harness cases 8–12. The tests use the actual full keyboard combinations,
   not the old 30 % direct-steer approximation. At 150 km/h, full steering plus
   handbrake peaks at 10.2–10.3 deg/s yaw and 26.0–26.8 degrees heading; full
   steering plus footbrake peaks at 13.6 deg/s and 37.0–39.2 degrees. Neither
@@ -44,6 +44,15 @@ escape margins) must not drift.
   the rack (was 0.34 s), reaches half-lock in 0.23 s, and produces visible yaw
   in 0.14 s. A police stop from 223 km/h peaks at 14.8 deg/s yaw and parks in
   13.6 s without a scrape. `physics2-check` passes with no page errors.
+- Case 12 reproduces full left → full right → full left while lifting off. The
+  old tyre saturation retained 18–22 degrees of sideslip: the rack and yaw
+  reversed in 0.3 s, but the body took 2.57–2.87 s to establish the right turn,
+  and after lifting the actual velocity direction never followed the new left
+  input. Player ESC now trims only sideslip above 3 degrees and latches a smooth
+  counter-steer yaw intervention until the requested 12-degree opposite heading
+  is established. Across all cars, the first reversal now takes 1.27–1.73 s,
+  the lift-off reversal 1.17–1.36 s, and peak lift-off sideslip is 4.9–5.0
+  degrees. Normal sub-limit handling remains car-dependent.
 
 ## Diagnosis — what is actually wrong in the old code
 
@@ -152,12 +161,12 @@ Rejected alternatives:
 - **`src/suspension.js`** — `Spring` (damped harmonic oscillator, sub-stepped so
   `w·h < 0.4`; stable at the 0.05 s dt clamp) and the `BODY` frequencies
   (roll 1.30 Hz/ζ0.44, pitch 1.55 Hz/ζ0.52, heave 1.20 Hz/ζ0.38).
-- **`dev/feel.mjs`** — the feel harness. 11 sub-tests with numeric verdicts:
+- **`dev/feel.mjs`** — the feel harness. 12 sub-tests with numeric verdicts:
   step steer, keyboard lane change, skidpad, tightest-corner-flat-out, balance
   (throttle/brake shift), timestep robustness (1/120…1/20), stability (yaw kick),
-  full-key handbrake/steering, steering reversal, police stop and full-key
-  footbrake/steering. Drives the real `Player` through the real `input.js` with
-  real key presses.
+  full-key handbrake/steering, steering reversal, police stop, full-key
+  footbrake/steering and a left/right/lift-off slalom reversal. Drives the real
+  `Player` through the real `input.js` with real key presses.
 
 ### `src/vehicles.js`
 
@@ -306,8 +315,8 @@ node dev/drive.mjs         "http://localhost:5203/" /tmp/out 200 fast
 - `dev/feel.mjs` now has valid pinned open-loop cases and full-key braking
   regressions. It still reports 17 known WIP failures in the unrelated residual
   lane drift, sweeper controller/scrape, AMG throttle-balance and timestep
-  lane-change checks. Cases 8–11 all pass; do not mistake the total failure
-  count for a braking regression.
+  lane-change checks. Cases 8–12 all pass; do not mistake the total failure
+  count for a braking or steering-reversal regression.
 - The handbrake's full longitudinal retardation is preserved, but only 45 % of
   that force is charged to the simplified rear friction circle and its extra
   lateral cut is 7 %. While either brake is active, player steering demand is

@@ -29,6 +29,8 @@
     10  police stop     high-speed automatic stop must brake, merge and park
                         without spinning or touching a barrier
     11  brake + steer   hard braking must retain a useful, stable turn response
+    12  slalom reversal full left → full right → full left while lifting off;
+                        heading and travel direction must follow promptly
 
    Usage: node dev/feel.mjs [url] [--json]
    ========================================================================== */
@@ -122,6 +124,7 @@ const out = await page.evaluate(async () => {
     p.s = s; p.u = u; p.v = v;
     p.psi = 0; p.vy = 0; p.r = 0; p.aLat = 0; p.aLong = 0;
     p.slip = 0; p.damage = 0; p.hand = 0;
+    p._counterDir = 0;
     p.fxF = 0; p.fxR = 0; p.steerAngle = 0; p._wheelAngle = 0; p._align = 0;
     g.input.keys.clear();
     g.input.throttle = 0; g.input.brake = 0; g.input.steer = 0;
@@ -527,6 +530,58 @@ const out = await page.evaluate(async () => {
              peak_ay_g: +(maxAy / 9.81).toFixed(2), exit_kmh: Math.round(p.v * 3.6) };
   }
 
+  /* =================================================== 12. slalom reversal
+     This is the player's exact reported sequence, not a rack-only proxy:
+     accelerate at full left until the body points 18 degrees left, hold full
+     right until it points 12 degrees right, then go full left while releasing
+     the accelerator. Track body heading and the actual velocity direction so
+     a car travelling sideways cannot fake a responsive result. */
+  function slalomReversal(id) {
+    const p = useCar(id);
+    const dt = 1 / 100, V = 150 / 3.6;
+    place(p, SITE.straight, LANES[0], V);
+    const travel = () => p.psi + Math.atan2(p.vy, Math.max(0.1, p.v));
+
+    let leftAt = null;
+    for (let i = 0; i < 3 / dt; i++) {
+      stepWith(p, dt, ['a', 'w'], null, { pin: LANES[0] });
+      if (p.psi <= -18 / R2D) { leftAt = +(i * dt).toFixed(2); break; }
+    }
+    const leftHeading = p.psi * R2D;
+
+    let yawRight = null, bodyCentreRight = null, travelCentreRight = null, rightAt = null;
+    for (let i = 0; i < 3 / dt; i++) {
+      stepWith(p, dt, ['d', 'w'], null, { pin: LANES[0] });
+      const t = +(i * dt).toFixed(2);
+      if (yawRight === null && p.r >= 0) yawRight = t;
+      if (bodyCentreRight === null && p.psi >= 0) bodyCentreRight = t;
+      if (travelCentreRight === null && travel() >= 0) travelCentreRight = t;
+      if (p.psi >= 12 / R2D) { rightAt = t; break; }
+    }
+
+    let yawLeft = null, bodyCentreLeft = null, travelCentreLeft = null, leftAgainAt = null;
+    let peakSideslip = 0;
+    for (let i = 0; i < 3 / dt; i++) {
+      /* no W here: this is deliberately the reported lift-off reversal */
+      stepWith(p, dt, 'a', null, { pin: LANES[0] });
+      const t = +(i * dt).toFixed(2);
+      const beta = Math.abs(Math.atan2(p.vy, Math.max(0.1, p.v)) * R2D);
+      peakSideslip = Math.max(peakSideslip, beta);
+      if (yawLeft === null && p.r <= 0) yawLeft = t;
+      if (bodyCentreLeft === null && p.psi <= 0) bodyCentreLeft = t;
+      if (travelCentreLeft === null && travel() <= 0) travelCentreLeft = t;
+      if (p.psi <= -12 / R2D) { leftAgainAt = t; break; }
+    }
+    return {
+      car: id, first_left_s: leftAt, first_left_deg: +leftHeading.toFixed(1),
+      yaw_right_s: yawRight, body_centre_right_s: bodyCentreRight,
+      travel_centre_right_s: travelCentreRight, right_12deg_s: rightAt,
+      yaw_left_liftoff_s: yawLeft, body_centre_left_liftoff_s: bodyCentreLeft,
+      travel_centre_left_liftoff_s: travelCentreLeft, left_12deg_liftoff_s: leftAgainAt,
+      peak_sideslip_liftoff_deg: +peakSideslip.toFixed(1), exit_kmh: Math.round(p.v * 3.6),
+    };
+  }
+
   const cars = ['turbo', 'm5', 'rs6', 'amg'];
   return {
     site: { straight_s: SITE.straight, tight_s: SITE.tight,
@@ -542,6 +597,7 @@ const out = await page.evaluate(async () => {
     reversal: reversal(),
     policeStop: policeStop(),
     brakeSteer: cars.map(brakeSteer),
+    slalomReversal: cars.map(slalomReversal),
   };
 });
 
@@ -582,6 +638,9 @@ if (JSON_OUT) {
   console.table([out.policeStop]);
   console.log('\n=== 11. BRAKE + STEER  (full keyboard steer + footbrake, 150 km/h) ===');
   console.table(out.brakeSteer);
+
+  console.log('\n=== 12. SLALOM REVERSAL  (left → right → lift-off left, 150 km/h) ===');
+  console.table(out.slalomReversal);
 
   /* -------------------------------------------------------------- verdicts */
   const fail = [];
@@ -669,6 +728,14 @@ if (JSON_OUT) {
       `${b.car}: braking turn yaw = ${b.peak_yaw_deg_s} deg/s (want 7-17: steers without spinning)`);
     ok(b.peak_heading_deg < 45,
       `${b.car}: braking turn heading = ${b.peak_heading_deg} deg (want < 45: never hits safety clamp)`);
+  }
+  for (const s of out.slalomReversal) {
+    ok(s.right_12deg_s !== null && s.right_12deg_s < 1.8,
+      `${s.car}: -18 to +12 deg takes ${s.right_12deg_s} s (want < 1.8)`);
+    ok(s.left_12deg_liftoff_s !== null && s.left_12deg_liftoff_s < 1.8,
+      `${s.car}: lift-off +12 to -12 deg takes ${s.left_12deg_liftoff_s} s (want < 1.8)`);
+    ok(s.peak_sideslip_liftoff_deg < 8,
+      `${s.car}: lift-off reversal sideslip = ${s.peak_sideslip_liftoff_deg} deg (want < 8)`);
   }
   console.log(`\n${fail.length ? fail.length + ' FAILURES' : 'ALL CHECKS PASS'}`);
 }
