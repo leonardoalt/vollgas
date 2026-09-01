@@ -7,7 +7,7 @@ const browser = await puppeteer.launch({
 const page = await browser.newPage();
 await page.setViewport({ width: 1280, height: 760 });
 const errs = []; page.on('pageerror', e => errs.push(e.message));
-await page.goto('http://localhost:5173/', { waitUntil: 'networkidle0', timeout: 90000 });
+await page.goto(process.env.URL || 'http://localhost:5173/', { waitUntil: 'networkidle0', timeout: 90000 });
 await page.waitForFunction('window.__ready === true', { timeout: 90000 });
 console.log('default language with empty storage:', await page.evaluate(() => document.documentElement.lang));
 const run = async (raceTime) => page.evaluate(async (rt) => {

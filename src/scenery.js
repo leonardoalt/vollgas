@@ -609,30 +609,44 @@ export function buildVergeGrass(rand, blocked = () => false) {
      The outer band still starts at 12.85 and not at the 12.5 m paved edge so
      that a half-metre billboard cannot cross onto the asphalt. */
   const BANDS = [
-    { lo: 0.32, hi: 1.05, per: 0.55, median: true },   // median, against the rail
-    { lo: 1.05, hi: 1.92, per: 0.40, median: true },
-    { lo: 12.85, hi: 13.95, per: 1.35, median: false }, // verge, at the rail foot
-    { lo: 13.95, hi: 16.60, per: 0.75, median: false },
+    { lo: 0.32, hi: 1.05, per: 0.75, median: true },   // median, against the rail
+    { lo: 1.05, hi: 1.92, per: 0.50, median: true },
+    { lo: 12.85, hi: 13.95, per: 1.80, median: false }, // verge, at the rail foot
+    { lo: 13.95, hi: 16.60, per: 0.95, median: false },
   ];
 
   for (let s = 4; s < LENGTH - 4; s += 1) {
     const b = Math.min(nBuckets - 1, Math.floor(s / GRASS_BUCKET));
     const tint = GRASS_TINT[sectionAt(s).biome] || GRASS_TINT[BIOME.FARM];
-    for (const band of BANDS) {
+    for (let bi = 0; bi < BANDS.length; bi++) {
+      const band = BANDS[bi];
       for (const side of [1, -1]) {
-        const n = Math.floor(band.per) + (rand() < band.per % 1 ? 1 : 0);
+        /* Clump the density rather than spreading it evenly. Grass on a verge
+           grows in tussocks with bare ground between them; an even scatter at
+           the same instance count reads as individual sprigs stuck onto flat
+           green. This costs nothing — it only moves the same tufts around. */
+        const seed = bi * 7.3 + (side > 0 ? 0 : 41.5);
+        /* Two octaves: the slow one (~20 m) thins the verge out in stretches,
+           the fast one (~7 m) breaks what is left into individual tussocks.
+           Both are deliberately short-period — at a 45 m wavelength the gaps
+           come out longer than the visible verge, and whether there is any
+           grass beside the car at all becomes a coin toss. */
+        const cl = vnoise(s * 0.30, seed) * 0.5 + vnoise(s * 0.95, seed + 3.1) * 0.5;
+        const dens = band.per * Math.max(0, cl - 0.30) * 3.3;
+        const n = Math.floor(dens) + (rand() < dens % 1 ? 1 : 0);
         for (let k = 0; k < n; k++) {
+          /* tight lateral spread within a tussock, not across the whole band */
           const u = side * (band.lo + rand() ** 0.8 * (band.hi - band.lo));
           const ss = s + rand();
           if (blocked(ss, u)) continue;
           const w = toWorld(ss, u, p);
           const y = band.median ? w.y + MEDIAN_DY : vergeY(ss, u, p);
           /* Wide and low. A tuft taller than it is broad is a shrub. */
-          const wide = 0.40 + rand() * 0.34;
+          const wide = 0.36 + rand() * 0.28;
           q.setFromAxisAngle(UP, rand() * 6.283);
-          sc.set(wide, 0.15 + rand() ** 1.5 * 0.22, wide);
+          sc.set(wide, 0.16 + rand() ** 1.5 * 0.22, wide);
           m4.compose({ x: w.x, y, z: w.z }, q, sc);
-          const v = 0.86 + rand() * 0.24;
+          const v = 0.88 + rand() * 0.22;
           c3.setRGB(tint[0] * v, tint[1] * v, tint[2] * v);
           bins[b].push([m4.clone(), c3.clone()]);
         }

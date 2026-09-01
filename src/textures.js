@@ -903,12 +903,20 @@ export function tuftTex() {
       const h = H * (0.26 + r() ** 1.5 * 0.70);
       const lean = (r() - 0.5) * W * 0.22;
       const wid = 1.5 + r() * 3.0;
-      const dry = r() < 0.17;
+      const dry = r() < 0.10;
       // olive-green, or straw for the dead blades left by the mower
-      const g = dry ? 166 + r() * 40 : 126 + r() * 54;
-      const rd = dry ? 176 + r() * 40 : 92 + r() * 48;
-      const bl = dry ? 104 + r() * 34 : 54 + r() * 30;
-      ctx.fillStyle = `rgb(${rd | 0},${g | 0},${bl | 0})`;
+      const g = dry ? 158 + r() * 34 : 124 + r() * 48;
+      const rd = dry ? 166 + r() * 34 : 90 + r() * 42;
+      const bl = dry ? 98 + r() * 30 : 52 + r() * 28;
+      /* Each blade runs dark at the root and lightens to the tip. A flat blade
+         colour makes the whole tuft one value lighter than the verge, so every
+         tuft pops as a separate sprite; grading it means only the tips catch
+         the light and the base merges into the ground it stands on. */
+      const grad = ctx.createLinearGradient(0, H, 0, H - h);
+      grad.addColorStop(0, `rgb(${(rd * 0.52) | 0},${(g * 0.58) | 0},${(bl * 0.56) | 0})`);
+      grad.addColorStop(0.45, `rgb(${(rd * 0.80) | 0},${(g * 0.84) | 0},${(bl * 0.82) | 0})`);
+      grad.addColorStop(1, `rgb(${rd | 0},${g | 0},${bl | 0})`);
+      ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.moveTo(x0 - wid, H);
       ctx.quadraticCurveTo(x0 - wid * 0.4 + lean * 0.5, H - h * 0.6, x0 + lean, H - h);
