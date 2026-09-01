@@ -28,6 +28,7 @@
      9  reversal        left-to-right key reversal time at input and rack
     10  police stop     high-speed automatic stop must brake, merge and park
                         without spinning or touching a barrier
+    11  brake + steer   hard braking must retain a useful, stable turn response
 
    Usage: node dev/feel.mjs [url] [--json]
    ========================================================================== */
@@ -448,14 +449,21 @@ const out = await page.evaluate(async () => {
     const p = useCar('turbo');
     const dt = 1 / 100, V = 200 / 3.6;
     place(p, SITE.straight, LANES[0], V);
-    for (let i = 0; i < 0.7 / dt; i++) stepWith(p, dt, 'a', V, { pin: LANES[0] });
+    let inputHalf = null, rackHalf = null, yaw5 = null;
+    for (let i = 0; i < 0.7 / dt; i++) {
+      stepWith(p, dt, 'a', V, { pin: LANES[0] });
+      if (inputHalf === null && g.input.steer <= -0.5) inputHalf = +(i * dt).toFixed(2);
+      if (rackHalf === null && p.rack.pos <= -0.5) rackHalf = +(i * dt).toFixed(2);
+      if (yaw5 === null && p.r <= -5 / R2D) yaw5 = +(i * dt).toFixed(2);
+    }
     let inputT = null, rackT = null;
     for (let i = 0; i < 1.2 / dt; i++) {
       stepWith(p, dt, 'd', V, { pin: LANES[0] });
       if (inputT === null && g.input.steer >= 0) inputT = +(i * dt).toFixed(2);
       if (rackT === null && p.rack.pos >= 0) rackT = +(i * dt).toFixed(2);
     }
-    return { input_cross_s: inputT, rack_cross_s: rackT };
+    return { input_half_s: inputHalf, rack_half_s: rackHalf, yaw_5deg_s: yaw5,
+             input_cross_s: inputT, rack_cross_s: rackT };
   }
 
   /* ========================================================= 10. police stop
@@ -481,6 +489,25 @@ const out = await page.evaluate(async () => {
              parked_at_s: parkedAt, final_u: +p.u.toFixed(2) };
   }
 
+  /* ====================================================== 11. brake + steer
+     Modern ABS/ESC must leave the front axle useful. At 150 km/h, 80 % brake
+     and 30 % steering should turn decisively without becoming a spin. */
+  function brakeSteer(id) {
+    const p = useCar(id);
+    const dt = 1 / 100, V = 150 / 3.6;
+    place(p, SITE.straight, LANES[0], V);
+    let maxR = 0, maxAy = 0;
+    for (let i = 0; i < 0.8 / dt; i++) {
+      stepWith(p, dt, null, null, {
+        pin: LANES[0], steer: 0.30, throttle: 0, brake: 0.80,
+      });
+      maxR = Math.max(maxR, Math.abs(p.r));
+      maxAy = Math.max(maxAy, Math.abs(p.aLat));
+    }
+    return { car: id, peak_yaw_deg_s: +(maxR * R2D).toFixed(1),
+             peak_ay_g: +(maxAy / 9.81).toFixed(2), exit_kmh: Math.round(p.v * 3.6) };
+  }
+
   const cars = ['turbo', 'm5', 'rs6', 'amg'];
   return {
     site: { straight_s: SITE.straight, tight_s: SITE.tight,
@@ -495,6 +522,7 @@ const out = await page.evaluate(async () => {
     handbrake: cars.map(handbrake),
     reversal: reversal(),
     policeStop: policeStop(),
+    brakeSteer: cars.map(brakeSteer),
   };
 });
 
@@ -533,6 +561,8 @@ if (JSON_OUT) {
   console.table([out.reversal]);
   console.log('\n=== 10. POLICE STOP  (223 km/h to parked shoulder) ===');
   console.table([out.policeStop]);
+  console.log('\n=== 11. BRAKE + STEER  (80 % brake, 30 % steer, 150 km/h) ===');
+  console.table(out.brakeSteer);
 
   /* -------------------------------------------------------------- verdicts */
   const fail = [];
@@ -597,12 +627,20 @@ if (JSON_OUT) {
     `steering input crosses centre in ${out.reversal.input_cross_s} s (want <= 0.17)`);
   ok(out.reversal.rack_cross_s !== null && out.reversal.rack_cross_s <= 0.30,
     `actual rack crosses centre in ${out.reversal.rack_cross_s} s (want <= 0.30)`);
+  ok(out.reversal.rack_half_s !== null && out.reversal.rack_half_s <= 0.25,
+    `actual rack reaches half lock in ${out.reversal.rack_half_s} s (want <= 0.25: not heavy/dragged)`);
+  ok(out.reversal.yaw_5deg_s !== null && out.reversal.yaw_5deg_s <= 0.17,
+    `car reaches 5 deg/s yaw in ${out.reversal.yaw_5deg_s} s (want <= 0.17: responds promptly)`);
   ok(out.policeStop.peak_yaw_deg_s < 25,
     `police stop peak yaw = ${out.policeStop.peak_yaw_deg_s} deg/s (want < 25: no spin)`);
   ok(out.policeStop.scrape_frames === 0 && out.policeStop.damage === 0,
     `police stop has ${out.policeStop.scrape_frames} scrape frames and ${out.policeStop.damage} damage (want clean)`);
   ok(out.policeStop.parked_at_s !== null && out.policeStop.parked_at_s < 20,
     `police stop parks in ${out.policeStop.parked_at_s} s (want < 20)`);
+  for (const b of out.brakeSteer) {
+    ok(b.peak_yaw_deg_s > 8 && b.peak_yaw_deg_s < 40,
+      `${b.car}: braking turn yaw = ${b.peak_yaw_deg_s} deg/s (want 8-40: steers without spinning)`);
+  }
   console.log(`\n${fail.length ? fail.length + ' FAILURES' : 'ALL CHECKS PASS'}`);
 }
 console.log(errs.length ? '\n' + errs.slice(0, 8).join('\n') : '\nno page errors');

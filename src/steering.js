@@ -30,7 +30,7 @@ export class Rack {
     this.pos = 0;                       // rack position, -1..1
     this.vel = 0;                       // rack rate, full-lock per second
     /* how hard the driver holds the wheel where they want it */
-    this.kHold = o.kHold ?? 200;
+    this.kHold = o.kHold ?? 230;
     /* ...and how loosely they hold it once they stop asking for anything */
     this.kLoose = o.kLoose ?? 84;
     this.zeta = o.zeta ?? 0.90;
@@ -38,11 +38,11 @@ export class Rack {
        you give up to the tyres at full cornering load: about 15 %. */
     this.kAlign = o.kAlign ?? 30;
     /* a hand can only move so fast: full lock in about a third of a second */
-    this.rate = o.rate ?? 3.2;
+    this.rate = o.rate ?? 4.0;
     /* Crossing through centre is quicker than winding on more lock. This is
        especially important for binary keys, where input shaping and the rack
        would otherwise make a left-to-right correction feel filtered twice. */
-    this.reverseRate = o.reverseRate ?? 4.6;
+    this.reverseRate = o.reverseRate ?? 5.2;
   }
 
   reset() { this.pos = 0; this.vel = 0; }

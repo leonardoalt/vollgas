@@ -34,13 +34,15 @@ escape margins) must not drift.
 - The harness fixes described below (pinned open-loop tests and a sub-limit
   step steer) are now applied. The remaining feel-harness failures concern the
   unfinished balance/lane-controller tuning, not the corrected visual yaw.
-- Follow-up play testing found three control issues and they are now covered by
-  feel-harness cases 8–10. Handbrake yaw is capped at a catchable 27.5 deg/s
+- Follow-up play testing found four control issues and they are now covered by
+  feel-harness cases 8–11. Handbrake yaw is capped at a catchable 27.5 deg/s
   instead of reaching the model's 149 deg/s guard; steering crosses from full
-  left to full right in 0.28 s at the rack (was 0.34 s); and a police stop from
-  223 km/h brakes in-lane before merging, peaks at 13.9 deg/s yaw, and parks in
-  13.6 s without a scrape. `physics2-check` and all three `busted-check` endings
-  pass with no page errors.
+  left to full right in 0.25 s at the rack (was 0.34 s), reaches half-lock in
+  0.23 s, and produces visible yaw in 0.14 s; a police stop from 223 km/h brakes
+  in-lane before merging, peaks at 14.8 deg/s yaw, and parks in 13.6 s without
+  a scrape; and 80 % braking retains a stable 27–36 deg/s turn response instead
+  of exhausting the front axle. `physics2-check` and all three `busted-check`
+  endings pass with no page errors.
 
 ## Diagnosis — what is actually wrong in the old code
 
@@ -141,7 +143,7 @@ Rejected alternatives:
     catch the back end. Understeering cars automatically get more lock.
   - `HAND_LAT_CUT = 0.07` — handbrake lateral cut, **rear axle only** (see
     Gotchas).
-- **`src/steering.js`** — `Rack` (second-order, hand rate limit 3.2 full-lock/s,
+- **`src/steering.js`** — `Rack` (second-order, hand rate limit 4.0 full-lock/s,
   self-aligning-torque feedback with pneumatic trail collapse so the steering
   goes light as the front saturates) and `laneAssist()` (damped lane keeping,
   designed in acceleration space + curvature feed-forward, so one gain set works
@@ -149,7 +151,7 @@ Rejected alternatives:
 - **`src/suspension.js`** — `Spring` (damped harmonic oscillator, sub-stepped so
   `w·h < 0.4`; stable at the 0.05 s dt clamp) and the `BODY` frequencies
   (roll 1.30 Hz/ζ0.44, pitch 1.55 Hz/ζ0.52, heave 1.20 Hz/ζ0.38).
-- **`dev/feel.mjs`** — the feel harness. 7 sub-tests with numeric verdicts:
+- **`dev/feel.mjs`** — the feel harness. 11 sub-tests with numeric verdicts:
   step steer, keyboard lane change, skidpad, tightest-corner-flat-out, balance
   (throttle/brake shift), timestep robustness (1/120…1/20), stability (yaw kick).
   Drives the real `Player` through the real `input.js` with real key presses.
@@ -168,17 +170,19 @@ Rejected alternatives:
   only; kinematic keeps ±0.7.
 - `stepLong()`: **arithmetically unchanged** (verified byte-identical
   `phys.mjs`). Only addition is booking the same newtons to axles as
-  `this.fxF` / `this.fxR`, using `BRAKE_FRONT = 0.80`.
+  `this.fxF` / `this.fxR`, using `BRAKE_FRONT = 0.70`; road-car ABS charges
+  35 % of braking force to lateral capacity and ESC damps excess braking yaw.
 - `sync()`: roll/pitch now sprung (same steady-state gain as before, so the
   look is preserved), plus small player-only heave over crests (±0.038 m).
 - Barrier scrape now also damps `r` and `vy`, not just `psi`.
-- Player pull-over uses `laneAssist(this, target, {kp:1.3, kd:2.5, lim:0.7})`.
+- Player pull-over brakes in-lane first, then uses a lower-acceleration
+  `laneAssist()` shoulder manoeuvre with automated-stop-only stability damping.
 - Re-exports `laneAssist` for harness use.
 
 ### `src/input.js`
 
-Steering is now a true rate limit (linear ramp): `WIND_ON = 3.4`,
-`WIND_OFF = 5.2` full-lock/s, where "releasing" includes reversing through
+Steering is now a true rate limit (linear ramp): `WIND_ON = 4.2`,
+`WIND_OFF = 7.0` full-lock/s, where "releasing" includes reversing through
 centre. Throttle/brake shaping untouched.
 
 ### `dev/drive.mjs`

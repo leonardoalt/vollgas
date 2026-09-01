@@ -22,8 +22,8 @@
 /* Hand speed, in full-lock per second. Winding on is deliberately slower than
    letting go, and both are slow enough that a car with real yaw inertia is
    never asked for a step input. */
-const WIND_ON = 3.4;
-const WIND_OFF = 6.5;
+const WIND_ON = 4.2;
+const WIND_OFF = 7.0;
 export class Input {
   constructor() {
     this.keys = new Set();

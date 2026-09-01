@@ -38,7 +38,12 @@ const G = 9.81;
 /* Deliberately front-heavy: under hard braking the rear axle is unloaded, and
    charging too much brake force to it makes a tiny bend become lift-off
    oversteer. This bias keeps emergency/police stops directionally stable. */
-const BRAKE_FRONT = 0.80;
+const BRAKE_FRONT = 0.70;
+/* The braking model represents road-car ABS, which preserves substantially
+   more lateral authority than a fully locked friction-circle calculation.
+   The full force still decelerates the car; only this share is charged against
+   the axle's cornering budget. */
+const BRAKE_FX_USE = 0.35;
 /* A locked/sliding rear tyre does not follow the ordinary friction-circle
    equation cleanly. Charge only this share of handbrake force against its
    lateral budget; the full force still slows the car in stepLong(). */
@@ -159,8 +164,9 @@ export class Vehicle {
        cornering force. This bookkeeping is what gives the rear-drive AMG
        throttle-induced oversteer and every car understeer on the brakes. */
     const rb = this.ch ? this.ch.rearDrive : (p.awd ? 0.60 : 1);
-    this.fxF = tract * (1 - rb) - fbrake * BRAKE_FRONT;
-    this.fxR = tract * rb - fbrake * (1 - BRAKE_FRONT) - fhand * HAND_FX_USE;
+    this.fxF = tract * (1 - rb) - fbrake * BRAKE_FRONT * BRAKE_FX_USE;
+    this.fxR = tract * rb - fbrake * (1 - BRAKE_FRONT) * BRAKE_FX_USE
+      - fhand * HAND_FX_USE;
 
     this.aLong = F / p.mass;
     this.v = Math.max(0, this.v + this.aLong * dt);
@@ -500,6 +506,20 @@ export class Player extends Vehicle {
     if (!handWant && this.hand < 0.01) this.hand = 0;
     this.stepLong(dt, thr, brk, ctx);
     this.stepLat(dt, input.steer, ctx);
+    if (brk > 0.02) {
+      /* Road-car ABS/ESC preserves the driver's requested turn while damping
+         the load-transfer yaw that otherwise makes combined braking and
+         steering either spin or wash straight on. Do not touch psi: the car
+         still keeps the heading the driver actually gave it. */
+      const v = Math.max(6, this.v);
+      const gripR = this.ch.ayMax / v;
+      let rWant = (v / this.ch.L) * Math.tan(this.steerAngle);
+      if (rWant > gripR) rWant = gripR;
+      else if (rWant < -gripR) rWant = -gripR;
+      const esc = 1 - Math.exp(-dt * (5 + brk * 7));
+      this.r += (rWant - this.r) * esc;
+      this.vy *= Math.exp(-dt * brk * 4);
+    }
     if (this.hand) {
       /* A keyboard offers no proportional counter-steer, so cap the locked-
          rear-axle breakaway at a catchable drift instead of letting the tyre
