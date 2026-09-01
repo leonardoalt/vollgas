@@ -506,7 +506,11 @@ function fitTemplate(id, gltfScene, envMap) {
 
   /* 2 — square the body up. Exact: the minimum-area rectangle around a point
      set always has a side flush with a hull edge, so enumerate hull edges. */
-  const yaw = rec.autoYaw === false ? 0 : squareYaw(roles.body);
+  /* Snapped, not raw: see squaredYaw. A residual two or three degrees puts
+     the front and rear wheels out to opposite sides of the body. The
+     tolerance is wider than the lorry's because the worst car measured
+     3.1 degrees off, and no model in the fleet is deliberately askew. */
+  const yaw = rec.autoYaw === false ? 0 : squaredYaw(roles.body, 6);
   const R = new THREE.Matrix4().makeRotationY(yaw);
   const wheelRaw = new Map();          // material -> baked, squared geometries
   for (const o of wheelEntries) {

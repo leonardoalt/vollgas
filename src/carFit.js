@@ -692,9 +692,15 @@ export function trianglesToGeometry(geo, tris) {
  * A minimum-area rectangle is exact but it is fitted to the whole silhouette,
  * so an asymmetric detail — a mirror arm, an exhaust stack, a spare slung on
  * one side — drags it a degree or two off true on a model that was in fact
- * exported axis-aligned. A degree does not matter on a 4 m car. On a 16 m
- * lorry it moves the steer axle 15 cm sideways relative to the tail, and the
- * wheels come out visibly staggered.
+ * exported axis-aligned.
+ *
+ * This used to say a degree did not matter on a car, and that was wrong. The
+ * wheels sit square on the rig while the body carries the error, so the two
+ * axles are displaced in *opposite* directions: at 3 degrees on a 2.9 m
+ * wheelbase each moves about 7.6 cm, and the 15 cm of stagger reads
+ * immediately as front wheels pushed one way and rear wheels the other. The
+ * M5, the RS6 and the AMG all came in between 2.3 and 3.1 degrees off square
+ * and all three showed it; the 930, at 0.1 degrees, did not.
  */
 export function squaredYaw(geos, tolDeg = 3) {
   const raw = squareYaw(geos);
