@@ -197,6 +197,63 @@ export class Enforcement {
     }
   }
 
+  /** Reduce the random enforcement field to the two actors used by the lesson. */
+  prepareTutorial(cameraS) {
+    const camera = this.cameras[0];
+    for (const extra of this.cameras.slice(1)) this.scene.remove(extra.mesh);
+    this.cameras = camera ? [camera] : [];
+    if (camera) {
+      camera.s = cameraS;
+      camera.fired = false; camera.warned = false; camera.cooldown = 0;
+      const w = toWorld(camera.s, camera.u);
+      const c = sample(camera.s);
+      camera.mesh.position.set(w.x, w.y, w.z);
+      camera.mesh.rotation.y = c.head + 0.05;
+      camera.mesh.updateMatrixWorld(true);
+    }
+    this.tutorialCamera = camera || null;
+    this.tutorialCop = this.cops[0] || null;
+    this.tutorialWarningsArmed = false;
+    if (this.tutorialCop) {
+      this.tutorialCop.state = COP_STATE.DONE;
+      this.tutorialCop.cooldown = 9999;
+      this.tutorialCop.setLights(false);
+    }
+  }
+
+  /** Put the lesson's unmarked car visibly behind the player and start ProViDa. */
+  startTutorialMeasure(player) {
+    const z = this.tutorialCop;
+    if (!z) return;
+    z.s = player.s - 46;
+    z.u = player.u;
+    z.lane = Math.abs(player.u - LANES[0]) < Math.abs(player.u - LANES[1]) ? 0 : 1;
+    z.v = Math.max(18, player.v);
+    z.cruise = z.v;
+    z.psi = 0;
+    z.state = COP_STATE.MEASURE;
+    z.measure = 0.06;
+    z.measurePeak = player.v * KMH;
+    z.grace = 1.5;
+    z.lostT = 0;
+    z.cooldown = 9999;
+    z.headlights = true;
+    z.setLights(false);
+    z.sync(0);
+    this.activeCop = z;
+    this.events.push({ type: 'measure-start', cop: z });
+  }
+
+  dismissTutorialCop() {
+    const z = this.tutorialCop;
+    if (!z) return;
+    z.state = COP_STATE.DONE;
+    z.cooldown = 9999;
+    z.measure = 0;
+    z.setLights(false);
+    if (this.activeCop === z) this.activeCop = null;
+  }
+
   _park(z, playerS, initial) {
     // drop a patrol car into the stream well ahead of the player
     const ahead = initial ? 600 + this.rand() * 2200 : 1100 + this.rand() * 2400;
@@ -251,7 +308,7 @@ export class Enforcement {
 
       if (z.state === COP_STATE.DONE) {
         z.cooldown -= dt;
-        if (z.cooldown <= 0 || rel < -500) this._park(z, player.s, false);
+        if (z !== this.tutorialCop && (z.cooldown <= 0 || rel < -500)) this._park(z, player.s, false);
       }
 
       if (z.state === COP_STATE.CRUISE) {
@@ -438,6 +495,7 @@ export class Enforcement {
    * either — that is the whole point of a Zivilstreife.
    */
   _warn(dt, player, traffic) {
+    if (this.tutorialWarningsArmed === false) return;
     this._warnT = (this._warnT || 0) - dt;
     if (this._warnT > 0) return;
     this._warnT = 0.6;
@@ -458,8 +516,18 @@ export class Enforcement {
     if (!flashers.length) return;
     threat.obj.warned = true;
     // they keep flashing until you are past them, not for a fixed moment
-    for (const f of flashers) { f.warnFlash = true; f.flashPhase = 0; }
-    this.events.push({ type: 'lichthupe', threat });
+    for (const f of flashers) {
+      f.warnFlash = true;
+      f.flashPhase = 0;
+      /* Make the first pulse visible in this very frame. The tutorial freezes
+         as soon as it receives the event, so waiting for the next AI update
+         would spotlight a car whose lamps had not lit yet. */
+      f.flashHold = 0.25;
+      f.flashOn = true;
+      f.headlights = true;
+      f.sync(0);
+    }
+    this.events.push({ type: 'lichthupe', threat, flashers });
   }
 
   /** The rivals run the same gauntlet; a van doesn't care who you are. */

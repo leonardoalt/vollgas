@@ -566,6 +566,21 @@ export class Traffic {
     }
     return out;
   }
+
+  /** Guarantee one readable oncoming headlight warning for the lesson. */
+  stageTutorialFlasher(playerS) {
+    const t = this.opp[0];
+    if (!t) return null;
+    t.s = playerS + 150;
+    t.lane = 0;
+    t.u = -LANES[0];
+    t.v = 31;
+    t.cruise = 31;
+    t.psi = 0;
+    t.warnFlash = false; t.flashHold = 0; t.flashPhase = 0; t.flashOn = false;
+    t.sync(0);
+    return t;
+  }
 }
 
 /* ============================================================= collisions */

@@ -18,6 +18,7 @@ import { Hud } from './hud.js';
 import { Showroom } from './showroom.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
+import { Tutorial, TUTORIAL_ROUTE } from './tutorial.js';
 import { LENGTH, LANES, toWorld, rng, STAGE_KM, entryRamp } from './track.js';
 import { t, lang, toggleLang, applyDom, GLOBALS } from './i18n.js';
 
@@ -49,6 +50,8 @@ export class Game {
     this.raceTime = 0;
     this.countdown = 0;
     this.paused = false;
+    this.mode = null;
+    this.tutorial = null;
     this._camPos = new THREE.Vector3();
     this._camLook = new THREE.Vector3();
     this._tunnelMix = 0;
@@ -287,32 +290,41 @@ export class Game {
   }
 
   /* ------------------------------------------------------------ the race */
-  startRace() {
+  startRace() { this._startRun(false); }
+
+  startTutorial() { this._startRun(true); }
+
+  _startRun(isTutorial) {
     const id = PLAYER_CARS[this.selected];
     const spec = CARS[id];
     this.carId = id;
 
+    if (this.tutorial) { this.tutorial.destroy(); this.tutorial = null; }
+
     if (this.player) this.teardown();
 
     this.player = new Player(id, spec.paints[this.paintIdx % spec.paints.length].c);
-    // join the A81 from the Auffahrt rather than appearing in a running lane
-    this.startS = 30;
-    const ramp = entryRamp(this.startS);
+    this.mode = isTutorial ? 'tutorial' : 'race';
+    // The race joins from the Auffahrt. The lesson starts farther south, where
+    // a restricted stretch naturally leads into the unrestricted section.
+    this.startS = isTutorial ? TUTORIAL_ROUTE.startS : 30;
+    const ramp = !isTutorial && entryRamp(this.startS);
     this.player.s = this.startS;
     this.player.u = ramp ? ramp.centre : LANES[1];
-    this.player.v = 17;                        // ~61 km/h up the slip road
+    this.player.v = isTutorial ? 22 : 17;      // 79 km/h lesson / 61 km/h ramp
     this.player.headlights = true;
     this.scene.add(this.player.mesh);
     this.player.mesh.traverse(o => { if (o.isMesh) o.castShadow = true; });
 
     this.traffic = new Traffic(this.scene, rng);
-    this.traffic.build(this.player.s, { same: 12, opp: 10 });
+    this.traffic.build(this.player.s, isTutorial ? { same: 8, opp: 7 } : { same: 12, opp: 10 });
     // Time trial: no rival field. The Rival AI is still in vehicles.js — call
     // traffic.addRivals(this.player.s, id) to put a field back on the road.
     if (RIVALS) this.traffic.addRivals(this.player.s, id);
 
     this.enf = new Enforcement(this.scene, rng);
-    this.enf.build(this.player.s, 4);
+    this.enf.build(this.player.s, isTutorial ? 1 : 4);
+    if (isTutorial) this.enf.prepareTutorial(TUTORIAL_ROUTE.cameraS);
     for (const z of this.enf.cops) this.traffic.all.push(z);
 
     for (const v of this.traffic.all) {
@@ -320,21 +332,55 @@ export class Game {
     }
 
     this.raceTime = 0;
-    this.countdown = 3.999;
+    this.countdown = isTutorial ? 0 : 3.999;
     this.ending = null;
     this._warned6 = false;
     this.hud.clearBusted();
-    this.best = this.loadBest(id);
+    this.best = isTutorial ? null : this.loadBest(id);
     this.hud.countdown(null);
     this.finished = false;
     this.results = null;
+    this.paused = false;
+    $('pause').classList.add('hidden');
     this.state = 'race';
     this.hud.show(true);
     $('menu').classList.add('hidden');
     $('results').classList.add('hidden');
     this.audio.start();
     this.audio.resume();
-    this.hud.alert(t('a.route'), t('a.route.sub', { km: STAGE_KM }), 'info', 4.5, 'route');
+    this._camPos.set(0, 0, 0); this._camLook.set(0, 0, 0);
+    this.player.sync(0);
+    this.updateCamera(0.5);
+    this.world.update(0, this.player.mesh.position);
+    this.hud.update({
+      s: this.player.s, startS: isTutorial ? TUTORIAL_ROUTE.startS : 0,
+      finishS: isTutorial ? TUTORIAL_ROUTE.finishS : LENGTH,
+      raceTime: 0, best: this.best, vmaxSeen: 0, fines: 0, points: 0, damage: 0,
+      provida: 0, providaGap: 0, pursuit: false,
+    });
+    this.hud.drawTacho({ rpm: this.player.rpm, redline: this.player.perf.redline,
+      kmh: this.player.v * KMH, gear: this.player.gear, stopped: false });
+    if (isTutorial) {
+      this.tutorial = new Tutorial(this, TUTORIAL_ROUTE);
+      this.tutorial.start();
+    } else {
+      this.hud.alert(t('a.route'), t('a.route.sub', { km: STAGE_KM }), 'info', 4.5, 'route');
+    }
+  }
+
+  showMenu() {
+    if (this.tutorial) { this.tutorial.destroy(); this.tutorial = null; }
+    if (this.player) this.teardown();
+    this.mode = null;
+    this.paused = false;
+    $('pause').classList.add('hidden');
+    this.hud.show(false);
+    $('results').classList.add('hidden');
+    $('menu').classList.remove('hidden');
+    this.state = 'menu';
+    this.audio.hush();
+    applyDom();
+    this.buildMenu();
   }
 
   teardown() {
@@ -538,6 +584,7 @@ export class Game {
   /* ---------------------------------------------------------- event pump */
   handleEvents() {
     for (const ev of this.enf.drainEvents()) {
+      if (this.tutorial && this.tutorial.handleEvent(ev)) continue;
       switch (ev.type) {
         case 'measure-start':
           this.hud.alert(t('a.measure'), t('a.measure.sub'), 'bad', 4.5, 'provida');
@@ -598,6 +645,12 @@ export class Game {
   step(dt) {
     const inp = this.input.update(dt);
 
+    if (this.tutorial && this.input.tapped('Escape')) { this.showMenu(); return; }
+    if (this.tutorial && this.tutorial.modal) {
+      if (this.input.tapped('Enter', ' ')) this.tutorial.advance();
+      return;
+    }
+
     if (this.input.tapped('c')) this.camMode = (this.camMode + 1) % CAM_MODES.length;
     if (this.input.tapped('m')) { this.muted = !this.muted; this.audio.setMuted(this.muted); }
     if (this.input.tapped('p')) {
@@ -605,7 +658,10 @@ export class Game {
       $('pause').classList.toggle('hidden', !this.paused);
       if (this.paused) this.audio.hush();
     }
-    if (this.input.tapped('r')) { this.startRace(); return; }
+    if (this.input.tapped('r')) {
+      if (this.mode === 'tutorial') this.startTutorial(); else this.startRace();
+      return;
+    }
     if (this.paused) return;
 
     const p = this.player;
@@ -650,7 +706,7 @@ export class Game {
       if (kind === 'rear' && sev > 0.55) this.hud.alert(t('a.crash'), t('a.crash.sub'), 'bad', 2.6, 'crash');
     }, dt);
     // hitting a parked measuring van ends the run there and then
-    if (!this.ending && p.stoppedT <= 0) {
+    if (!this.tutorial && !this.ending && p.stoppedT <= 0) {
       const van = this.enf.hitCamera(p);
       if (van) {
         p.damage = 100;
@@ -674,7 +730,9 @@ export class Game {
     const cop = this.enf.activeCop;
     const copGap = cop ? p.s - cop.s : 0;
     this.hud.update({
-      s: p.s, raceTime: this.raceTime, best: this.best,
+      s: p.s, startS: this.tutorial ? TUTORIAL_ROUTE.startS : 0,
+      finishS: this.tutorial ? TUTORIAL_ROUTE.finishS : LENGTH,
+      raceTime: this.raceTime, best: this.best,
       vmaxSeen: p.vmaxSeen, fines: p.fines, points: p.points, damage: p.damage,
       provida: cop && cop.state === COP_STATE.MEASURE ? cop.measure : 0,
       providaGap: copGap,
@@ -693,18 +751,31 @@ export class Game {
       })),
     });
     this.hud.stepAlerts(dt);
+    if (this.tutorial) {
+      /* Stage triggers run after the camera and HUD have caught up with the
+         player's new position, so both DOM and 3D spotlights land correctly
+         on the very first paused frame. */
+      this.tutorial.update(dt);
+      if (this.tutorial.modal) this.tutorial.layout(this.camera);
+    }
 
     // ---- audio mix
     const sirenNear = cop && cop.state === COP_STATE.PURSUE
       ? Math.max(0, 1 - Math.abs(p.s - cop.s) / 220) : 0;
-    this.audio.update(dt, {
-      rpm: p.rpm, throttle: inp.throttle, speed: p.v, slip: p.slip,
-      offroad: p.offroad, scrape: p.scrape, engineOn: true,
-      siren: sirenNear > 0.02, sirenNear,
-    });
+    if (this.tutorial && this.tutorial.modal) this.audio.hush();
+    else {
+      this.audio.update(dt, {
+        rpm: p.rpm, throttle: inp.throttle, speed: p.v, slip: p.slip,
+        offroad: p.offroad, scrape: p.scrape, engineOn: true,
+        siren: sirenNear > 0.02, sirenNear,
+      });
+    }
 
     // ---- end conditions
-    if (this.ending) {
+    if (this.tutorial) {
+      // A lesson should remain recoverable even after an enthusiastic crash.
+      p.damage = Math.min(p.damage, 85);
+    } else if (this.ending) {
       if (this.stepEnding(dt)) return;
     } else {
       // one warning before the licence goes
@@ -754,6 +825,7 @@ export class Game {
         this.renderer.render(this.overlay, this.overlayCam);
         this.renderer.autoClear = true;
       }
+      if (this.tutorial) this.tutorial.layout(this.camera);
       const info = this.renderer.info.render;
       this.frameStats = { calls: info.calls, tris: info.triangles };
       this.renderer.info.reset();

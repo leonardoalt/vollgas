@@ -186,13 +186,61 @@ canvas#scene{position:absolute;inset:0;width:100%;height:100%;display:block}
   background:radial-gradient(ellipse at center,transparent 48%,rgba(150,0,0,.40) 100%)}
 #vignette.on{opacity:1}
 
+/* -------------------------------------------------------------- TUTORIAL
+   A focus ring with a very large shadow cuts a hole through the scrim. It can
+   follow both DOM panels and projected 3D objects without duplicating either. */
+#tutorial{position:absolute;inset:0;z-index:12;pointer-events:auto}
+#tutorial:before{content:"";position:absolute;inset:0;background:rgba(3,6,10,.67);backdrop-filter:blur(1.5px)}
+#tutorial.has-target:before{background:transparent;backdrop-filter:none}
+#tutorial-focus{
+  position:fixed;z-index:1;border:3px solid #78c7ff;border-radius:12px;
+  box-shadow:0 0 0 9999px rgba(3,6,10,.68),0 0 0 6px rgba(0,74,153,.55),0 0 32px rgba(80,180,255,.9);
+  pointer-events:none;transition:left .12s linear,top .12s linear,width .12s linear,height .12s linear;
+  animation:tutorialPulse 1.15s ease-in-out infinite alternate;
+}
+@keyframes tutorialPulse{from{border-color:#6dbdff}to{border-color:#fff}}
+#tutorial-card{
+  position:absolute;z-index:2;width:min(470px,88vw);padding:24px 26px 20px;
+  background:linear-gradient(145deg,rgba(17,31,47,.98),rgba(7,12,18,.98));
+  border:1px solid rgba(130,200,255,.42);border-left:5px solid #58b5ff;border-radius:8px;
+  box-shadow:0 18px 60px rgba(0,0,0,.68),0 0 30px rgba(0,74,153,.22);
+}
+#tutorial-card[data-placement="center"]{left:50%;top:50%;transform:translate(-50%,-50%)}
+#tutorial-card[data-placement="left"]{left:4vw;top:50%;transform:translateY(-50%)}
+#tutorial-card[data-placement="top"]{left:50%;top:8vh;transform:translateX(-50%)}
+#tutorial-card[data-placement="bottom"]{left:50%;bottom:7vh;transform:translateX(-50%)}
+#tutorial-kicker{font-size:11px;font-weight:700;letter-spacing:.22em;color:#82cbff;margin-bottom:10px}
+#tutorial-title{font-size:clamp(28px,4vw,42px);line-height:1.02;letter-spacing:.01em}
+#tutorial-body{font-size:16px;line-height:1.55;color:rgba(235,243,250,.78);margin-top:13px}
+.tutorial-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:22px}
+#tutorial-card button{font-size:15px;padding:11px 22px}
+#tutorial-card small{display:block;text-align:right;margin-top:9px;font-size:9.5px;letter-spacing:.18em;opacity:.4}
+.button-secondary{background:transparent;border-color:rgba(180,215,245,.55);color:#d9e8f5}
+.button-secondary:hover{background:rgba(70,135,195,.24)}
+#tutorial-exit{
+  position:absolute;z-index:3;right:22px;bottom:20px;background:rgba(5,9,14,.68);
+  border:1px solid rgba(255,255,255,.28);font-size:10px;padding:8px 12px;opacity:.7;
+}
+#tutorial-objective{
+  position:absolute;z-index:9;left:50%;top:126px;transform:translateX(-50%);
+  width:min(520px,76vw);padding:9px 16px;background:rgba(8,14,21,.88);
+  border:1px solid rgba(100,180,245,.35);border-left:4px solid #4ba8f1;border-radius:5px;
+  box-shadow:0 6px 24px rgba(0,0,0,.4);pointer-events:none;text-align:center;
+}
+#tutorial-objective.good{border-left-color:#39d98a}
+#tutorial-objective span{display:block;font-size:9px;letter-spacing:.22em;color:#79c6ff;margin-bottom:2px}
+#tutorial-objective.good span{color:#65e5a5}
+#tutorial-objective strong{font-size:13px;letter-spacing:.045em;font-weight:700}
+@media (prefers-reduced-motion:reduce){#tutorial-focus{animation:none;transition:none}}
+
 /* ------------------------------------------------------------------ MENU */
 .menu-bg{position:absolute;inset:0;background:
   radial-gradient(ellipse 120% 80% at 50% -10%,#12395f 0%,#080c12 55%,#05070a 100%)}
 #menu,#results{position:absolute;inset:0;display:grid;place-items:center;z-index:5}
 .menu-inner,#results-inner{position:relative;width:min(1140px,94vw);max-height:94vh;overflow:auto;padding:4px}
 #menu-head{display:flex;gap:20px;align-items:center;margin-bottom:22px;position:relative}
-#lang-btn{position:absolute;right:0;top:0;font-size:13px;letter-spacing:.14em;
+#menu-head-actions{margin-left:auto;display:flex;align-items:center;gap:10px}
+#lang-btn{font-size:13px;letter-spacing:.14em;
   padding:8px 15px;border-width:2px;border-radius:5px;background:transparent;color:#cfe2f6}
 #lang-btn:hover{background:var(--ab-blue);color:#fff;transform:none;box-shadow:none}
 .menu-title h1{font-size:clamp(30px,4.6vw,54px);font-weight:700;letter-spacing:.02em;line-height:1}
@@ -239,7 +287,9 @@ canvas#scene{position:absolute;inset:0;width:100%;height:100%;display:block}
 .stat .sv{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;font-size:13px}
 #car-blurb{font-size:13.5px;line-height:1.55;opacity:.72;margin-top:16px;border-top:1px solid rgba(255,255,255,.1);padding-top:14px}
 
-#menu-foot{margin-top:22px;display:grid;grid-template-columns:1fr auto;gap:24px;align-items:end}
+#menu-foot{margin-top:22px}
+#menu-actions{display:flex;gap:10px;align-items:stretch}
+#menu-actions button{font-size:16px;padding:13px 24px}
 #briefing{display:grid;grid-template-columns:1fr 1.25fr;gap:26px}
 .brief-col h3{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#8fc4ff;margin-bottom:7px}
 .brief-col ul{list-style:none;font-size:12.5px;line-height:1.75;opacity:.75}
@@ -288,13 +338,19 @@ button:active{transform:translateY(0)}
 #pause>div{font-size:inherit}
 
 @media (max-width:900px){
+  #menu-head{flex-wrap:wrap}
+  #menu-head-actions{width:100%;margin-left:0}
   #car-select{grid-template-columns:1fr}
   #car-stage{height:150px}
   .car-card{grid-template-columns:88px 1fr auto}
   .car-thumb{width:88px;height:44px}
   #briefing{grid-template-columns:1fr}
   #menu-foot{grid-template-columns:1fr}
+  #menu-actions{justify-content:stretch}
+  #menu-actions button{flex:1;padding-left:12px;padding-right:12px}
   #hud-rear{display:none}
   #hud-alerts{width:min(300px,48vw)}
   #hud-race{min-width:0;width:min(96vw,400px)}
+  #tutorial-card[data-placement]{left:50%;top:auto;bottom:5vh;transform:translateX(-50%)}
+  #tutorial-objective{top:118px}
 }

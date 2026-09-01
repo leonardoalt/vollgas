@@ -132,7 +132,7 @@ export class Hud {
     e.time.textContent = `${mm}:${ss.toFixed(1).padStart(4, '0')}`;
     e.best.textContent = st.best == null ? t('res.none')
       : `${Math.floor(st.best / 60)}:${(st.best % 60).toFixed(1).padStart(4, '0')}`;
-    const left = Math.max(0, (LENGTH - st.s) / 1000);
+    const left = Math.max(0, ((st.finishS ?? LENGTH) - st.s) / 1000);
     e.dist.textContent = left < 1 ? `${Math.round(left * 1000)} m` : `${left.toFixed(1)} km`;
     e.vmax.textContent = Math.round(st.vmaxSeen);
     e.fine.textContent = `${st.fines} €`;
@@ -142,7 +142,9 @@ export class Hud {
     e.points.classList.toggle('hot', st.points > 0);
     e.damage.classList.toggle('hot', st.damage > 55);
 
-    const frac = Math.min(1, st.s / LENGTH);
+    const progressStart = st.startS ?? 0;
+    const progressEnd = st.finishS ?? LENGTH;
+    const frac = Math.min(1, Math.max(0, (st.s - progressStart) / (progressEnd - progressStart)));
     e.progFill.style.width = (frac * 100).toFixed(2) + '%';
     e.progMe.style.left = (frac * 100).toFixed(2) + '%';
 
