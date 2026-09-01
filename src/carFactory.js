@@ -1036,8 +1036,12 @@ export const CARS = {
     blurbEn: 'An estate car. Room for the pram, the dog and half a hardware shop — and 600 hp. You need those on the drive home from the family holiday, when the back seat asks for the fortieth time whether you are nearly there. You are nearly there.',  },
   amg: {
     name: 'Affalterbach AMG 63 S', marque: 'Stern aus Stuttgart', arch: 'coupe4',
-    dims: D(4.94, 1.90, 1.43, 0.15),
-    axleF: 1.52, axleR: -1.34, trackF: 1.62, trackR: 1.64,
+    /* Sized to the gullwing body carModels.js fits over this rig, not to the
+       saloon this entry started as: 2.68 m between the axles rather than 2.86,
+       which is what the model is scaled by, and a lower, wider envelope to
+       match what that scaling actually produces. */
+    dims: D(4.65, 1.98, 1.20, 0.15),
+    axleF: 1.42, axleR: -1.26, trackF: 1.62, trackR: 1.64,
     wheelRF: 0.350, wheelRR: 0.365, wheelWF: 0.265, wheelWR: 0.305,
     spokes: 5, caliper: 'red', face: 'star', lightY: 0.55,
     tailStyle: 'lshape', tailY: 0.665, pipes: 4, wing: 'lip',

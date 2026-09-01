@@ -39,24 +39,24 @@ import {
 
 import url930 from './assets/models/car-930.glb';
 import urlSedan10 from './assets/models/car-sedan10.glb';
-import urlCoupe07 from './assets/models/car-coupe07.glb';
 import urlHatch11 from './assets/models/car-hatch11.glb';
 import urlLcv07 from './assets/models/car-lcv07.glb';
 import urlWagonEu from './assets/models/car-wagon-eu.glb';
 import urlSuv10 from './assets/models/car-suv10.glb';
 import urlLorry from './assets/models/car-lorry.glb';
+import urlSls from './assets/models/car-sls.glb';
 
 
 /* ------------------------------------------------------------- the sources */
 const FILES = {
   p930: url930,
   sedan10: urlSedan10,
-  coupe07: urlCoupe07,
   hatch11: urlHatch11,
   lcv07: urlLcv07,
   wagonEu: urlWagonEu,
   suv10: urlSuv10,
   lorry: urlLorry,
+  sls: urlSls,
 };
 
 /**
@@ -136,13 +136,33 @@ RECIPE.m5 = {
   glassMat: [/^solar_glass$/i],
 };
 
+/* The AMG is the one player car that is not a fictional marque.
+
+   Its previous body was Zhabotinsky's '07 Generic Coupe, which by the author's
+   own description is a Ford Focus Coupe: a three-door shooting brake, the
+   wrong silhouette for a car billed as a 63 S. This is a gullwing coupe
+   instead — a closed roof, so the stripped cabin never shows.
+
+   Prepared offline rather than at load: the interior is prefixed `INT_`
+   throughout and came to 59% of the model, and the branding atlas had the
+   laurel roundel and the AMG wordmark painted over. What is NOT removed is the
+   star modelled into `Chrome.005`; it resisted both mesh removal and a spatial
+   cut, and the owner chose to keep it rather than spend more on it. If that is
+   ever revisited, `dev/scratch` has the isolation harness that proved it is
+   geometry and not texture. */
 RECIPE.amg = {
-  ...ZHAB,
-  file: 'coupe07',
-  wheelMat: [/^rimstock/i],
-  wheelNode: [/^wheel_\d/i],
-  paintMat: [/^body$/i],
-  glassMat: [/^glass$/i],
+  ownWheels: true,
+  file: 'sls',
+  /* Rim, tyre, disc and caliper are separate materials here, so the measuring
+     pass can find the wheels by material alone. */
+  wheelMat: [/^Rim[._]/i, /^Tyre/i, /^Brake_/i],
+  wheelNode: [],
+  paintMat: [/^Carpaint/i],
+  glassMat: [/^Glass_/i],
+  /* The modeller's plate reads ASSETTO CORSA; the game fits a German one. */
+  strip: [/^EXT_PLATE_plastic/i, /DAMAGE_GLASS/i],
+  stripNode: [],
+  coat: [],
 };
 
 /* The estate.

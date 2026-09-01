@@ -116,24 +116,70 @@ GLBs we ship.
   paint material is tinted to the player's chosen colour.
 * The marque is invented and the model carries **no badge and no plate**.
 
-### '07 Generic Coupe — used for `amg`
+### 2010 Mercedes SLS AMG — used for `amg`
 
-* Author: **Daniel Zhabotinsky** — <https://sketchfab.com/DanielZhabotinsky>
-* Source: <https://sketchfab.com/3d-models/07-generic-coupe-low-poly-model-22abe5284d4c4b55920b8462eb24a8c1>
-* Mirror used: <https://huggingface.co/datasets/allenai/objaverse/resolve/main/glbs/000-128/22abe5284d4c4b55920b8462eb24a8c1.glb>
-* Licence: **CC BY 4.0**, from the file's own `asset.extras`:
+Obtained directly from Sketchfab with the owner's API token rather than through
+the Objaverse mirror, which does not contain it. That is the only reason the
+earlier searches never surfaced it: they were searching the mirror's 798,759
+objects, not Sketchfab.
+
+* Author: **Dave Love** — <https://sketchfab.com/Tyler_Dave>
+* Source: <https://sketchfab.com/3d-models/2010-mercedes-sls-amg-fa3fd5eeea674f37bb03283f2c53d563>
+* Licence: **CC BY 4.0**, checked twice.
+
+  From the file's own `asset.extras`:
   > `"license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"`
+
+  And from Sketchfab's live model API, which is the licence of record:
+  > `"license": { "label": "CC Attribution", "slug": "by",`
+  > `  "requirements": "Author must be credited. Commercial use is allowed." }`
+
+  `CC Attribution`, not ShareAlike and not NonCommercial.
 * Required credit:
-  > This work is based on "'07 Generic Coupe - Low poly model"
-  > (https://sketchfab.com/3d-models/07-generic-coupe-low-poly-model-22abe5284d4c4b55920b8462eb24a8c1)
-  > by Daniel Zhabotinsky (https://sketchfab.com/DanielZhabotinsky) licensed
-  > under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
-* Shipped as `src/assets/models/car-coupe07.glb` (278 kB, 14.9 k triangles).
-* **What we changed:** same optimisation, 2.97 MB → 278 kB. At load time the
-  modeller's `numberplate` mesh is dropped (we fit a German plate) and the
-  model's own wheels are measured but not drawn — they are modelled *mid-steer*,
-  so a car built on them corners while parked.
-* The marque is invented; no badges.
+  > This work is based on "2010 Mercedes SLS AMG"
+  > (https://sketchfab.com/3d-models/2010-mercedes-sls-amg-fa3fd5eeea674f37bb03283f2c53d563)
+  > by Dave Love (https://sketchfab.com/Tyler_Dave) licensed under CC-BY-4.0
+  > (http://creativecommons.org/licenses/by/4.0/)
+* Shipped as `src/assets/models/car-sls.glb` (0.61 MB, 16.5 k triangles),
+  down from 13.7 MB and 178,369 triangles.
+* **What we changed**, all offline so that load time is unaffected:
+  * The interior is prefixed `INT_` throughout and came to 105,797 triangles —
+    59% of the model. Dropped: this is a closed coupé, so nothing of the cabin
+    reads through the glass at the distance the car is seen from. The blurred
+    motion-rim variants and the damage-glass state went with it.
+  * The branding atlas on `Details.005` carried a MERCEDES-BENZ laurel roundel,
+    the AMG wordmark and a plain star in one 512 px map, with a matching
+    embossed normal map. Both were painted flat, so those three read as blank
+    chrome bosses.
+  * `dev/optimise-model.sh … 512 0.35 0.006`.
+  * At load `EXT_PLATE_plastic` is dropped — the modeller's plate reads
+    ASSETTO CORSA — and a German one is fitted in its place. The model's own
+    wheels are measured but not drawn, as with the rest of the fleet.
+* **The grille star is still there, knowingly.** It is modelled into
+  `Chrome.005`, a mesh that also carries the window and grille trim, so it
+  cannot be dropped wholesale; it survived a spatial cut of the 332 triangles
+  at the nose centreline, and it is not in any texture — every map on that
+  material is absent. The owner chose to keep it rather than spend more time on
+  it. `dev/scratch/glb.js` has the isolation harness that established this, and
+  the SL 63 below is a fully de-badged alternative if that decision changes.
+* The brake calipers carry a small `AMG` wordmark in their texture
+  (`baseColor_15`), legible only in a wheel close-up, not at driving distance.
+
+### Mersedes-Benz SL63 AMG — evaluated, not shipped
+
+Prepared to the same standard and fully de-badged, kept as the fallback if the
+SLS's grille star is ever judged unacceptable.
+
+* Author: **Black Snow** — <https://sketchfab.com/BlackSnow02>
+* Source: <https://sketchfab.com/3d-models/mersedes-benz-sl63-amg-free-f7a625e6f5de425e89e84ae2e92cad65>
+* Licence: **CC BY 4.0**, from the file's own `asset.extras` and the live API.
+* 431,595 → 36,902 triangles, 0.52 MB. The star, the "AMG" and "SL 63" boot
+  lettering and a rear logo all came off cleanly: the visible star is *not* the
+  28-triangle mesh called `SL63_badge-F-AMG`, it is a 3,130-triangle mesh inside
+  the grille group called `Sl63_grille-F-AMG_SL63_silver`.
+* Not shipped because it is a roadster modelled roof-down, so the stripped
+  cabin is a visible hollow. Keeping its seats would cost a few thousand
+  triangles and make it usable.
 
 ### Modern Hatchback — used for `zivi_kompakt` and `hatch`
 
