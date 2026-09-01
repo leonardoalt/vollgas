@@ -116,6 +116,70 @@ GLBs we ship.
   paint material is tinted to the player's chosen colour.
 * The marque is invented and the model carries **no badge and no plate**.
 
+### Bmw M5 F90 — used for `m5`
+
+* Author: **RES1N** — <https://sketchfab.com/Res1n>
+* Source: <https://sketchfab.com/3d-models/bmw-m5-f90-5478e978bd634337adc8e3dc413fbfa3>
+* Licence: **CC BY 4.0**, from the file's own `asset.extras` and confirmed
+  against the live Sketchfab API (`"label": "CC Attribution", "slug": "by"`).
+  The handle inside the file is the older `Resinnnn`; the live profile is
+  `Res1n`. Both are recorded so the trail is complete, as with the lorry.
+* Required credit:
+  > This work is based on "Bmw M5 F90"
+  > (https://sketchfab.com/3d-models/bmw-m5-f90-5478e978bd634337adc8e3dc413fbfa3)
+  > by RES1N (https://sketchfab.com/Res1n) licensed under CC-BY-4.0
+  > (http://creativecommons.org/licenses/by/4.0/)
+* Shipped as `src/assets/models/car-m5f90.glb` (1.27 MB, 47.9 k triangles),
+  down from 37.6 MB and 259,936.
+* **What we changed:** the `INT_`/`int_` interior, the engine block and the
+  motion-blur rim variants are dropped, and so are seven badge meshes the
+  author had already separated — `bmwlogo`, `logo_bmw_m`, `M_Badge_Max`,
+  `M_RimBadge_Max`, `badgeext` and two `BMW_M5CompetitionReward` pieces. The
+  model's own plate and stickers go too; the game fits a German plate.
+* **Not decimated by `dev/optimise-model.sh`.** See the note on the RS6 below —
+  the same split-vertex problem, the same fix.
+* This model is visibly assembled from several sources: `Carpaint` and
+  `EXT_Tyre` sit alongside `5___Default`, `h4343` and `0rewrewrwe`. That is
+  cosmetically untidy but harmless, and the wheels are cleanly named, which is
+  all the measuring pass needs.
+
+### Audi RS6 — used for `rs6`
+
+* Author: **3DCars4U** — <https://sketchfab.com/3dcarsforyou>
+* Source: <https://sketchfab.com/3d-models/audi-rs6-b2e41d08880a4e72b31cf366f2e0dd2b>
+* Licence: **CC BY 4.0**, in the file and on the live API.
+* Required credit:
+  > This work is based on "Audi RS6"
+  > (https://sketchfab.com/3d-models/audi-rs6-b2e41d08880a4e72b31cf366f2e0dd2b)
+  > by 3DCars4U (https://sketchfab.com/3dcarsforyou) licensed under CC-BY-4.0
+  > (http://creativecommons.org/licenses/by/4.0/)
+* Shipped as `src/assets/models/car-rs6c8.glb` (0.68 MB, 54.6 k triangles),
+  down from 37.0 MB and 1,204,335.
+* **What we changed:** `interior.001` and the two licence-plate materials are
+  dropped; the game fits its own plate. No badge geometry to remove — there is
+  none, and no rings appear in the render.
+* **Why gltfpack and not `dev/optimise-model.sh`.** Both this and the M5 are
+  exported with split vertices — hard normals on every triangle — and
+  `gltf-transform weld` merges only *bitwise identical* vertices, so
+  meshoptimizer had no shared edges to collapse. The M5 would not go below
+  193 k triangles at any ratio, with `--error` unconstrained and
+  `--lock-border false`. gltfpack welds with a tolerance first and both then
+  decimate normally. **Texture passes must run before gltfpack**: running
+  gltf-transform `meshopt` over gltfpack's already-quantised output corrupts
+  the positions and the car loads flat, with a bounding box of 32767 x 0 x 0.
+
+### A note on where these two came from
+
+Neither is in the Objaverse mirror, which is why the earlier searches never
+found them; both were fetched from Sketchfab directly with the owner's API
+token. That opens a much larger pool, and a hazard with it. Several CC-BY
+listings for these exact cars are re-uploads of other people's NonCommercial
+work with a licence the uploader had no right to grant — one candidate matched
+a known BY-NC-SA model's triangle count to within a single triangle, and
+another's own description admitted its textures came out of Assetto Corsa.
+Both were rejected. The two above were chosen partly because their authors
+have coherent catalogues of their own work.
+
 ### 2010 Mercedes SLS AMG — used for `amg`
 
 Obtained directly from Sketchfab with the owner's API token rather than through

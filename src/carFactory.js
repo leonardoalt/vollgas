@@ -1023,38 +1023,41 @@ export const CARS = {
     plate: 'S PS 911',
     /* Gentianblau first, because the still photograph in the menu is of the
        blue car and the car you drive has to be the car in the picture. */
-    paints: [{ n: 'Gentianblau', c: 0x1b46b0 }, { n: 'Indischrot', c: 0xb0121f },
-      { n: 'GT-Silber', c: 0xb9bdc0 }, { n: 'Achatgrau', c: 0x4a5157 }],
+    paints: [{ n: 'Tiefschwarz', c: 0x0e1013 }, { n: 'Gentianblau', c: 0x1b46b0 },
+      { n: 'Indischrot', c: 0xb0121f }, { n: 'GT-Silber', c: 0xb9bdc0 },
+      { n: 'Achatgrau', c: 0x4a5157 }],
     perf: { mass: 1640, power: 478, cd: 0.72, vmax: 330, grip: 1.42, awd: true, gears: 8, launch: 0.78, redline: 7200 },
     blurb: 'Heckmotor, Allrad, 650 PS. Klebt bei 300 noch auf der linken Spur und lässt sich vom Gegenverkehr nicht beeindrucken. Die teuerste Art, in Flensburg Punkte zu sammeln.',
 
     blurbEn: 'Rear engine, all-wheel drive, 650 hp. Still planted in the left-hand lane at 300, and utterly unbothered by oncoming traffic. The most expensive way there is to collect points in Flensburg.',  },
   m5: {
     name: 'Bayern M-Sport M5 CS', marque: 'Bayerische Motoren', arch: 'sedan',
-    dims: D(5.00, 1.90, 1.47, 0.155),
-    axleF: 1.55, axleR: -1.43, trackF: 1.63, trackR: 1.65,
+    dims: D(4.97, 1.92, 1.47, 0.155),
+    axleF: 1.60, axleR: -1.38, trackF: 1.63, trackR: 1.65,
     wheelRF: 0.355, wheelRR: 0.365, wheelWF: 0.275, wheelWR: 0.305,
     spokes: 5, caliper: 'red', face: 'kidney', lightY: 0.55,
     tailStyle: 'lshape', tailY: 0.68, pipes: 4, wing: 'lip',
     mirrorZ: 0.756, mirrorY: 0.735, beltAt: 0.70, handles: [0.44, 0.615],
     plate: 'M BM 5',
     /* First entry matches the menu photograph — see carHero.js. */
-    paints: [{ n: 'Frozen Bluestone', c: 0x3b4350 }, { n: 'Marina-Bay-Blau', c: 0x1c56b4 },
-      { n: 'Frozen Schwarz', c: 0x1a1c1f }, { n: 'Brands-Hatch-Grau', c: 0x6e757b }],
+    paints: [{ n: 'Imolarot', c: 0x9d1016 }, { n: 'Frozen Bluestone', c: 0x3b4350 },
+      { n: 'Marina-Bay-Blau', c: 0x1c56b4 }, { n: 'Frozen Schwarz', c: 0x1a1c1f },
+      { n: 'Brands-Hatch-Grau', c: 0x6e757b }],
     perf: { mass: 1825, power: 467, cd: 0.78, vmax: 305, grip: 1.34, awd: true, gears: 8, launch: 0.73, redline: 7200 },
     blurb: 'Vier Türen, Allrad, V8-Biturbo. Der Klassiker auf der linken Spur: fährt 300, als wären es 130, und hat Platz für das Gepäck von vier Leuten, die lieber zu Hause geblieben wären.',
 
     blurbEn: 'Four doors, all-wheel drive, twin-turbo V8. The classic of the fast lane: does 300 like it is 130, with room for the luggage of four people who did not want to be here.',  },
   rs6: {
     name: 'Ingolstadt RS-6 Avant', marque: 'Vier Ringe', arch: 'wagon',
-    dims: D(5.02, 1.95, 1.47, 0.16),
+    dims: D(5.00, 1.95, 1.49, 0.16),
     axleF: 1.53, axleR: -1.40, trackF: 1.67, trackR: 1.66,
     wheelRF: 0.360, wheelRR: 0.360, wheelWF: 0.285, wheelWR: 0.285,
     spokes: 5, rimDark: true, caliper: 'red', face: 'singleframe', lightY: 0.545,
     tailStyle: 'bar', tailY: 0.68, pipes: 2, wing: 'roof',
     mirrorZ: 0.744, mirrorY: 0.745, beltAt: 0.715, handles: [0.44, 0.615],
     plate: 'IN AU 6',
-    paints: [{ n: 'Nardograu', c: 0x9a9da0 }, { n: 'Mythosschwarz', c: 0x22252a }, { n: 'Tangorot', c: 0x8e1a12 }],
+    paints: [{ n: 'Nogaroblau', c: 0x1e3d78 }, { n: 'Nardograu', c: 0x9a9da0 },
+      { n: 'Mythosschwarz', c: 0x22252a }, { n: 'Tangorot', c: 0x8e1a12 }],
     perf: { mass: 2075, power: 441, cd: 0.86, vmax: 305, grip: 1.38, awd: true, gears: 8, launch: 0.625, redline: 6800 },
     blurb: 'Ein Kombi. Platz für Kinderwagen, Hund und den halben Baumarkt — und 600 PS. Die braucht man auf der Rückfahrt aus dem Familienurlaub, wenn von hinten zum vierzigsten Mal die Frage kommt, ob man bald da ist. Dann ist man bald da.',
 
@@ -1073,8 +1076,9 @@ export const CARS = {
     mirrorZ: 0.756, mirrorY: 0.725, beltAt: 0.69, handles: [0.44, 0.615],
     plate: 'S MB 63',
     /* First entry matches the menu photograph — see carHero.js. */
-    paints: [{ n: 'Graphitgrau', c: 0x44474c }, { n: 'Selenitgrau', c: 0x5b6066 },
-      { n: 'Obsidianschwarz', c: 0x191b1e }, { n: 'Hyazinthrot', c: 0x7e1220 }],
+    paints: [{ n: 'Iridiumsilber', c: 0xb4b8bd }, { n: 'Graphitgrau', c: 0x44474c },
+      { n: 'Selenitgrau', c: 0x5b6066 }, { n: 'Obsidianschwarz', c: 0x191b1e },
+      { n: 'Hyazinthrot', c: 0x7e1220 }],
     perf: { mass: 1800, power: 375, cd: 0.76, vmax: 290, grip: 1.30, awd: false, gears: 7, launch: 0.605, redline: 7000 },
     blurb: 'Handgebauter V8, Hinterradantrieb und ein Geräusch, das aus Nachbarn Feinde macht. Geradeaus fantastisch, in Kurven will das Heck gelegentlich mitreden. Verbraucht auf dem Weg zum Bäcker mehr als ein Kleinwagen im Monat.',
 

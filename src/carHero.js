@@ -28,10 +28,10 @@ import amgHero from './assets/amg-hero.webp';
  * mistake.
  */
 export const HERO = {
-  turbo: { src: turboHero, paint: 0x1b46b0 },   // 992 Carrera
-  m5: { src: m5Hero, paint: 0x3b4350 },
-  rs6: { src: rs6Hero, paint: 0x9a9da0 },
-  amg: { src: amgHero, paint: 0x44474c },       // C 63 S, matching the spec
+  turbo: { src: turboHero, paint: 0x0e1013 },
+  m5: { src: m5Hero, paint: 0x9d1016 },
+  rs6: { src: rs6Hero, paint: 0x1e3d78 },
+  amg: { src: amgHero, paint: 0xb4b8bd },
 };
 
 const BAR = 'position:absolute;left:8px;bottom:7px;z-index:3;display:flex;gap:4px;';

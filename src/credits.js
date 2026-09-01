@@ -32,6 +32,22 @@ export const ATTRIBUTIONS = [
     licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
   },
   {
+    title: 'Bmw M5 F90',
+    author: 'RES1N',
+    authorUrl: 'https://sketchfab.com/Res1n',
+    source: 'https://sketchfab.com/3d-models/bmw-m5-f90-5478e978bd634337adc8e3dc413fbfa3',
+    licence: 'CC BY 4.0',
+    licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
+  },
+  {
+    title: 'Audi RS6',
+    author: '3DCars4U',
+    authorUrl: 'https://sketchfab.com/3dcarsforyou',
+    source: 'https://sketchfab.com/3d-models/audi-rs6-b2e41d08880a4e72b31cf366f2e0dd2b',
+    licence: 'CC BY 4.0',
+    licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
+  },
+  {
     title: '2010 Mercedes SLS AMG',
     author: 'Dave Love',
     authorUrl: 'https://sketchfab.com/Tyler_Dave',

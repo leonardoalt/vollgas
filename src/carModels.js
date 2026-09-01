@@ -45,6 +45,8 @@ import urlWagonEu from './assets/models/car-wagon-eu.glb';
 import urlSuv10 from './assets/models/car-suv10.glb';
 import urlLorry from './assets/models/car-lorry.glb';
 import urlSls from './assets/models/car-sls.glb';
+import urlM5f90 from './assets/models/car-m5f90.glb';
+import urlRs6c8 from './assets/models/car-rs6c8.glb';
 
 
 /* ------------------------------------------------------------- the sources */
@@ -57,6 +59,8 @@ const FILES = {
   suv10: urlSuv10,
   lorry: urlLorry,
   sls: urlSls,
+  m5f90: urlM5f90,
+  rs6c8: urlRs6c8,
 };
 
 /**
@@ -125,15 +129,33 @@ const ZHAB = {
   coat: [],
 };
 
+/* The M5 and the RS6 are the other two player cars that are not fictional
+   marques. Both came straight from Sketchfab with the owner's API token, both
+   CC BY 4.0, and both are cleanly built: the interior is prefixed and the
+   badges are their own meshes, so the strip is a pattern rather than surgery.
+
+   Both needed gltfpack rather than dev/optimise-model.sh to decimate. They are
+   exported with split vertices — hard normals on every triangle — and
+   gltf-transform's `weld` only merges bitwise-identical ones, so meshoptimizer
+   had no shared edges to collapse and the M5 would not go below 193 k
+   triangles at any ratio. gltfpack welds with a tolerance first. Note the
+   texture passes have to run BEFORE gltfpack: running gltf-transform `meshopt`
+   over gltfpack's already-quantised output corrupts the positions and the car
+   comes out flat. */
 RECIPE.m5 = {
-  ...ZHAB,
-  file: 'sedan10',
-  /* The rims share `solar_bottom` with the headlight housings and the plastic
-     trim, so here they can only be found by node name. */
-  wheelMat: [],
-  wheelNode: [/^wheels?[_\d]/i],
-  paintMat: [/^solar_body$/i],
-  glassMat: [/^solar_glass$/i],
+  ownWheels: true,
+  file: 'm5f90',
+  /* This model is assembled from several sources and its material names show
+     it — `5___Default`, `h4343`, `0rewrewrwe` sit next to sensible ones. The
+     wheels are the reliable part: rim, tyre, disc and caliper each have their
+     own name, which is all the measuring pass needs. */
+  wheelMat: [/^M_Rim/i, /^EXT_Tyre$/i, /^Brake_Disk/i, /^Brake_Caliper/i],
+  wheelNode: [],
+  paintMat: [/^Carpaint$/i],
+  glassMat: [/^EXt_GLASS$/i],
+  strip: [/numberplate/i, /^sticker/i],
+  stripNode: [/numberplate/i],
+  coat: [],
 };
 
 /* The AMG is the one player car that is not a fictional marque.
@@ -179,6 +201,26 @@ RECIPE.amg = {
    renamed file is what is committed. Encoding mojibake in a recipe would work
    until somebody opened the file. */
 RECIPE.rs6 = {
+  ownWheels: true,
+  file: 'rs6c8',
+  wheelMat: [/^rim/i, /^tire\./i, /^brakedisk/i],
+  wheelNode: [],
+  paintMat: [/^carpaint/i],
+  /* `redglass` and `orangeglass` are the lamps, not the glazing. */
+  glassMat: [/^windowglass/i],
+  strip: [/LicPlate/i],
+  stripNode: [],
+  coat: [],
+};
+/* The generic estate and saloon.
+
+   These used to be RECIPE.rs6 and RECIPE.m5, and the traffic and the unmarked
+   patrols were spread from those. That stopped being safe the moment the two
+   player cars moved onto bodies of their own: a Zivilstreifen that is visibly
+   an RS6 defeats the entire point of an unmarked car, and the estate's
+   envelope no longer matched the rig it was measured against. They are their
+   own entries now, and nothing about a player car reaches them. */
+const WAGON_EU = {
   ...ZHAB,
   file: 'wagonEu',
   wheelMat: [],
@@ -188,9 +230,20 @@ RECIPE.rs6 = {
   strip: [/^wagon_plate$/i],
   stripNode: [],
 };
-RECIPE.zivi_touring = { ...RECIPE.rs6 };
-RECIPE.zivi_avant = { ...RECIPE.rs6 };
-RECIPE.kombi = { ...RECIPE.rs6 };
+const SEDAN_10 = {
+  ...ZHAB,
+  file: 'sedan10',
+  /* The rims share `solar_bottom` with the headlight housings and the plastic
+     trim, so here they can only be found by node name. */
+  wheelMat: [],
+  wheelNode: [/^wheels?[_\d]/i],
+  paintMat: [/^solar_body$/i],
+  glassMat: [/^solar_glass$/i],
+};
+
+RECIPE.zivi_touring = { ...WAGON_EU };
+RECIPE.zivi_avant = { ...WAGON_EU };
+RECIPE.kombi = { ...WAGON_EU };
 
 /* The Zivilstreifen.
 
@@ -205,7 +258,7 @@ RECIPE.kombi = { ...RECIPE.rs6 };
    bytes and shares its textures on the GPU, and an anonymous silver saloon
    that looks like ordinary traffic until the blues come on is exactly the
    brief. The player's car is a different colour and is in front of you. */
-RECIPE.zivi_limo = { ...RECIPE.m5 };
+RECIPE.zivi_limo = { ...SEDAN_10 };
 RECIPE.zivi_kompakt = {
   ...ZHAB,
   file: 'hatch11',
