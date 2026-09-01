@@ -12,7 +12,7 @@
      ?paint=<hex>              force one colour, so shape is what you see    */
 import * as THREE from 'three';
 import { initMaterials, buildCar, buildTruck, CARS } from '../src/carFactory.js';
-import { preloadCarModels, modelStats, modelFit, hasModel } from '../src/carModels.js';
+import { preloadCarModels, modelStats, modelFit, hasModel, truckFit, hasTruckModel } from '../src/carModels.js';
 import { roadEnv, studioEnv } from '../src/carEnv.js';
 import { groundTex } from '../src/textures.js';
 
@@ -179,9 +179,10 @@ function build(id) {
   }
 
   window.__fleet = cars;
-  window.__fit = modelFit();
+  const tf = truckFit();
+  window.__fit = { ...modelFit(), ...(tf ? { truck: tf } : {}) };
   window.__stats = modelStats();
-  window.__model = Object.fromEntries(ids.map(i => [i, hasModel(i)]));
+  window.__model = Object.fromEntries(ids.map(i => [i, i === 'truck' ? hasTruckModel() : hasModel(i)]));
   label.textContent = `${ids.length} vehicles [${mode}/${layout}] env=${envKind} `
     + `models=${Object.entries(window.__model).filter(([, v]) => v).map(([k]) => k).join(',') || 'none'}`;
   window.__ready = true;

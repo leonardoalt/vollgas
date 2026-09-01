@@ -29,10 +29,12 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { CARS, MAT, finishCar, buildWheel, setModelProvider } from './carFactory.js';
+import {
+  CARS, MAT, finishCar, buildWheel, setModelProvider, setTruckProvider, plateMesh,
+} from './carFactory.js';
 import {
   squareYaw, noseSign, archAxles, clipToFootprint, wheelCorners, bboxOf, halfWidthAt,
-  envelopeOf,
+  envelopeOf, squaredYaw, wheelIslands, groupWheels, trianglesToGeometry,
 } from './carFit.js';
 
 import url930 from './assets/models/car-930.glb';
@@ -42,6 +44,7 @@ import urlHatch11 from './assets/models/car-hatch11.glb';
 import urlLcv07 from './assets/models/car-lcv07.glb';
 import urlWagonEu from './assets/models/car-wagon-eu.glb';
 import urlSuv10 from './assets/models/car-suv10.glb';
+import urlLorry from './assets/models/car-lorry.glb';
 
 
 /* ------------------------------------------------------------- the sources */
@@ -53,6 +56,7 @@ const FILES = {
   lcv07: urlLcv07,
   wagonEu: urlWagonEu,
   suv10: urlSuv10,
+  lorry: urlLorry,
 };
 
 /**
@@ -799,7 +803,7 @@ export async function preloadCarModels(envMap, onProgress = () => {}) {
   loader.setMeshoptDecoder(MeshoptDecoder);
 
   const wanted = Object.keys(RECIPE);
-  const needed = [...new Set(wanted.map(id => RECIPE[id].file))];
+  const needed = [...new Set([...wanted.map(id => RECIPE[id].file), LORRY.file])];
   const scenes = {};
 
   let done = 0;
@@ -831,6 +835,331 @@ export async function preloadCarModels(envMap, onProgress = () => {}) {
       console.warn('carModels: could not fit', id, e && e.message);
     }
   }
+  if (scenes[LORRY.file]) {
+    try {
+      _truckTpl = fitTruck(scenes[LORRY.file], envMap);
+    } catch (e) {
+      console.warn('carModels: could not fit the lorry —', e && e.message);
+      _truckTpl = null;
+    }
+  }
   _baked.clear();                 // release the intermediate float copies
   return modelStats();
 }
+
+
+/* ==========================================================================
+   The lorry.
+
+   Everything above fits a car: a member of `CARS`, with a spec, a wheelbase,
+   four corners and a player rig behind it. A lorry has none of those. It is
+   built by `buildTruck`, which owns its own dimensions and its own physics,
+   and it has eight wheel units on four axles, two of them twinned.
+
+   So it gets its own fit rather than a special case bolted onto `fitTemplate`.
+   The steps are the same and in the same order — square up, decide the nose,
+   find the wheels, scale, sit it down — but each one differs in a way that
+   would have made `fitTemplate` unreadable:
+
+     square up  a 16 m body squared to the nearest degree is not square enough;
+                one degree staggers the steer axle 15 cm against the tail. This
+                model is exported axis-aligned, so `squaredYaw` snaps.
+     wheels     found by connected component and grouped by axle, because there
+                is no such thing as "the front left wheel" here. See the long
+                note in carFit.js for why distance clustering cannot work.
+     scale      a car is scaled on its wheelbase, since a wheel in the wrong
+                place is the error you cannot stop seeing. A lorry's wheels are
+                tucked under a slab-sided box where nobody can read the
+                wheelbase, and what does show is whether it is as long as the
+                lane markings and as wide as the lane. So it is scaled on
+                length and width together — the geometric mean, which splits
+                the difference between two errors instead of putting all of it
+                into one.
+   ========================================================================== */
+
+const LORRY = {
+  file: 'lorry',
+  /* What buildTruck has always declared, and what the physics, the collision
+     box and the traffic spacing are built from. Deliberately not changed: the
+     model is fitted to the rig, never the rig to the model. */
+  dims: { length: 15.8, width: 2.55, height: 4.0 },
+  halfLen: 7.9, halfWid: 1.30,
+  perf: { mass: 38000, power: 375, cd: 5.8, vmax: 90, grip: 0.7, gears: 12, redline: 2200 },
+  /* ROY's export names every tyre and every rim with its own `.NNN` suffix,
+     which `gltf-transform dedup` then merges back down to `tyres` and
+     `wheels.001`. Match the stem and not the suffix, so the recipe reads the
+     raw download and the shipped file alike. */
+  wheelMat: [/^tyres/i, /^wheels/i, /^wheel_hub/i, /^rim/i],
+  cabMat: [/^head_paint$/i],
+  boxMat: [/^bodycolour$/i],
+  glassMat: [/glass$/i],
+  lampMat: [/^signal_light$/i, /^light_emit$/i],
+  tailMat: [/^signal_light\.001$/i],
+  strip: [],
+};
+
+/** Bake a mesh down, remembering the material it came off. */
+function bakedPart(o) {
+  return { mat: o.material, node: o.name || '', geo: bakeWorld(o) };
+}
+
+function fitTruck(gltfScene, envMap) {
+  const rec = LORRY, dims = rec.dims;
+  const notes = [];
+
+  /* 1 — flatten and sort. */
+  const bodyParts = [], wheelParts = [];
+  gltfScene.traverse((o) => {
+    if (!o.isMesh) return;
+    const mn = o.material ? o.material.name : '';
+    if (matches(mn, rec.strip)) return;
+    (matches(mn, rec.wheelMat) ? wheelParts : bodyParts).push(bakedPart(o));
+  });
+  if (!bodyParts.length || !wheelParts.length) return null;
+  const allGeos = () => [...bodyParts, ...wheelParts].map(p => p.geo);
+  const bodyGeos = () => bodyParts.map(p => p.geo);
+
+  /* Pre-centre, so everything downstream is measured about the lorry rather
+     than about wherever the exporter left the origin. */
+  const c0 = bboxOf(bodyGeos()).getCenter(new THREE.Vector3());
+  for (const g of allGeos()) g.applyMatrix4(new THREE.Matrix4().makeTranslation(-c0.x, 0, -c0.z));
+
+  /* 2 — square up, measured on the body: wheels are round and say nothing. */
+  const yaw = squaredYaw(bodyGeos());
+  for (const g of allGeos()) g.applyMatrix4(new THREE.Matrix4().makeRotationY(yaw));
+
+  /* 3 — which end is the nose. */
+  const ns = noseSign(bodyGeos());
+  notes.push(`nose ${ns.sign > 0 ? '+Z' : '-Z'} conf=${ns.conf.toFixed(2)}`);
+  if (ns.sign < 0) {
+    const flip = new THREE.Matrix4().makeRotationY(Math.PI);
+    for (const g of allGeos()) g.applyMatrix4(flip);
+  }
+
+  /* 4 — the wheels, by connected component. Islands that do not form a round,
+     upright unit are not wheels: on this model that is the spare lashed flat
+     under the bed and its hub, which share the tyre and rim materials. They go
+     back to the body and are drawn with it. */
+  const islands = [];
+  for (const p of wheelParts) {
+    for (const isl of wheelIslands(p.geo)) { isl.src = p; islands.push(isl); }
+  }
+  const units = groupWheels(islands);
+  if (units.length < 6) { console.warn('carModels: lorry has only', units.length, 'wheels'); return null; }
+  notes.push(`${islands.length} islands -> ${units.length} wheels`);
+
+  const inUnit = new Set();
+  for (const u of units) for (const isl of u.islands) inUnit.add(isl);
+  const strays = new Map();
+  for (const isl of islands) {
+    if (inUnit.has(isl)) continue;
+    if (!strays.has(isl.src)) strays.set(isl.src, []);
+    strays.get(isl.src).push(...isl.tris);
+  }
+  for (const [p, tris] of strays) {
+    bodyParts.push({ mat: p.mat, node: p.node, geo: trianglesToGeometry(p.geo, tris) });
+  }
+  if (strays.size) notes.push(`${strays.size} non-wheel island group(s) kept with the body`);
+
+  /* 5 — scale. Length and width together; see the note at the top. */
+  const env0 = envelopeOf(bodyGeos());
+  const scale = Math.sqrt((dims.length / env0.length) * (dims.width / env0.width));
+  const S = new THREE.Matrix4().makeScale(scale, scale, scale);
+  for (const g of allGeos()) g.applyMatrix4(S);
+  for (const u of units) {
+    u.box.applyMatrix4(S); u.centre.multiplyScalar(scale);
+    u.radius *= scale; u.width *= scale;
+  }
+
+  /* 6 — tyres on the tarmac, and the rig centred on the origin, because that
+     is where buildTruck's collision box is. */
+  const wheelFloor = Math.min(...units.map(u => u.box.min.y));
+  const envA = envelopeOf(bodyGeos());
+  const T = new THREE.Matrix4().makeTranslation(0, -wheelFloor, -(envA.nose + envA.tail) / 2);
+  for (const g of allGeos()) g.applyMatrix4(T);
+  for (const u of units) { u.box.applyMatrix4(T); u.centre.applyMatrix4(T); }
+
+  /* 7 — tuck any wheel standing proud of the bodywork beside it back under the
+     flank, exactly as the car path does at the arch. ROY's steer axle is 8 cm
+     wider than his own cab, which on a cab-over is 8 cm too many; every other
+     axle on the lorry is already well inside. */
+  const env = envelopeOf(bodyGeos());
+  for (const u of units) {
+    const outer = Math.max(Math.abs(u.box.min.x), Math.abs(u.box.max.x));
+    const flank = halfWidthAt(bodyGeos(), u.centre.z,
+      Math.max(0.22, (u.box.max.y - u.box.min.y) * 0.45), env.waist);
+    const over = outer - (flank - 0.015);
+    if (over <= 0) continue;
+    u.shiftX = -Math.sign(u.centre.x) * over;
+    u.box.applyMatrix4(new THREE.Matrix4().makeTranslation(u.shiftX, 0, 0));
+    u.centre.x += u.shiftX;
+    notes.push(`axle z=${u.centre.z.toFixed(2)} tucked in ${(over * 100).toFixed(1)} cm`);
+  }
+
+  /* 8 — the template. Body merged per material; each wheel unit its own group
+     so vehicles.js can spin it, split by material inside so the tyre stays
+     rubber and the rim stays metal. */
+  const root = new THREE.Group();
+  root.name = 'truck:model';
+  const kindOf = (n) => (matches(n, rec.cabMat) ? 'cab' : matches(n, rec.boxMat) ? 'box'
+    : matches(n, rec.glassMat) ? 'glass'
+      : matches(n, rec.lampMat) ? 'lamp' : matches(n, rec.tailMat) ? 'tail' : 'other');
+
+  const byMat = new Map();
+  for (const p of bodyParts) {
+    if (!byMat.has(p.mat)) byMat.set(p.mat, []);
+    byMat.get(p.mat).push(p.geo);
+  }
+  let cabMat = null, boxMat = null, headMat = null, tailMat = null;
+  const glassMeshes = [];
+  for (const [mat, geos] of byMat) {
+    const kind = kindOf(mat.name);
+    const up = upgradeMaterial(mat,
+      kind === 'cab' || kind === 'box' ? 'paint' : kind === 'glass' ? 'glass' : 'other', envMap);
+    /* vehicles.js drives these two by emissiveIntensity, so they have to have
+       an emissive colour to drive. The model's own lens geometry keeps its own
+       shape and its own maps; only the emission is ours. */
+    if (kind === 'lamp') { up.emissive = new THREE.Color(0xada18c); up.emissiveIntensity = 0.4; }
+    if (kind === 'tail') { up.emissive = new THREE.Color(0xff2410); up.emissiveIntensity = 0.75; }
+    const geo = geos.length === 1 ? geos[0] : mergeGeometries(geos);
+    if (!geo) continue;
+    const mesh = new THREE.Mesh(geo, up);
+    if (kind === 'cab') cabMat = up;
+    if (kind === 'box') boxMat = up;
+    if (kind === 'lamp') headMat = up;
+    if (kind === 'tail') tailMat = up;
+    if (kind === 'glass') { glassMeshes.push(mesh); continue; }
+    root.add(mesh);
+  }
+  for (const m of glassMeshes) root.add(m);       // transparent last
+
+  const frontZ = Math.max(...units.map(u => u.centre.z));
+  const wheelTemplates = [];
+  for (const u of units) {
+    const perPart = new Map();
+    for (const isl of u.islands) {
+      if (!perPart.has(isl.src)) perPart.set(isl.src, []);
+      perPart.get(isl.src).push(...isl.tris);
+    }
+    const meshes = [];
+    for (const [p, tris] of perPart) {
+      const geo = trianglesToGeometry(p.geo, tris);
+      /* Spin is a rotation about the group's own X axis, so the axle line has
+         to pass through its origin. The x offset is put back on the group, not
+         baked in: a twinned pair is off-centre by design. */
+      geo.applyMatrix4(new THREE.Matrix4().makeTranslation(
+        -(u.centre.x - (u.shiftX || 0)), -u.centre.y, -u.centre.z));
+      meshes.push({
+        geo,
+        material: upgradeMaterial(p.mat, /tyre/i.test(p.mat.name || '') ? 'other' : 'rim', envMap),
+      });
+    }
+    wheelTemplates.push({
+      centre: u.centre.clone(), radius: u.radius,
+      front: u.centre.z > frontZ - 0.3, meshes,
+    });
+  }
+
+  let tris = 0;
+  root.traverse(o => {
+    if (o.isMesh) tris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3;
+  });
+  for (const w of wheelTemplates) for (const m of w.meshes) tris += m.geo.index.count / 3;
+
+  return {
+    root, wheelTemplates, cabMat, boxMat, headMat, tailMat, scale,
+    tris: Math.round(tris),
+    bounds: {
+      nose: env.nose, tail: env.tail, top: env.top, floor: env.floor,
+      halfWidth: env.halfWidth, wideHalf: env.wideHalf,
+    },
+    fit: {
+      nose: ns.sign, noseConf: +ns.conf.toFixed(3), yaw: +(yaw * 180 / Math.PI).toFixed(1),
+      wheels: units.length, scale: +scale.toFixed(4),
+      length: +env.length.toFixed(3), width: +env.width.toFixed(3), height: +env.height.toFixed(3),
+      notes,
+    },
+  };
+}
+
+function assembleTruck(tpl, opts) {
+  const rec = LORRY, dims = rec.dims, b = tpl.bounds;
+  const outer = new THREE.Group();
+  outer.name = 'truck';
+
+  const body = tpl.root.clone(true);              // shares materials, by design
+  /* Traffic randomises a cab colour and a box colour, and the model happens to
+     split exactly that way. Cloning the two paints per lorry is what makes two
+     lorries on the same road two different lorries. */
+  const tint = (src, hex) => {
+    if (!src || hex === undefined || hex === null) return src;
+    const m = src.clone();
+    m.color.setHex(hex);
+    body.traverse(o => { if (o.isMesh && o.material === src) o.material = m; });
+    return m;
+  };
+  const cabMat = tint(tpl.cabMat, opts.cab ?? 0x2f5fa8);
+  const boxMat = tint(tpl.boxMat, opts.box ?? 0xe8e9e6);
+  /* Brake lights are per lorry too, or the whole convoy brakes together. */
+  let tailMat = tpl.tailMat;
+  if (tailMat) {
+    const src = tailMat;
+    tailMat = src.clone();
+    body.traverse(o => { if (o.isMesh && o.material === src) o.material = tailMat; });
+  }
+  outer.add(body);
+
+  const wheels = [];
+  for (const w of tpl.wheelTemplates) {
+    const wg = new THREE.Group();
+    const spin = new THREE.Group();
+    for (const m of w.meshes) spin.add(new THREE.Mesh(m.geo, m.material));
+    wg.add(spin);
+    wg.position.copy(w.centre);
+    wg.name = 'wheel';
+    wg.userData.spin = spin;
+    wg.userData.radius = w.radius;
+    wg.userData.front = w.front;
+    outer.add(wg); wheels.push(wg);
+  }
+
+  /* A German lorry carries its plate low on the bumper, under the grille. */
+  const plate = plateMesh(opts.plate || 'RW TR 4711', 0.52, 0, 0, dims.height * 0.15, b.nose + 0.02);
+  plate.name = 'plates';
+  outer.add(plate);
+
+  const sh = new THREE.Mesh(
+    new THREE.PlaneGeometry(b.halfWidth * 2.2, (b.nose - b.tail) * 1.06), MAT.shadow);
+  sh.rotation.x = -Math.PI / 2;
+  sh.position.set(0, 0.015, (b.nose + b.tail) / 2);
+  sh.renderOrder = -1;
+  sh.name = 'shadow';
+  outer.add(sh);
+
+  outer.userData = {
+    id: 'truck', wheels, blues: [], led: null,
+    dims, halfLen: rec.halfLen, halfWid: rec.halfWid, perf: rec.perf,
+    paintMat: cabMat || boxMat, headMat: tpl.headMat, tailMat,
+    model: true,
+  };
+  return outer;
+}
+
+let _truckTpl = null;
+
+setTruckProvider((opts) => {
+  if (!_enabled || !_truckTpl) return null;
+  try {
+    return assembleTruck(_truckTpl, opts || {});
+  } catch (e) {
+    console.warn('carModels: lorry assembly failed —', e && e.message);
+    _truckTpl = null;
+    return null;
+  }
+});
+
+/** What the lorry fit decided, for `dev/fleet-check.mjs` and the benches. */
+export function truckFit() {
+  return _truckTpl ? { ..._truckTpl.fit, tris: _truckTpl.tris } : null;
+}
+export function hasTruckModel() { return !!_truckTpl; }
