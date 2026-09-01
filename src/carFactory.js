@@ -1388,7 +1388,16 @@ export function finishCar(g, ctx) {
   return g;
 }
 
-/* ===================================================== Sattelzug (artic) */
+/* ============================================== the lorry (Sattelzug rig)
+
+   The physics here is an artic's — 38 t, 12 gears, 90 km/h limiter — and the
+   collision box is 15.8 m long. The procedural body below draws that literally:
+   a tractor unit and a separate semi-trailer on twenty-two wheels.
+
+   The model that carModels.js fits over the top is a rigid four-axle box lorry
+   instead, because every licensable tractor-and-semitrailer in the mirror is an
+   American conventional. CREDITS.md has the reasoning. Nothing user-facing
+   names the vehicle either way. */
 export function buildTruck(opts = {}) {
   if (_truckProvider) {
     const m = _truckProvider(opts);

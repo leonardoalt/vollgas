@@ -35,13 +35,35 @@ for (const f of models) {
     + `${cited ? '' : '  [source URL not cited in CREDITS.md]'}`);
 }
 
-/* ---- 2. every URL in CREDITS.md resolves -------------------------------- */
+/* ---- 2. every URL in CREDITS.md resolves --------------------------------
+
+   Except the ones inside an inline code span. Those are transcriptions of what
+   some file or API literally says, quoted so a reader can check the claim
+   against the artefact — and a transcription has to stay faithful even when
+   the thing it quotes has rotted. ROY renamed his Sketchfab account after
+   Objaverse took its snapshot, so `asset.extras` in the lorry we ship still
+   names a profile that 404s; that is a fact about the file, and rewriting the
+   quote to make a link checker happy would be falsifying evidence.
+
+   The teeth are elsewhere and are not loosened by this: rule 1 above reads the
+   source URL out of each shipped GLB and requires CREDITS.md to cite it, and
+   every URL we assert in our own prose is still fetched. Quoted URLs are
+   listed as `quot` so they stay visible rather than silently dropped.        */
+const RX = /https:\/\/[A-Za-z0-9./_?=&:%-]+/g;
 if (!offline) {
-  const found = (md.match(/https:\/\/[A-Za-z0-9./_?=&:%-]+/g) || [])
-    .map(u => u.replace(/[.,)>]+$/, ''))
+  const clean = (u) => u.replace(/[.,)>]+$/, '');
+  /* A URL is exempt only if it appears NOWHERE outside a code span. Asserting
+     it in prose anywhere in the file puts it back on the hook. */
+  const asserted = new Set((md.replace(/`[^`\n]*`/g, ' ').match(RX) || []).map(clean));
+  const found = (md.match(RX) || [])
+    .map(clean)
     // `<shard>/<uid>` in the worked example is a placeholder, not a claim
     .filter(u => !u.endsWith('/glbs/'));
-  const urls = [...new Set(found)];
+  const urls = [...new Set(found)].filter((u) => {
+    if (asserted.has(u)) return true;
+    console.log(`  quot      ${u}  [quoted verbatim, not asserted]`);
+    return false;
+  });
   console.log(`\n${urls.length} URLs`);
   for (const u of urls) {
     let code = '000';
