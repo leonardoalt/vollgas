@@ -65,25 +65,35 @@ const report = await page.evaluate(async () => {
   let recycleHits = 0;
   resolveCollisions(p, [recycled], () => { recycleHits++; }, 0.05);
 
-  // ---- a forced criminal stop may select a cop ahead; it must be placed and
-  // remain fully behind even when the player immediately coasts to a stop
+  // ---- a forced criminal stop may select a cop ahead; it must be staged behind
   g.startRace(); g.countdown = 0;
   const stopped = g.player;
   stopped.s = 21500; stopped.u = LANES[0]; stopped.v = 58;
   g.enf.cops.forEach((z, i) => {
     z.s = stopped.s + 12 + i * 20; z.u = LANES[i % 2]; z.v = 45;
   });
+  g.enf.forceStop(stopped);
+  const aheadStagedGap = stopped.s - g.enf.activeCop.s;
+
+  // A cop that starts far behind must also be staged close enough to complete
+  // the stop before the ending card, then remain clear throughout the maneuver.
+  g.startRace(); g.countdown = 0;
+  const stoppedFar = g.player;
+  stoppedFar.s = 21500; stoppedFar.u = LANES[0]; stoppedFar.v = 58;
+  g.enf.cops.forEach((z, i) => {
+    z.s = stoppedFar.s - 149 - i * 20; z.u = LANES[i % 2]; z.v = 45;
+  });
   g.beginEnding('racing');
   const cop = g.enf.activeCop;
-  const requiredGap = stopped.halfLen + cop.halfLen + 1.5;
-  const summonedGap = stopped.s - cop.s;
-  let minGap = summonedGap, minClearance = summonedGap - stopped.halfLen - cop.halfLen;
+  const requiredGap = stoppedFar.halfLen + cop.halfLen + 1.5;
+  const summonedGap = stoppedFar.s - cop.s;
+  let minGap = summonedGap, minClearance = summonedGap - stoppedFar.halfLen - cop.halfLen;
   for (let i = 0; i < 40 * 18 && g.state === 'race'; i++) {
     g.step(1 / 40);
-    const gap = stopped.s - cop.s;
+    const gap = stoppedFar.s - cop.s;
     minGap = Math.min(minGap, gap);
-    minClearance = Math.min(minClearance, gap - stopped.halfLen - cop.halfLen);
-    if (stopped.v === 0 && cop.v === 0) break;
+    minClearance = Math.min(minClearance, gap - stoppedFar.halfLen - cop.halfLen);
+    if (stoppedFar.v === 0 && cop.v === 0) break;
   }
 
   return {
@@ -92,8 +102,8 @@ const report = await page.evaluate(async () => {
     car: { hits: carHits, clearance: carClearance },
     recycle: { hits: recycleHits, playerV: p.v },
     police: {
-      requiredGap, summonedGap, minGap, minClearance,
-      playerV: stopped.v, copV: cop.v, playerU: stopped.u, copU: cop.u,
+      requiredGap, aheadStagedGap, summonedGap, minGap, minClearance,
+      playerV: stoppedFar.v, copV: cop.v, playerU: stoppedFar.u, copU: cop.u,
     },
   };
 });
@@ -119,8 +129,11 @@ check('angled car-to-car overlap is fully separated', report.car.hits === 1 && r
   JSON.stringify(report.car));
 check('traffic recycle cannot create a phantom swept impact',
   report.recycle.hits === 0 && report.recycle.playerV === 70, JSON.stringify(report.recycle));
-check('summoned police starts fully behind', report.police.summonedGap >= report.police.requiredGap,
-  `gap=${report.police.summonedGap.toFixed(2)} required=${report.police.requiredGap.toFixed(2)}`);
+check('police ahead is staged safely behind', report.police.aheadStagedGap >= report.police.requiredGap,
+  `gap=${report.police.aheadStagedGap.toFixed(2)} required=${report.police.requiredGap.toFixed(2)}`);
+check('police far behind is staged close enough to finish the stop',
+  report.police.summonedGap >= report.police.requiredGap && report.police.summonedGap <= 40,
+  `gap=${report.police.summonedGap.toFixed(2)}`);
 check('police never enters the player while stopping', report.police.minClearance >= 1.49,
   `minimum air gap=${report.police.minClearance.toFixed(3)}m`);
 check('page has no errors', errors.length === 0, errors.slice(0, 3).join(' | '));

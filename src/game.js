@@ -470,9 +470,13 @@ export class Game {
     // make room on the shoulder rather than dragging the car through traffic
     if (p.stoppedT > 0) this.traffic.clearPath(p);
     const cop = this.enf.activeCop;
+    const copGap = cop ? p.s - cop.s : 0;
+    const copBodyGap = cop ? copGap - p.halfLen - cop.halfLen : Infinity;
+    const copParked = !cop || (cop.v < 0.8 && copBodyGap >= 1.4 && copBodyGap < 12
+      && Math.abs(cop.u - p.u) < 3.5);
     const settled = (e.kind === 'wreck' || e.kind === 'rammed')
       ? p.v < 2.0
-      : (p.pulledOver && (!cop || cop.v < 0.8));
+      : (p.pulledOver && copParked);
     if (!e.shown && (settled || e.t > 15)) {
       e.shown = true;
       this.hud.busted(e.kind);

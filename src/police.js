@@ -592,10 +592,12 @@ export class Enforcement {
     }
     if (!best) return;
     const safeGap = player.halfLen + best.halfLen + 1.5;
+    const behindGap = player.s - best.s;
     // The nearest available patrol may be beside or ahead of the player. A
-    // stop always begins with it safely behind, never intersecting the car it
-    // is supposed to follow onto the shoulder.
-    if (bd > 150 || best.s > player.s - safeGap) {
+    // patrol already 100-150 m behind is technically usable, but cannot reach
+    // the shoulder before the ending timeout. Stage every forced stop close
+    // enough to be visible, while still leaving ample braking room.
+    if (behindGap < safeGap || behindGap > 50) {
       best.s = player.s - Math.max(38, safeGap + 8);
       best.u = player.u;
       best.v = Math.max(player.v, 30);
