@@ -21,11 +21,14 @@ for (const want of ['de', 'en']) {
     lang: document.documentElement.lang,
     title: document.querySelector('.menu-title p').textContent.slice(0, 60),
     start: document.getElementById('start-btn').textContent,
-    ctrl: document.querySelector('.brief-col h3').textContent,
+    choose: document.querySelector('.menu-label').textContent,
+    tutorialHint: document.querySelector('#tutorial-entry span').textContent,
+    credits: document.getElementById('credits-btn').textContent,
     detail: document.getElementById('car-detail-sub').textContent,
     stat: document.querySelector('#car-stats .sl').textContent,
-    blurb: document.getElementById('car-blurb').textContent.slice(0, 46),
     langBtn: document.getElementById('lang-btn').textContent,
+    briefingRemoved: !document.getElementById('briefing'),
+    photoTabsRemoved: !document.querySelector('.car-hero-tabs'),
     untranslated: [...document.querySelectorAll('[data-i18n],[data-i18n-html]')]
       .filter(e => !e.textContent.trim()).map(e => e.getAttribute('data-i18n') || e.getAttribute('data-i18n-html')),
   }));

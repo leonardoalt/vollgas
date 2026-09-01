@@ -3,9 +3,9 @@
 
    The car bodies are CC-BY-4.0. That licence is not a formality: it requires
    the author to be credited wherever the work is shared, which for a game
-   means visibly in the game and not only in a file on GitHub. So the credit
-   goes in the menu footer, and the full text with source URLs and licence
-   links lives in CREDITS.md.
+   means visibly in the game and not only in a file on GitHub. A compact menu
+   entry opens the full attribution sheet; CREDITS.md carries the same source
+   and licence details in the repository.
 
    If the models fail to load the line still shows, because the licence terms
    apply to what we redistribute, not to what happened to render.
@@ -85,12 +85,6 @@ export const ATTRIBUTIONS = [
   },
 ];
 
-const CSS = 'margin:12px 0 0;padding-top:9px;'
-  + 'border-top:1px solid rgba(255,255,255,.07);font-size:10px;line-height:1.55;'
-  + 'letter-spacing:.02em;color:rgba(198,212,226,.42);';
-const LINK = 'color:rgba(198,212,226,.62);text-decoration:none;'
-  + 'border-bottom:1px solid rgba(198,212,226,.22);';
-
 /**
  * Mount (once) the attribution line into a container.
  * Safe to call repeatedly — it replaces its own node rather than stacking.
@@ -101,10 +95,9 @@ export function mountCredits(container) {
   if (!el) {
     el = document.createElement('div');
     el.className = 'model-credits';
-    el.style.cssText = CSS;
     container.appendChild(el);
   }
-  const a = (href, text) => `<a href="${href}" target="_blank" rel="noopener" style="${LINK}">${text}</a>`;
+  const a = (href, text) => `<a href="${href}" target="_blank" rel="noopener">${text}</a>`;
 
   /* Grouped by author. One model per author was a readable line; a dozen is a
      paragraph of repeated names. CC BY asks for the author, the title and the

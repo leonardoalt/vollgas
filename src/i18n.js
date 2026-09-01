@@ -29,7 +29,12 @@ const DE = {
   'pv.close': 'Zivilstreife hinter dir — abbremsen oder abhängen',
   'pv.far': 'Zu weit für die Messung — die Streife bleibt aber dran',
 
-  'menu.tagline': 'Stuttgart → Singen (Bodensee) · {km} km · Abschnitte ohne Tempolimit',
+  'menu.tagline': 'Stuttgart → Singen (Bodensee) · {km} km',
+  'menu.choose': 'Fahrzeug wählen',
+  'menu.tutorial.hint': 'Neu hier? Die Fahrstunde erklärt Regeln und Kontrollen.',
+  'menu.credits': 'Credits & Lizenzen',
+  'menu.credits.title': 'Credits & Lizenzen',
+  'menu.credits.close': 'Schließen',
   'menu.controls': 'Steuerung',
   'menu.c1': '<b>W</b> / <b>↑</b> Gas · <b>S</b> / <b>↓</b> Bremse',
   'menu.c2': '<b>A</b> <b>D</b> / <b>←</b> <b>→</b> Lenken',
@@ -214,7 +219,12 @@ const EN = {
   'pv.close': 'Unmarked car behind you — brake or lose it',
   'pv.far': 'Too far to measure — but they are still on you',
 
-  'menu.tagline': 'Stuttgart → Singen (Lake Constance) · {km} km · sections with no speed limit',
+  'menu.tagline': 'Stuttgart → Singen (Lake Constance) · {km} km',
+  'menu.choose': 'Choose your car',
+  'menu.tutorial.hint': 'New here? The driving lesson covers the rules and enforcement.',
+  'menu.credits': 'Credits & licences',
+  'menu.credits.title': 'Credits & licences',
+  'menu.credits.close': 'Close',
   'menu.controls': 'Controls',
   'menu.c1': '<b>W</b> / <b>↑</b> throttle · <b>S</b> / <b>↓</b> brake',
   'menu.c2': '<b>A</b> <b>D</b> / <b>←</b> <b>→</b> steer',
@@ -423,6 +433,9 @@ export function applyDom(root = document) {
   }
   for (const el of root.querySelectorAll('[data-i18n-html]')) {
     el.innerHTML = t(el.getAttribute('data-i18n-html'), GLOBALS);
+  }
+  for (const el of root.querySelectorAll('[data-i18n-aria]')) {
+    el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria'), GLOBALS));
   }
   const btn = document.getElementById('lang-btn');
   if (btn) btn.textContent = t('lang.other');
