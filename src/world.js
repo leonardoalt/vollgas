@@ -671,6 +671,42 @@ function buildTunnel(mats) {
   inner.name = 'tunnelShell';
   group.add(inner);
 
+  /* Concrete verge either side of the carriageway, inside the bore.
+     The wall bases sit at uA = 1.8 and uB = 14.4, but the road is only paved
+     from 2.0 to 12.5 — so without this you see the median's grass at the foot
+     of the left wall and the mown verge at the foot of the right one, inside
+     a tunnel. It shows up as soon as the lining is bright enough to see the
+     wall base at all.
+
+     The outer edge cannot simply follow roadPt(): the 2.5 % crossfall puts
+     u = 14.4 at 31 cm below the centreline, which is *under* the flat verge
+     terrain at −30 cm. So the outer edge is lifted to rise away from the road
+     the way a real tunnel walkway does, which also keeps the terrain hidden
+     along its whole width.
+
+     Corner order follows ribbon(): (s,u1), (s,u2), (s2,u2), (s2,u1) with
+     u2 > u1. Written the other way round the face normal points at the ground
+     and the strip is simply never drawn — which is what happened first time,
+     and is exactly the trap the ribbon() helper exists to centralise. */
+  const verge = new Mesher();
+  for (let s = s0; s < s1; s += SEG) {
+    const s2 = Math.min(s1, s + SEG);
+    // right-hand walkway, from the paved edge up to the wall base
+    verge.quad(
+      roadPt(s, GEO.pavedOut - 0.05), lift(roadPt(s, uB), 0.15),
+      lift(roadPt(s2, uB), 0.15), roadPt(s2, GEO.pavedOut - 0.05),
+      0, s / 6, 1, s2 / 6);
+    // left-hand strip, covering the sliver of median inside the bore
+    verge.quad(
+      roadPt(s, uA), roadPt(s, GEO.pavedIn + 0.05),
+      roadPt(s2, GEO.pavedIn + 0.05), roadPt(s2, uA),
+      0, s / 6, 0.3, s2 / 6);
+  }
+  const vm = new THREE.Mesh(verge.geo(), mats.concrete);
+  vm.name = 'tunnelVerge';
+  vm.matrixAutoUpdate = false;
+  group.add(vm);
+
   // sodium strip lighting down the crown
   const lampGeo = new THREE.BoxGeometry(0.30, 0.10, 2.2);
   const lamps = new THREE.InstancedMesh(lampGeo, mats.lamp, Math.ceil((s1 - s0) / 14) + 2);
