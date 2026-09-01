@@ -119,6 +119,7 @@ const engineReport = await page.evaluate(async (helpers) => {
   const { PlayerEngine, enginePeriodicWave, engineCycleWaveform, WaveEngine, doppler } =
     await import('/src/engineSound.js');
   const { ENGINES, fireHz, cycleHz } = await import('/src/engineSpec.js');
+  const { derive, rpmForGear } = await import('/src/vehicles.js');
 
   const SR = 48000, N = 32768;
 
@@ -292,6 +293,10 @@ const engineReport = await page.evaluate(async (helpers) => {
     receding70: +doppler(-70).toFixed(3),
     still: +doppler(0).toFixed(3),
   };
+  const perf = { vmax: 330, power: 478, mass: 1640, grip: 1.42, gears: 8, redline: 7200, awd: true };
+  const drive = derive(perf);
+  out.gearbox = drive.gearTop.slice(0, -1).map((speed, gear) =>
+    Math.round(rpmForGear(speed, gear + 1, drive, perf.redline)));
   return out;
 }, HELPERS);
 
@@ -389,6 +394,18 @@ const curves = await page.evaluate(async () => {
     siren: false, sirenNear: 0, gear: 6, shiftT: 0, redline: 7000,
     tunnel: 0, cam: 0, others: [], playerS: 1000, playerU: 0, copS: 0, copV: 0,
   };
+  const noiseData = a.noiseBuf.getChannelData(0);
+  let noisePeak = 0, noiseSq = 0, noiseRails = 0;
+  for (const x of noiseData) {
+    noisePeak = Math.max(noisePeak, Math.abs(x));
+    noiseSq += x * x;
+    if (Math.abs(x) >= 0.999) noiseRails++;
+  }
+  const noise = {
+    peak: +noisePeak.toFixed(4),
+    rms: +Math.sqrt(noiseSq / noiseData.length).toFixed(4),
+    rails: noiseRails,
+  };
   const res = [];
   for (const kmh of [60, 125, 200, 250, 320]) {
     const st = Object.assign({}, base, { speed: kmh / 3.6 });
@@ -422,7 +439,7 @@ const curves = await page.evaluate(async () => {
   a.eng.bark = bark; a.eng.blowOff = blowOff;
 
   clearInterval(window.__poll);
-  return { res, scrub, events: { barks, blowOffs } };
+  return { res, scrub, noise, events: { barks, blowOffs } };
 });
 
 /* ------------------------------------------------------------------- report */
@@ -520,6 +537,12 @@ check('doppler: 70 m/s receding lowers pitch ~17%',
   Math.abs(engineReport.doppler.receding70 - 0.83) < 0.02);
 
 say('');
+say(`--- gearbox: rpm immediately after each upshift ${JSON.stringify(engineReport.gearbox)}`);
+check('each upshift drops below redline', engineReport.gearbox.every(rpm => rpm < 7000));
+check('successive ratios produce distinct pitch drops',
+  engineReport.gearbox.every((rpm, i, a) => i === 0 || rpm > a[i - 1] + 50));
+
+say('');
 say(`--- F. live mix, open road : ${JSON.stringify(openRoad)}`);
 say(`--- F. live mix, tunnel    : ${JSON.stringify(tunnel)}`);
 check('live: engine is running', openRoad.engine > 0.01);
@@ -537,6 +560,11 @@ check('live: the tunnel is louder than the open road', tunnel.meanRms > openRoad
 
 say('');
 say('--- G. mix curves, measured by driving audio.update() directly');
+say(`     shared noise bed: ${JSON.stringify(curves.noise)}`);
+check('ambient noise has no hard-clipped samples', curves.noise.rails === 0,
+  `${curves.noise.rails} sample(s) pinned to the rails`);
+check('ambient noise keeps natural crest headroom', curves.noise.peak < 0.95 && curves.noise.rms < 0.30,
+  `peak ${curves.noise.peak}, rms ${curves.noise.rms}`);
 say('     km/h    wind  buffet    road  engine  masterPeak');
 for (const r of curves.res) {
   say(`    ${String(r.kmh).padStart(5)}  ${String(r.wind).padStart(6)}  ${String(r.buffet).padStart(6)}`

@@ -38,6 +38,12 @@ export function derive(perf) {
   return { vmax, P, roll, k, gearTop, aMax: perf.grip * G, drive };
 }
 
+/** Engine speed implied by road speed and the selected gear's ratio. */
+export function rpmForGear(speed, gear, drivetrain, redline, idle = 900) {
+  const top = drivetrain.gearTop[Math.max(0, Math.min(gear, drivetrain.gearTop.length - 1))];
+  return Math.max(idle, Math.min(redline, redline * Math.max(0, speed) / top));
+}
+
 export class Vehicle {
   constructor(mesh, spec, opts = {}) {
     this.mesh = mesh;
@@ -93,10 +99,10 @@ export class Vehicle {
       while (g > 0 && this.v < d.gearTop[g - 1] * 0.95) g--;   // 5 % hysteresis band
       if (g !== this.gear) { if (g > this.gear) this.shiftT = 0.14; this.gear = g; }
     }
-    const g = this.gear;
-    const lo = g === 0 ? 0 : d.gearTop[g - 1], hi = d.gearTop[g];
-    const f = hi > lo ? (this.v - lo) / (hi - lo) : 0;
-    const target = 900 + Math.min(1, Math.max(0, f)) * (p.redline - 900);
+    // RPM follows the actual ratio: each gear reaches redline at its own top
+    // speed. At an upshift the same road speed therefore lands part-way up the
+    // next gear instead of resetting every gear to the same 900 rpm floor.
+    const target = rpmForGear(this.v, this.gear, d, p.redline);
     this.rpm += (target - this.rpm) * Math.min(1, dt * 9);
     this.brake = brake;
   }

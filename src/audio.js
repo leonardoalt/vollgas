@@ -121,15 +121,22 @@ export class Audio {
     const len = Math.floor(ctx.sampleRate * 2.5);
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const dat = buf.getChannelData(0);
-    // a touch of pink: pure white noise sounds like a hi-hat, not like air
+    // A touch of pink: pure white noise sounds like a hi-hat, not like air.
+    // Generate first, then normalize. The old path multiplied this by 1.6 and
+    // hard-clipped almost half the samples to +/-1, which was the harsh
+    // "broken microphone" texture in every continuous ambience layer.
     let b0 = 0, b1 = 0, b2 = 0;
+    let peak = 0;
     for (let i = 0; i < len; i++) {
       const w = Math.random() * 2 - 1;
       b0 = 0.997 * b0 + w * 0.0555;
       b1 = 0.985 * b1 + w * 0.0750;
       b2 = 0.950 * b2 + w * 0.1538;
-      dat[i] = Math.max(-1, Math.min(1, (b0 + b1 + b2 + w * 0.35) * 1.6));
+      dat[i] = b0 + b1 + b2 + w * 0.35;
+      peak = Math.max(peak, Math.abs(dat[i]));
     }
+    const noiseScale = 0.92 / Math.max(0.001, peak);
+    for (let i = 0; i < len; i++) dat[i] *= noiseScale;
     this.noiseBuf = buf;
 
     const mkNoise = (type, freq, q, gain, wet = 0) => {
