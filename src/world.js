@@ -12,10 +12,15 @@ import {
   ENTRY_LEN, entryRamp, outerBarrier,
 } from './track.js';
 import {
-  asphaltTex, skyTex, facadeTex, signLimit, signEndAll, signAdvice,
+  asphaltTex, asphaltNormalTex, asphaltRoughTex,
+  markingTex, markingNormalTex, markingRoughTex,
+  railTex, railNormalTex, W_BEAM, BEAM_V, POST_V,
+  grassTex, grassNormalTex, concreteTex, concreteNormalTex,
+  noiseWallTex, noiseWallNormalTex, tunnelLiningTex,
+  skyTex, facadeTex, signLimit, signEndAll, signAdvice,
   signAusfahrt, signGantry, signRast, signBaustelle, signKm, signTunnel,
 } from './textures.js';
-import { buildTerrain, buildVegetation, buildLandmarks } from './scenery.js';
+import { buildTerrain, buildVegetation, buildLandmarks, buildVergeGrass } from './scenery.js';
 
 const CHUNK = 512;                    // metres per road chunk
 /** True where the entry slip road still has usable width. */
@@ -23,10 +28,12 @@ const rampAt = (s) => { const e = entryRamp(s); return !!e && e.width > 0.5; };
 /* Where the sun sits relative to the car. Late-afternoon, over your shoulder. */
 const SUN_OFFSET = new THREE.Vector3(-165, 225, 250);
 const CROSSFALL = 0.025;              // 2.5 %, drains to the outside
+/** Overbridges, as fractions of the route. Shared with the verge blocker. */
+const BRIDGE_AT = [0.176, 0.312, 0.419, 0.533, 0.643, 0.774, 0.910];
 
 /* ------------------------------------------------------------- mesh helper */
 class Mesher {
-  constructor() { this.p = []; this.uv = []; this.idx = []; this.n = 0; }
+  constructor() { this.p = []; this.uv = []; this.idx = []; this.col = null; this.n = 0; }
   /** a,b,c,d are [x,y,z] in winding order; uv is [u0,v0,u1,v1] corners */
   quad(a, b, c, d, u0 = 0, v0 = 0, u1 = 1, v1 = 1) {
     const i = this.n;
@@ -35,15 +42,39 @@ class Mesher {
     this.idx.push(i, i + 1, i + 2, i, i + 2, i + 3);
     this.n += 4;
   }
+  /**
+   * As quad(), plus one rgb triple per corner. The first call switches the
+   * mesh to vertex colours; geo() back-fills white for anything emitted
+   * without them, so the two calls can be mixed on one mesher.
+   */
+  quadC(a, b, c, d, u0, v0, u1, v1, ca, cb, cc, cd) {
+    if (!this.col) this.col = [];
+    while (this.col.length < this.n * 3) this.col.push(1);
+    this.quad(a, b, c, d, u0, v0, u1, v1);
+    this.col.push(...ca, ...cb, ...cc, ...cd);
+  }
   get empty() { return this.n === 0; }
   geo() {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
+    if (this.col) {
+      while (this.col.length < this.n * 3) this.col.push(1);
+      g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
+    }
     g.setIndex(this.idx);
     g.computeVertexNormals();
     return g;
   }
+}
+
+/* Integer hash for the spatial variation baked into vertex colours. Kept in
+   int32 with Math.imul — a plain `*` overflows and collapses the range. */
+function hash1(i, j) {
+  let h = Math.imul(i | 0, 374761393) ^ Math.imul(j | 0, 668265263);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
 }
 
 /** Point on the road surface at (s,u), including crossfall. */
@@ -67,32 +98,138 @@ function ribbon(m, s, s2, u1, u2, dy = 0, vScale = 0, uRep = 1) {
   else m.quad(b, a, d, c, 0, s * vScale, uRep, s2 * vScale);
 }
 
+/**
+ * ribbon() with a per-corner tint from `tint(s,u)`. The colours have to follow
+ * the winding flip, not the argument order, or the shading mirrors itself on
+ * the oncoming carriageway.
+ */
+function ribbonC(m, s, s2, u1, u2, dy, vScale, uRep, tint) {
+  const a = lift(roadPt(s, u1), dy), b = lift(roadPt(s, u2), dy);
+  const c = lift(roadPt(s2, u2), dy), d = lift(roadPt(s2, u1), dy);
+  const ca = tint(s, u1), cb = tint(s, u2), cc = tint(s2, u2), cd = tint(s2, u1);
+  if (u2 > u1) m.quadC(a, b, c, d, 0, s * vScale, uRep, s2 * vScale, ca, cb, cc, cd);
+  else m.quadC(b, a, d, c, 0, s * vScale, uRep, s2 * vScale, cb, ca, cd, cc);
+}
+
+/**
+ * The four vertical sides of a prism through the horizontal corners `pts`
+ * (each [x,y,z]), from `yBot` to `yTop` relative to each corner's own y — so
+ * a post standing on the crossfall stays planted. The loop is re-wound to
+ * counter-clockwise in xz so the normals come out facing outward whichever
+ * order the corners arrived in.
+ */
+function prismSides(m, pts, yBot, yTop, u0, v0, u1, v1) {
+  let a2 = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], q = pts[(i + 1) % pts.length];
+    a2 += p[0] * q[2] - q[0] * p[2];
+  }
+  const loop = a2 > 0 ? pts : pts.slice().reverse();
+  for (let i = 0; i < loop.length; i++) {
+    const A = loop[i], B = loop[(i + 1) % loop.length];
+    m.quad([A[0], A[1] + yTop, A[2]], [B[0], B[1] + yTop, B[2]],
+      [B[0], B[1] + yBot, B[2]], [A[0], A[1] + yBot, A[2]], u0, v0, u1, v1);
+  }
+}
+
+/* ------------------------------------------------------- carriageway tints
+   Lateral cut lines across one carriageway. The extra lines bracket the four
+   wheel tracks; everything else just gives the vertex colours somewhere to
+   land. They exist because the asphalt UV repeats 2.7× across the width, so
+   anything lateral drawn into the tiling texture would come out 2.7 times
+   over — the wheel tracks, the repairs and the pale hard shoulder have to be
+   geometry and vertex colour, not texture. */
+const LANE_CUTS = [
+  2.00, 2.50, 3.26, 3.60, 3.94, 4.81, 5.15, 5.49,
+  6.25, 7.01, 7.35, 7.69, 8.56, 8.90, 9.24, 10.00, 11.25, 12.50,
+];
+const TRACKS = [3.60, 5.15, 7.35, 8.90];   // wheel-track centres
+const isTrack = (mid) => TRACKS.some(t => Math.abs(mid - t) < 0.30);
+
+function asphaltTone(s, u) {
+  const au = Math.abs(u);
+  let k = 1;
+  let dmin = 9;
+  for (const t of TRACKS) dmin = Math.min(dmin, Math.abs(au - t));
+  const pol = Math.max(0, 1 - dmin / 0.52);           // polished, so darker
+  k *= 1 - 0.155 * pol * pol * (3 - 2 * pol);
+  if (au > 10) k *= 1 + 0.14 * Math.min(1, (au - 10) / 1.7);   // dusty shoulder
+  k *= 0.93 + 0.14 * hash1(Math.floor(s / 41), Math.floor(au / 2.7));
+  k *= 0.975 + 0.05 * hash1(Math.floor(s / 13) + 601, Math.floor(au * 1.7));
+  return [k, k, k * 1.01];
+}
+
 /* =============================================================== materials */
 function makeMaterials(env) {
   const asph = asphaltTex([1, 1]);
+  const asphN = asphaltNormalTex([3, 3]);
+  const asphR = asphaltRoughTex([3, 3]);
+  const surface = (extra) => new THREE.MeshStandardMaterial({
+    map: asph, normalMap: asphN, roughnessMap: asphR,
+    roughness: 1, metalness: 0.02, envMap: env, envMapIntensity: 0.3, ...extra,
+  });
+  const markMaps = {
+    map: markingTex(), normalMap: markingNormalTex(), roughnessMap: markingRoughTex(),
+    normalScale: new THREE.Vector2(0.7, 0.7),
+  };
+  const grass = grassTex([1, 1]);
   return {
-    asphalt: new THREE.MeshStandardMaterial({ map: asph, roughness: 0.93, metalness: 0.02, envMap: env, envMapIntensity: 0.25 }),
-    concrete: new THREE.MeshStandardMaterial({ color: 0xb9b6ae, roughness: 0.9 }),
-    concreteIn: new THREE.MeshStandardMaterial({ color: 0x9d9a95, roughness: 0.9, side: THREE.DoubleSide }),
-    concreteBoth: new THREE.MeshStandardMaterial({ color: 0xb0aca4, roughness: 0.9, side: THREE.DoubleSide }),
-    median: new THREE.MeshStandardMaterial({ color: 0x5f7245, roughness: 0.96 }),
+    asphalt: surface({ vertexColors: true }),
+    /* The wheel tracks are their own material: 25 years of tyres polish the
+       binder, so they are darker *and* glossier than the surface either side.
+       Costs one extra draw call per chunk and does most of the work of making
+       the road look like it has been used. */
+    asphaltPolished: surface({ vertexColors: true, roughness: 0.72, envMapIntensity: 0.55 }),
+    /** Tar-band seams and machine-laid repairs, tinted by vertex colour. */
+    asphaltDark: surface({
+      vertexColors: true,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    }),
+    concrete: new THREE.MeshStandardMaterial({
+      map: concreteTex([2, 1]), normalMap: concreteNormalTex([2, 1]), roughness: 0.92,
+    }),
+    tunnelLining: new THREE.MeshStandardMaterial({
+      map: tunnelLiningTex(), normalMap: concreteNormalTex([9, 3]),
+      color: 0xa8a5a0, roughness: 0.9, side: THREE.DoubleSide,
+    }),
+    concreteBoth: new THREE.MeshStandardMaterial({
+      map: concreteTex([3, 3]), normalMap: concreteNormalTex([3, 3]),
+      color: 0xb8b4ac, roughness: 0.9, side: THREE.DoubleSide,
+    }),
+    barrier: new THREE.MeshStandardMaterial({
+      map: concreteTex([1, 2]), normalMap: concreteNormalTex([2, 4]), roughness: 0.92,
+    }),
+    median: new THREE.MeshStandardMaterial({
+      color: 0x5f7245, map: grass, normalMap: grassNormalTex([3, 3]),
+      vertexColors: true, roughness: 0.96, metalness: 0,
+    }),
     markWhite: new THREE.MeshStandardMaterial({
-      color: 0xf0efe9, roughness: 0.62, metalness: 0,
+      ...markMaps, color: 0xf6f5ef, roughness: 0.62, metalness: 0,
       polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3,
     }),
     markYellow: new THREE.MeshStandardMaterial({
-      color: 0xf0c21a, roughness: 0.6, metalness: 0,
+      ...markMaps, color: 0xf2c419, roughness: 0.6, metalness: 0,
       polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3,
+    }),
+    /** Stahlschutzplanke: beam and post share one atlas, so one draw call. */
+    rail: new THREE.MeshStandardMaterial({
+      map: railTex(), normalMap: railNormalTex(),
+      roughness: 0.52, metalness: 0.42, envMap: env, envMapIntensity: 1.0,
     }),
     steel: new THREE.MeshStandardMaterial({
       color: 0xaeb4b9, roughness: 0.58, metalness: 0.32,
       envMap: env, envMapIntensity: 0.9, side: THREE.DoubleSide,
     }),
-    postDark: new THREE.MeshStandardMaterial({ color: 0x5a6066, roughness: 0.6, metalness: 0.5, side: THREE.DoubleSide }),
     white: new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.7 }),
     dark: new THREE.MeshStandardMaterial({ color: 0x22262a, roughness: 0.8 }),
     lamp: new THREE.MeshBasicMaterial({ color: 0xffd9a0 }),
-    noiseWall: new THREE.MeshStandardMaterial({ map: facadeTex('#9aa093', '#7d8478', 5, 3), roughness: 0.93, side: THREE.DoubleSide }),
+    noiseWall: new THREE.MeshStandardMaterial({
+      map: noiseWallTex(), normalMap: noiseWallNormalTex(),
+      roughness: 0.93, side: THREE.DoubleSide,
+    }),
+    wallPost: new THREE.MeshStandardMaterial({
+      color: 0x74797d, roughness: 0.62, metalness: 0.35, envMap: env, envMapIntensity: 0.7,
+    }),
     baken: new THREE.MeshStandardMaterial({ color: 0xf5f3ee, roughness: 0.75, side: THREE.DoubleSide }),
     bakenRed: new THREE.MeshStandardMaterial({ color: 0xc41f1f, roughness: 0.75, side: THREE.DoubleSide }),
   };
@@ -167,28 +304,105 @@ function barrierGaps() {
   return gaps;
 }
 
+/* ------------------------------------------------------- Stahlschutzplanke
+   Profil A W-beam on Sigma posts. The old barrier was two flat 0.20 m
+   DoubleSide quads, which from the driver's seat projected as three enormous
+   pale ribbons across the left half of the screen — the single worst thing in
+   the frame. This is the real pressed section instead: nine quads round a
+   closed profile, with the bolts, the galvanising and the grime in the
+   texture rather than in geometry. */
+const BEAM_MID = 0.1555;              // beam centre below the top of the rail
+const POST_PITCH = 4;                 // Sigma posts every 4 m, as built
+
+/**
+ * One segment of beam. `face` is the lateral direction the pressing bulges
+ * in — toward the traffic it protects.
+ *
+ * W_BEAM traverses the (depth, height) plane clockwise, so with
+ * T × R = −up and T × up = R the natural corner order comes out facing
+ * outward only for face = −1; for face = +1 the quad has to be reversed,
+ * which also swaps the V pair because quad() maps corners to UVs by position.
+ */
+function railRun(m, s, s2, u, top, face) {
+  const cy = top - BEAM_MID;
+  const pt = (ss, k, depth) => {
+    const p = roadPt(ss, u + face * (depth ?? W_BEAM[k][0]));
+    return [p[0], p[1] + cy + W_BEAM[k][1], p[2]];
+  };
+  const U0 = s / POST_PITCH, U1 = s2 / POST_PITCH;
+  const emit = (k0, k1, d0, d1, v0, v1) => {
+    const a = pt(s, k0, d0), b = pt(s2, k0, d0), c = pt(s2, k1, d1), d = pt(s, k1, d1);
+    if (face > 0) m.quad(d, c, b, a, U0, v1, U1, v0);
+    else m.quad(a, b, c, d, U0, v0, U1, v1);
+  };
+  for (let k = 0; k < W_BEAM.length - 1; k++) emit(k, k + 1, null, null, BEAM_V[k], BEAM_V[k + 1]);
+  // closing back plate: bottom lip straight up to the top lip, at depth 0
+  emit(W_BEAM.length - 1, 0, 0, 0, BEAM_V[W_BEAM.length - 1], BEAM_V[W_BEAM.length]);
+}
+
+/** The post under the beam, sitting 12 mm behind the back plate. */
+function railPost(m, s, u, top, face) {
+  const cy = top - BEAM_MID;
+  const HW = 0.062, D_F = -0.012, D_B = -0.105;
+  const pts = [
+    roadPt(s - HW, u + face * D_F), roadPt(s + HW, u + face * D_F),
+    roadPt(s + HW, u + face * D_B), roadPt(s - HW, u + face * D_B),
+  ];
+  prismSides(m, pts, -0.17, cy + 0.10, 0, POST_V[0], 1, POST_V[1]);
+}
+
 function buildRoadChunks(mats) {
   const group = new THREE.Group();
   group.name = 'road';
   const gaps = barrierGaps();
   const gapped = (s) => gaps.some(([a, b]) => s >= a && s <= b);
+  const OUT = GEO.pavedOut;
+  /** [lateral, top of beam, direction the pressing faces] */
+  const railsAt = (s) => {
+    const r = [[-1.62, 0.75, -1], [1.62, 0.75, 1], [-(OUT + 0.45), 0.78, 1]];
+    if (!gapped(s)) r.push([OUT + 0.45, 0.78, -1]);
+    return r;
+  };
+  // Mittelstreifen cuts: a strip either side of each barrier line so the
+  // vertex tint can put the barriers' own shade into the grass.
+  const MED_CUTS = [-2.0, -1.62, -0.8, 0, 0.8, 1.62, 2.0];
+  const medianTone = (s, u) => {
+    const d = Math.min(Math.abs(Math.abs(u) - 1.62), 1);
+    let k = (0.80 + 0.20 * d) * (0.90 + 0.2 * hash1(Math.floor(s / 17), Math.floor(u * 2) + 40));
+    return [k, k * 1.02, k * 0.96];
+  };
 
   for (let c0 = 0; c0 < LENGTH; c0 += CHUNK) {
     const c1 = Math.min(LENGTH, c0 + CHUNK);
-    const asph = new Mesher(), med = new Mesher(), markW = new Mesher(), markY = new Mesher();
-    const steel = new Mesher(), posts = new Mesher();
+    const asph = new Mesher(), pol = new Mesher(), med = new Mesher();
+    const markW = new Mesher(), markY = new Mesher();
+    const rail = new Mesher(), seam = new Mesher();
 
     for (let s = c0; s < c1; s += SEG) {
       const s2 = Math.min(LENGTH - 0.01, s + SEG);
       const sec = sectionAt(s);
       const works = !!sec.works;
-      const IN = GEO.pavedIn, OUT = GEO.pavedOut;
+      const IN = GEO.pavedIn;
 
-      // ---- the two carriageways
-      ribbon(asph, s, s2, IN, OUT, 0, 1 / 7, 2.7);
-      ribbon(asph, s, s2, -IN, -OUT, 0, 1 / 7, 2.7);
+      // ---- the two carriageways, cut laterally so the wheel tracks, the
+      //      repairs and the pale hard shoulder can be vertex colours
+      for (let i = 0; i < LANE_CUTS.length - 1; i++) {
+        const a = LANE_CUTS[i], b = LANE_CUTS[i + 1];
+        const m = isTrack((a + b) / 2) ? pol : asph;
+        const ua = (a - IN) / (OUT - IN) * 2.7, ub = (b - IN) / (OUT - IN) * 2.7;
+        for (const sign of [1, -1]) {
+          const lo = lift(roadPt(s, sign * a), 0), hi = lift(roadPt(s, sign * b), 0);
+          const hi2 = lift(roadPt(s2, sign * b), 0), lo2 = lift(roadPt(s2, sign * a), 0);
+          const ca = asphaltTone(s, a), cb = asphaltTone(s, b);
+          const cc = asphaltTone(s2, b), cd = asphaltTone(s2, a);
+          if (sign > 0) m.quadC(lo, hi, hi2, lo2, ua, s / 7, ub, s2 / 7, ca, cb, cc, cd);
+          else m.quadC(hi, lo, lo2, hi2, ua, s / 7, ub, s2 / 7, cb, ca, cd, cc);
+        }
+      }
       // ---- Mittelstreifen, a shade lower than the carriageway
-      ribbon(med, s, s2, -IN, IN, -0.13, 1 / 12, 1);
+      for (let i = 0; i < MED_CUTS.length - 1; i++) {
+        ribbonC(med, s, s2, MED_CUTS[i], MED_CUTS[i + 1], -0.13, 1 / 4, 0.25, medianTone);
+      }
 
       // ---- markings. Solid lines follow the curve segment by segment.
       const lines = works
@@ -202,23 +416,21 @@ function buildRoadChunks(mats) {
           // so it is drawn as a broken wide line further down instead
           if (sign > 0 && off === GEO.kerbOut && rampAt(s)) continue;
           const u = sign * off;
-          ribbon(mesher, s, s2, u - w / 2, u + w / 2, 0.015);
+          ribbon(mesher, s, s2, u - w / 2, u + w / 2, 0.015, MARK_V, 1);
         }
       }
 
+      // ---- longitudinal paving joint between the two lanes
+      for (const sign of [1, -1]) {
+        ribbonC(seam, s, s2, sign * 6.25 - 0.035, sign * 6.25 + 0.035, 0.005, 1 / 7, 0.05, SEAM_TINT);
+      }
+
       // ---- Stahlschutzplanke: two in the median, one on each outer verge
-      const rails = [[-1.62, 0.74], [1.62, 0.74], [-(OUT + 0.45), 0.78]];
-      if (!gapped(s)) rails.push([OUT + 0.45, 0.78]);
-      for (const [u, h] of rails) {
-        const a = roadPt(s, u), b = roadPt(s2, u);
-        // upper and lower band of the W-beam
-        for (const dy of [h, h - 0.30]) {
-          steel.quad(lift(a, dy), lift(b, dy), lift(b, dy - 0.20), lift(a, dy - 0.20), 0, 0, 1, 1);
+      for (const [u, h, face] of railsAt(s)) {
+        railRun(rail, s, s2, u, h, face);
+        for (let ps = Math.ceil(s / POST_PITCH) * POST_PITCH; ps < s2; ps += POST_PITCH) {
+          railPost(rail, ps, u, h, face);
         }
-        // post at the start of every segment
-        const pw = 0.14;
-        const pa = roadPt(s, u - pw / 2), pb = roadPt(s, u + pw / 2);
-        posts.quad(lift(pa, h - 0.10), lift(pb, h - 0.10), lift(pb, -0.05), lift(pa, -0.05));
       }
     }
 
@@ -229,7 +441,7 @@ function buildRoadChunks(mats) {
       const w = sec.works ? 0.15 : 0.15;
       const mesher = sec.works ? markY : markW;
       const e = Math.min(s + 6, LENGTH - 0.01);
-      for (const sign of [1, -1]) ribbon(mesher, s, e, sign * off - w / 2, sign * off + w / 2, 0.015);
+      for (const sign of [1, -1]) ribbon(mesher, s, e, sign * off - w / 2, sign * off + w / 2, 0.015, MARK_V, 1);
     }
 
     // broken wide line between the acceleration lane and the through lanes
@@ -237,7 +449,29 @@ function buildRoadChunks(mats) {
       if (!rampAt(s)) continue;
       const e = Math.min(s + 6, ENTRY_LEN, c1);
       if (e <= s) continue;
-      ribbon(markW, s, e, GEO.kerbOut - 0.15, GEO.kerbOut + 0.15, 0.022);
+      ribbon(markW, s, e, GEO.kerbOut - 0.15, GEO.kerbOut + 0.15, 0.022, MARK_V, 1);
+    }
+
+    /* ---- day-work joints and machine-laid repairs. Both ride on one dark
+       material and are told apart by vertex tint, so the whole lot is a
+       single draw call per chunk. */
+    for (let s = Math.ceil(c0 / 57) * 57; s < c1; s += 57) {
+      if (hash1(Math.floor(s / 57), 7) > 0.45) continue;
+      const e = Math.min(s + 0.07, LENGTH - 0.01);
+      for (const sign of [1, -1]) {
+        ribbonC(seam, s, e, sign * 2.4, sign * 10.1, 0.005, 1 / 7, 2, SEAM_TINT);
+      }
+    }
+    for (let s = Math.ceil(c0 / 61) * 61; s < c1; s += 61) {
+      const r = hash1(Math.floor(s / 61) + 13, 29);
+      if (r > 0.34) continue;
+      const sign = r < 0.17 ? 1 : -1;
+      const u0 = 2.9 + hash1(Math.floor(s / 61), 3) * 5.6;
+      const w = 1.1 + hash1(Math.floor(s / 61), 5) * 2.2;
+      const len = 2.2 + hash1(Math.floor(s / 61), 9) * 5;
+      const e = Math.min(s + len, LENGTH - 0.01, c1);
+      if (e <= s) continue;
+      ribbonC(seam, s, e, sign * u0, sign * Math.min(u0 + w, 9.9), 0.004, 1 / 7, 0.6, PATCH_TINT);
     }
 
     const add = (m, mat, name) => {
@@ -245,15 +479,16 @@ function buildRoadChunks(mats) {
       const mesh = new THREE.Mesh(m.geo(), mat);
       mesh.name = name;
       mesh.matrixAutoUpdate = false;
-      mesh.receiveShadow = name === 'asphalt' || name === 'median';
+      mesh.receiveShadow = name === 'asphalt' || name === 'median' || name === 'polished';
       group.add(mesh);
     };
     add(asph, mats.asphalt, 'asphalt');
+    add(pol, mats.asphaltPolished, 'polished');
+    add(seam, mats.asphaltDark, 'seam');
     add(med, mats.median, 'median');
     add(markW, mats.markWhite, 'markW');
     add(markY, mats.markYellow, 'markY');
-    add(steel, mats.steel, 'steel');
-    add(posts, mats.postDark, 'posts');
+    add(rail, mats.rail, 'rail');
   }
   return group;
 }
