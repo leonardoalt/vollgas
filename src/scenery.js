@@ -489,15 +489,44 @@ export function buildLandmarks(rand, facadeTex) {
    is close, so the ~360 k triangles in the full set never render at once. */
 const GRASS_BUCKET = 200;            // metres of route per InstancedMesh
 /** Buckets whose centre is further than this from the player stay dark. */
-export const GRASS_VIS = 240;
+export const GRASS_VIS = 170;
 /** Must track the median ribbon's own lift in world.js, or the tufts sink. */
 export const MEDIAN_DY = -0.13;
 
-/** Two crossed quads with their base on the ground: four triangles a tuft. */
+/**
+ * Two crossed quads with their base on the ground, each doubled with reversed
+ * winding: eight triangles a tuft, all single-sided and all facing up.
+ *
+ * Two things are going on here, and they are coupled.
+ *
+ * Every normal points straight up because a crossed billboard's true normals
+ * face sideways, which gives each tuft one face square to the sun and one
+ * edge-on — a little light-and-dark blob sitting on the verge. Shading a tuft
+ * as if it were the ground it grows out of is what makes a scatter of
+ * billboards read as grass.
+ *
+ * But an up-facing normal cannot be combined with side: DoubleSide, because
+ * three.js negates the normal for back-facing fragments — so half of every
+ * tuft ends up pointing *down*, lit by nothing but the hemisphere's ground
+ * colour, and renders very nearly black. That is what made the mid-distance
+ * verge read as dark speckles. Hence the reversed duplicate and FrontSide:
+ * every fragment that draws is front-facing with the normal it was given.
+ */
 function tuftGeo() {
   const a = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0);
   const b = a.clone().rotateY(Math.PI / 2);
-  return mergeGeometries([a, b]);
+  const front = mergeGeometries([a, b]);
+  const back = front.clone();
+  const arr = back.getIndex().array;
+  for (let i = 0; i < arr.length; i += 3) {
+    const t = arr[i]; arr[i] = arr[i + 2]; arr[i + 2] = t;
+  }
+  back.getIndex().needsUpdate = true;
+  const g = mergeGeometries([front, back]);
+  const n = g.getAttribute('normal');
+  for (let i = 0; i < n.count; i++) n.setXYZ(i, 0, 1, 0);
+  n.needsUpdate = true;
+  return g;
 }
 
 /**
@@ -533,12 +562,12 @@ function vergeY(s, u, p) {
    tidier, brighter green than the biome behind it — but it still picks up the
    season: dusty gold on the Gäu and the Alb, deep and damp in the forest. */
 const GRASS_TINT = {
-  [BIOME.URBAN]:    [0.90, 0.96, 0.80],
-  [BIOME.VINEYARD]: [1.02, 1.00, 0.74],
-  [BIOME.FOREST]:   [0.74, 0.92, 0.70],
-  [BIOME.FARM]:     [1.06, 1.02, 0.72],
-  [BIOME.ALB]:      [1.00, 1.00, 0.76],
-  [BIOME.HEGAU]:    [0.92, 1.00, 0.78],
+  [BIOME.URBAN]:    [0.92, 0.96, 0.88],
+  [BIOME.VINEYARD]: [1.00, 1.00, 0.88],
+  [BIOME.FOREST]:   [0.82, 0.94, 0.84],
+  [BIOME.FARM]:     [1.04, 1.02, 0.86],
+  [BIOME.ALB]:      [1.00, 1.00, 0.88],
+  [BIOME.HEGAU]:    [0.94, 1.00, 0.90],
 };
 
 /**
@@ -555,8 +584,9 @@ export function buildVergeGrass(rand, blocked = () => false) {
     /* alphaTest rather than transparent: it writes depth, so it needs no
        sorting against the terrain or against itself, and the mipmaps thin the
        blades out with distance, which is a free LOD. */
-    alphaTest: 0.42, transparent: false,
-    side: THREE.DoubleSide, roughness: 0.95, metalness: 0,
+    alphaTest: 0.26, transparent: false,
+    /* FrontSide, not DoubleSide — see tuftGeo(). */
+    side: THREE.FrontSide, roughness: 0.95, metalness: 0,
   });
   const geo = tuftGeo();
 
@@ -572,9 +602,17 @@ export function buildVergeGrass(rand, blocked = () => false) {
      for the median would bury them 17 cm. The outer band starts at 12.85 and
      not at the 12.5 m paved edge so that a half-metre billboard cannot cross
      onto the asphalt. */
+  /* Weighted toward the barrier line in each band rather than spread evenly.
+     Longer grass really does grow where the mower cannot reach — against the
+     posts and along the paved edge — and a dense line there reads as a fringe,
+     where the same tufts spread over three metres read as a scatter of shrubs.
+     The outer band still starts at 12.85 and not at the 12.5 m paved edge so
+     that a half-metre billboard cannot cross onto the asphalt. */
   const BANDS = [
-    { lo: 0.30, hi: 1.85, per: 0.65, median: true },   // each half of the median
-    { lo: 12.85, hi: 16.0, per: 1.10, median: false }, // each outer verge
+    { lo: 0.32, hi: 1.05, per: 0.55, median: true },   // median, against the rail
+    { lo: 1.05, hi: 1.92, per: 0.40, median: true },
+    { lo: 12.85, hi: 13.95, per: 1.35, median: false }, // verge, at the rail foot
+    { lo: 13.95, hi: 16.60, per: 0.75, median: false },
   ];
 
   for (let s = 4; s < LENGTH - 4; s += 1) {
@@ -589,11 +627,12 @@ export function buildVergeGrass(rand, blocked = () => false) {
           if (blocked(ss, u)) continue;
           const w = toWorld(ss, u, p);
           const y = band.median ? w.y + MEDIAN_DY : vergeY(ss, u, p);
-          const wide = 0.34 + rand() * 0.26;
+          /* Wide and low. A tuft taller than it is broad is a shrub. */
+          const wide = 0.40 + rand() * 0.34;
           q.setFromAxisAngle(UP, rand() * 6.283);
-          sc.set(wide, 0.20 + rand() ** 1.4 * 0.30, wide);
+          sc.set(wide, 0.15 + rand() ** 1.5 * 0.22, wide);
           m4.compose({ x: w.x, y, z: w.z }, q, sc);
-          const v = 0.78 + rand() * 0.40;
+          const v = 0.86 + rand() * 0.24;
           c3.setRGB(tint[0] * v, tint[1] * v, tint[2] * v);
           bins[b].push([m4.clone(), c3.clone()]);
         }

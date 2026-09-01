@@ -62,6 +62,33 @@ function flipV(src) {
   return out;
 }
 
+/**
+ * Give the fully transparent texels of an alpha-cut texture a sensible colour.
+ *
+ * A canvas starts as transparent *black*, and mip generation averages RGB
+ * without regard to alpha — so a tuft of grass drawn on bare canvas gets
+ * darker every mip level and a verge full of them reads as dark speckles in
+ * the mid-distance while looking fine up close. Flooding the invisible texels
+ * with the mean visible colour removes the bleed. (Only alpha == 0 needs it:
+ * canvas stores non-premultiplied RGBA, so the antialiased edge texels already
+ * carry the right colour.)
+ */
+function bleedAlpha(c, fallback = [120, 140, 70]) {
+  const ctx = c.getContext('2d');
+  const img = ctx.getImageData(0, 0, c.width, c.height);
+  const d = img.data;
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] > 200) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+  }
+  const m = n ? [r / n, g / n, b / n] : fallback;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) { d[i] = m[0]; d[i + 1] = m[1]; d[i + 2] = m[2]; }
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
 function cached(key, build) {
   if (!_cache.has(key)) _cache.set(key, build());
   return _cache.get(key);
@@ -856,29 +883,46 @@ export function grassNormalTex(repeat = [1, 1]) {
 }
 
 /** Alpha-cut grass tuft for the cross-billboards along the verge. */
+/**
+ * A clump of blades, alpha-cut, for the verge billboards.
+ *
+ * The palette matters more than the drawing here. The terrain's verge is an
+ * olive around rgb(120,141,56) once the biome colour and the mown-verge
+ * brightening are applied; a saturated grass green (low red) reads as a row of
+ * little shrubs sitting *on* the verge rather than as part of it. So these
+ * blades are khaki-olive, with a scatter of dead straw ones, and the tuft is
+ * drawn wide and low rather than tall and spiky.
+ */
 export function tuftTex() {
   return cached('tuft', () => {
     const W = 256, H = 128, c = canvas(W, H), ctx = c.getContext('2d');
     const r = srand(4242);
     ctx.clearRect(0, 0, W, H);
-    for (let i = 0; i < 74; i++) {
-      const x0 = W * 0.5 + (r() - 0.5) * W * 0.86;
-      const h = H * (0.30 + r() ** 1.3 * 0.68);
-      const lean = (r() - 0.5) * W * 0.16;
-      const wid = 1.6 + r() * 2.8;
-      const g = 92 + r() * 74, br = 26 + r() * 34;
-      ctx.fillStyle = `rgb(${br + (r() < 0.16 ? 60 : 0)},${g},${38 + r() * 26})`;
+    for (let i = 0; i < 132; i++) {
+      const x0 = W * 0.5 + (r() - 0.5) * W * 0.94;
+      const h = H * (0.26 + r() ** 1.5 * 0.70);
+      const lean = (r() - 0.5) * W * 0.22;
+      const wid = 1.5 + r() * 3.0;
+      const dry = r() < 0.17;
+      // olive-green, or straw for the dead blades left by the mower
+      const g = dry ? 166 + r() * 40 : 126 + r() * 54;
+      const rd = dry ? 176 + r() * 40 : 92 + r() * 48;
+      const bl = dry ? 104 + r() * 34 : 54 + r() * 30;
+      ctx.fillStyle = `rgb(${rd | 0},${g | 0},${bl | 0})`;
       ctx.beginPath();
       ctx.moveTo(x0 - wid, H);
       ctx.quadraticCurveTo(x0 - wid * 0.4 + lean * 0.5, H - h * 0.6, x0 + lean, H - h);
       ctx.quadraticCurveTo(x0 + wid * 0.5 + lean * 0.5, H - h * 0.6, x0 + wid, H);
       ctx.closePath(); ctx.fill();
     }
-    // darker at the base, where a tuft is thatch rather than blades
-    const g = ctx.createLinearGradient(0, H * 0.6, 0, H);
-    g.addColorStop(0, 'rgba(28,36,20,0)'); g.addColorStop(1, 'rgba(28,36,20,.65)');
-    ctx.fillStyle = g; ctx.fillRect(0, H * 0.6, W, H * 0.4);
-    return finish(c, { aniso: 4 });
+    /* A little darker at the very base, where a tuft is thatch rather than
+       blades. Keep this weak: the billboards are wider than they are tall, so
+       from a low camera the base is most of what you see, and a heavy gradient
+       here turns the whole verge into dark smudges. */
+    const g = ctx.createLinearGradient(0, H * 0.72, 0, H);
+    g.addColorStop(0, 'rgba(52,56,34,0)'); g.addColorStop(1, 'rgba(52,56,34,.2)');
+    ctx.fillStyle = g; ctx.fillRect(0, H * 0.72, W, H * 0.28);
+    return finish(bleedAlpha(c), { aniso: 4 });
   });
 }
 
