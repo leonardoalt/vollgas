@@ -82,6 +82,16 @@ export function rpmForGear(speed, gear, drivetrain, redline, idle = 900) {
   return Math.max(idle, Math.min(redline, redline * Math.max(0, speed) / top));
 }
 
+/** Road-axis half extents of a yawed vehicle's rectangular footprint. */
+export function footprintExtents(vehicle) {
+  const c = Math.abs(Math.cos(vehicle.psi || 0));
+  const s = Math.abs(Math.sin(vehicle.psi || 0));
+  return {
+    longitudinal: vehicle.halfLen * c + vehicle.halfWid * s,
+    lateral: vehicle.halfWid * c + vehicle.halfLen * s,
+  };
+}
+
 export class Vehicle {
   constructor(mesh, spec, opts = {}) {
     this.mesh = mesh;
@@ -231,6 +241,8 @@ export class Vehicle {
     this.slip += ((demand > 0.96 ? demand - 0.96 : -0.25) * 4) * dt;
     this.slip = Math.max(0, Math.min(1, this.slip));
 
+    // Preserve the start of the movement for continuous collision detection.
+    this._prevS = this.s; this._prevU = this.u;
     this.u += v * Math.sin(this.psi) * this.dir * dt;
     this.s += v * Math.cos(this.psi) * this.dir * dt;
 
@@ -247,17 +259,25 @@ export class Vehicle {
     this.offroad = au > pr.outer + 0.35 || au < pr.inner - 0.1;
     const railOuter = outerBarrier(this.s) - 0.16;
     const railInner = 1.62 + 0.16;
+    const side = Math.sign(this.u || 1);
+    let body = footprintExtents(this);
+    const clearance = 0.08;
     this.scrape = 0;
-    if (au + this.halfWid * 0.75 > railOuter) {
-      this.u = Math.sign(this.u) * (railOuter - this.halfWid * 0.75);
-      this.psi *= 0.25; this.r *= 0.25; this.vy *= 0.15;
-      this.v *= 1 - 2.2 * dt; this.scrape = 1;
+    if (au + body.lateral + clearance > railOuter) {
+      // Kill only heading into the rail; a car already steering away is free.
+      if (side * Math.sin(this.psi) * this.dir > 0) this.psi *= 0.25;
+      this.r *= 0.25; this.vy *= 0.15;
+      body = footprintExtents(this);
+      this.u = side * (railOuter - body.lateral - clearance);
+      this.v *= Math.max(0, 1 - 2.2 * dt); this.scrape = 1;
       this.damage = Math.min(100, this.damage + 5 * dt * (this.v / 40));
     }
-    if (au - this.halfWid * 0.75 < railInner) {
-      this.u = Math.sign(this.u || 1) * (railInner + this.halfWid * 0.75);
-      this.psi *= 0.25; this.r *= 0.25; this.vy *= 0.15;
-      this.v *= 1 - 2.2 * dt; this.scrape = 1;
+    if (au - body.lateral - clearance < railInner) {
+      if (side * Math.sin(this.psi) * this.dir < 0) this.psi *= 0.25;
+      this.r *= 0.25; this.vy *= 0.15;
+      body = footprintExtents(this);
+      this.u = side * (railInner + body.lateral + clearance);
+      this.v *= Math.max(0, 1 - 2.2 * dt); this.scrape = 1;
       this.damage = Math.min(100, this.damage + 5 * dt * (this.v / 40));
     }
   }
@@ -960,27 +980,69 @@ export class Traffic {
 }
 
 /* ============================================================= collisions */
+function sweptBoxEntry(ds0, du0, ds1, du1, halfS, halfU) {
+  // If last frame already began in contact, ordinary overlap correction owns
+  // it; treating t=0 as a fresh swept hit would rewind separating vehicles.
+  if (Math.abs(ds0) <= halfS && Math.abs(du0) <= halfU) return null;
+  let enter = 0, leave = 1, axis = 's';
+  for (const [start, end, half, key] of [[ds0, ds1, halfS, 's'], [du0, du1, halfU, 'u']]) {
+    const delta = end - start;
+    if (Math.abs(delta) < 1e-8) {
+      if (Math.abs(start) > half) return null;
+      continue;
+    }
+    let near = (-half - start) / delta, far = (half - start) / delta;
+    if (near > far) { const tmp = near; near = far; far = tmp; }
+    if (near > enter) { enter = near; axis = key; }
+    leave = Math.min(leave, far);
+    if (enter > leave) return null;
+  }
+  return enter >= 0 && enter <= 1 ? { t: enter, axis } : null;
+}
+
 export function resolveCollisions(player, list, onHit, dt = 0.016) {
   if (player.stoppedT > 0) return;      // parked on the shoulder with the police
   for (const o of list) {
     if (!o.active || o === player) continue;
     o._hitCool = Math.max(0, (o._hitCool || 0) - dt);
-    const ds = (o.s - player.s);
-    const du = o.u - player.u;
-    const lenSum = player.halfLen + o.halfLen;
-    const widSum = player.halfWid + o.halfWid;
-    if (Math.abs(ds) > lenSum || Math.abs(du) > widSum) continue;
+    let ds = o.s - player.s;
+    let du = o.u - player.u;
+    const pe = footprintExtents(player), oe = footprintExtents(o);
+    const lenSum = pe.longitudinal + oe.longitudinal;
+    const widSum = pe.lateral + oe.lateral;
+    const overlapNow = Math.abs(ds) <= lenSum && Math.abs(du) <= widSum;
+
+    let hitAxis = null;
+    if (!overlapNow) {
+      const ps0 = player._prevS ?? player.s, pu0 = player._prevU ?? player.u;
+      const os0 = o._prevS ?? o.s, ou0 = o._prevU ?? o.u;
+      const swept = sweptBoxEntry(os0 - ps0, ou0 - pu0, ds, du, lenSum, widSum);
+      if (!swept) continue;
+      // Rewind both bodies to contact. Dropping the unused tail of this one
+      // frame is preferable to tunnelling through at a high closing speed.
+      player.s = ps0 + (player.s - ps0) * swept.t;
+      player.u = pu0 + (player.u - pu0) * swept.t;
+      o.s = os0 + (o.s - os0) * swept.t;
+      o.u = ou0 + (o.u - ou0) * swept.t;
+      ds = o.s - player.s; du = o.u - player.u;
+      hitAxis = swept.axis;
+    }
 
     const closing = player.v * player.dir - o.v * o.dir;
     const overlapS = lenSum - Math.abs(ds);
     const overlapU = widSum - Math.abs(du);
+    const mp = Math.max(1, player.perf.mass), mo = Math.max(1, o.perf.mass);
+    const moveP = mo / (mp + mo), moveO = mp / (mp + mo);
+    const slop = 0.06;
 
-    if (overlapU < overlapS) {
+    if (hitAxis === 'u' || (!hitAxis && overlapU < overlapS)) {
       // side swipe — shove both sideways, scrub a little speed
       const push = Math.sign(du || 1);
-      player.u -= push * overlapU * 0.55;
-      o.u += push * overlapU * 0.45;
       player.psi -= push * 0.05;
+      const sideSum = footprintExtents(player).lateral + footprintExtents(o).lateral;
+      const correction = Math.max(0, sideSum - Math.abs(du)) + slop;
+      player.u -= push * correction * moveP;
+      o.u += push * correction * moveO;
       player.v *= 0.985;
       const sev = Math.min(1, Math.abs(closing) / 30 + 0.15);
       if (o._hitCool <= 0) {
@@ -991,15 +1053,17 @@ export function resolveCollisions(player, list, onHit, dt = 0.016) {
     } else {
       // nose-to-tail
       const push = Math.sign(ds || 1);
-      player.s -= push * overlapS * 0.6;
-      o.s += push * overlapS * 0.4;
+      const correction = Math.max(0, overlapS) + slop;
+      player.s -= push * correction * moveP;
+      o.s += push * correction * moveO;
       const rel = Math.abs(closing);
-      if (push > 0) {                        // we ran into the back of them
-        player.v = Math.max(o.v * 0.72, player.v - rel * 0.72);
-        o.v += rel * 0.18;
-      } else {
-        player.v += rel * 0.10;
-      }
+      // One-dimensional collision impulse in road coordinates. A 38 t lorry
+      // now behaves like one instead of being pushed 40% of the overlap.
+      const vp = player.v * player.dir, vo = o.v * o.dir, restitution = 0.10;
+      const vp2 = (mp * vp + mo * vo - mo * restitution * (vp - vo)) / (mp + mo);
+      const vo2 = (mp * vp + mo * vo + mp * restitution * (vp - vo)) / (mp + mo);
+      player.v = Math.max(0, vp2 * player.dir);
+      o.v = Math.max(0, vo2 * o.dir);
       const sev = Math.min(1, rel / 26 + 0.2);
       if (o._hitCool <= 0) {
         // hitting someone is on you; being hit from behind much less so
@@ -1009,5 +1073,12 @@ export function resolveCollisions(player, list, onHit, dt = 0.016) {
         onHit('rear', sev * blame);
       }
     }
+    // This impact ended the frame's movement. Do not sweep the player's old
+    // pre-impact path through a second, more distant vehicle in this loop.
+    player._prevS = player.s; player._prevU = player.u;
+    o._prevS = o.s; o._prevU = o.u;
+    // Traffic was synced before collision resolution; update it now so the
+    // corrected transform is visible in this frame rather than one frame late.
+    if (o.sync) o.sync(0);
   }
 }

@@ -457,7 +457,8 @@ export class Enforcement {
     const err = targetU - z.u;
     const arrived = Math.abs(err) < 1.0;
     const playerStopped = player.v < 1.2;
-    const STOP_GAP = 6.5;                  // centre to centre: a couple of metres of air
+    // Dynamic body lengths matter now that patrol types have different shells.
+    const STOP_GAP = player.halfLen + z.halfLen + 1.5;
 
     let wantV;
     if (!arrived) {
@@ -478,6 +479,13 @@ export class Enforcement {
     else if (z.v < wantV - 0.3) thr = 0.30;
     z.stepLong(dt, thr, brake, ctx);
     z.stepLat(dt, Math.max(-0.6, Math.min(0.6, err * 0.28)), ctx);
+    // Braking alone is not a collision constraint: a cop summoned at speed can
+    // cover several metres in one low-FPS frame. Enforce contact-free spacing
+    // after integration so it can never tunnel into the stopped player.
+    if (player.s - z.s < STOP_GAP) {
+      z.s = player.s - STOP_GAP;
+      z.v = Math.min(z.v, player.v);
+    }
     if (z.v < 0.25) z.v = 0;
     z.headlights = true;
   }
@@ -581,8 +589,12 @@ export class Enforcement {
       if (d < bd) { bd = d; best = z; }
     }
     if (!best) return;
-    if (bd > 150) {
-      best.s = player.s - 38;
+    const safeGap = player.halfLen + best.halfLen + 1.5;
+    // The nearest available patrol may be beside or ahead of the player. A
+    // stop always begins with it safely behind, never intersecting the car it
+    // is supposed to follow onto the shoulder.
+    if (bd > 150 || best.s > player.s - safeGap) {
+      best.s = player.s - Math.max(38, safeGap + 8);
       best.u = player.u;
       best.v = Math.max(player.v, 30);
       best.psi = 0;
