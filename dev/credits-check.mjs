@@ -65,15 +65,28 @@ if (!offline) {
     return false;
   });
   console.log(`\n${urls.length} URLs`);
-  for (const u of urls) {
-    let code = '000';
+  /* HEAD first, because it is free. Some hosts do not answer it: Sketchfab's
+     model API returns 401 to a HEAD and 200 to a GET on the same URL, which
+     would have failed a citation that is perfectly alive. So fall back to a
+     one-byte ranged GET, which is stronger evidence than a HEAD anyway and
+     still does not pull a megabyte of GLB. */
+  const hit = (u, args) => {
     try {
-      code = execFileSync('curl', ['-sIL', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '25', u],
-        { encoding: 'utf8' }).trim();
-    } catch { /* leave as 000 */ }
-    const ok = code.startsWith('2') || code === '403';   // 403 = alive, hotlink-guarded
+      return execFileSync('curl', [...args, '-sL', '-o', '/dev/null',
+        '-w', '%{http_code}', '--max-time', '25', u], { encoding: 'utf8' }).trim();
+    } catch { return '000'; }
+  };
+  const alive = (c) => c.startsWith('2') || c === '403';   // 403 = alive, hotlink-guarded
+  for (const u of urls) {
+    let code = hit(u, ['-I']);
+    let how = '';
+    if (!alive(code)) {
+      const g = hit(u, ['-r', '0-0']);
+      if (alive(g)) { how = ` (HEAD ${code}, GET ok)`; code = g; }
+    }
+    const ok = alive(code);
     if (!ok) bad++;
-    console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${code}  ${u}`);
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${code}  ${u}${how}`);
   }
 }
 
