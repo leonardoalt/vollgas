@@ -57,6 +57,14 @@ const report = await page.evaluate(async () => {
   const pce = footprintExtents(p), ce = footprintExtents(car);
   const carClearance = Math.abs(car.u - p.u) - pce.lateral - ce.lateral;
 
+  // ---- traffic recycling is a teleport, never a path through the player
+  const recycled = g.traffic._make('hatch', 1);
+  p.s = 5000; p._prevS = p.s; p.u = LANES[1]; p._prevU = p.u; p.psi = 0; p.v = 70;
+  recycled.s = p.s + 800; recycled.u = p.u; recycled.v = 35;
+  recycled._prevS = p.s - 300; recycled._prevU = p.u; recycled.active = true;
+  let recycleHits = 0;
+  resolveCollisions(p, [recycled], () => { recycleHits++; }, 0.05);
+
   // ---- a forced criminal stop may select a cop ahead; it must be placed and
   // remain fully behind even when the player immediately coasts to a stop
   g.startRace(); g.countdown = 0;
@@ -82,6 +90,7 @@ const report = await page.evaluate(async () => {
     barriers: { outerClearance, innerClearance },
     sweptTruck: { hits, clearance: truckClearance, playerV: truckPlayerV, truckV, meshError: truckMeshError },
     car: { hits: carHits, clearance: carClearance },
+    recycle: { hits: recycleHits, playerV: p.v },
     police: {
       requiredGap, summonedGap, minGap, minClearance,
       playerV: stopped.v, copV: cop.v, playerU: stopped.u, copU: cop.u,
@@ -108,6 +117,8 @@ check('other vehicle transform is corrected in the collision frame', report.swep
   `mesh error=${report.sweptTruck.meshError.toFixed(4)}m`);
 check('angled car-to-car overlap is fully separated', report.car.hits === 1 && report.car.clearance >= 0.05,
   JSON.stringify(report.car));
+check('traffic recycle cannot create a phantom swept impact',
+  report.recycle.hits === 0 && report.recycle.playerV === 70, JSON.stringify(report.recycle));
 check('summoned police starts fully behind', report.police.summonedGap >= report.police.requiredGap,
   `gap=${report.police.summonedGap.toFixed(2)} required=${report.police.requiredGap.toFixed(2)}`);
 check('police never enters the player while stopping', report.police.minClearance >= 1.49,

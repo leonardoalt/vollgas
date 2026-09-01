@@ -138,6 +138,11 @@ export class Vehicle {
     mesh.rotation.order = 'YXZ';
   }
 
+  /** Mark an intentional reposition so it cannot become a swept collision. */
+  resetSweep() {
+    this._prevS = this.s; this._prevU = this.u;
+  }
+
   /* --------------------------------------------------------- longitudinal */
   stepLong(dt, throttle, brake, ctx) {
     const d = this.d, p = this.perf;
@@ -839,6 +844,7 @@ export class Traffic {
       r.v = 25;
       r.cruise = r.d.vmax * 0.9;
       this.rivals.push(r); this.all.push(r); this.scene.add(mesh);
+      r.resetSweep();
     }
   }
 
@@ -852,6 +858,7 @@ export class Traffic {
     t.v = t.cruise;
     t.psi = 0;
     t.courtesy = this.rand();
+    t.resetSweep();
     if (t.mesh.userData.paintMat && this.rand() < 0.5) {
       t.mesh.userData.paintMat.color.setHex(TRAFFIC_PAINTS[Math.floor(this.rand() * TRAFFIC_PAINTS.length)]);
     }
@@ -865,6 +872,7 @@ export class Traffic {
     t.v = t.cruise;
     t.psi = 0;
     t.warnFlash = false; t.flashHold = 0; t.flashPhase = 0; t.flashOn = false;
+    t.resetSweep();
   }
 
   /* ----------------------------------------------------- spatial queries */
@@ -963,6 +971,7 @@ export class Traffic {
     t.cruise = 31;
     t.psi = 0;
     t.warnFlash = false; t.flashHold = 0; t.flashPhase = 0; t.flashOn = false;
+    t.resetSweep();
     t.sync(0);
     return t;
   }
@@ -1002,8 +1011,18 @@ function sweptBoxEntry(ds0, du0, ds1, du1, halfS, halfU) {
 
 export function resolveCollisions(player, list, onHit, dt = 0.016) {
   if (player.stoppedT > 0) return;      // parked on the shoulder with the police
+  const maxSweepTravel = 30;
+  const ppS = player._prevS ?? player.s, ppU = player._prevU ?? player.u;
+  if (Math.hypot(player.s - ppS, player.u - ppU) > maxSweepTravel) player.resetSweep();
   for (const o of list) {
     if (!o.active || o === player) continue;
+    const opS = o._prevS ?? o.s, opU = o._prevU ?? o.u;
+    if (Math.hypot(o.s - opS, o.u - opU) > maxSweepTravel) {
+      // Recyclers move a car roughly a kilometre in one frame. That is a spawn,
+      // not a trajectory through everything between the two positions.
+      o.resetSweep();
+      continue;
+    }
     o._hitCool = Math.max(0, (o._hitCool || 0) - dt);
     let ds = o.s - player.s;
     let du = o.u - player.u;

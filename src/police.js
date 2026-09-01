@@ -239,6 +239,7 @@ export class Enforcement {
     z.cooldown = 9999;
     z.headlights = true;
     z.setLights(false);
+    z.resetSweep();
     z.sync(0);
     this.activeCop = z;
     this.events.push({ type: 'measure-start', cop: z });
@@ -268,6 +269,7 @@ export class Enforcement {
     z.warned = false;
     z.measure = 0; z.measurePeak = 0; z.pursueClose = 0; z.cooldown = 0; z.grace = 0; z.lostT = 0;
     z.setLights(false);
+    z.resetSweep();
   }
 
   /* ---------------------------------------------------------------- logic */
@@ -598,6 +600,7 @@ export class Enforcement {
       best.u = player.u;
       best.v = Math.max(player.v, 30);
       best.psi = 0;
+      best.resetSweep();
     }
     best.state = COP_STATE.STOP;
     best.pursueClose = 0;
