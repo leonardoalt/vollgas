@@ -304,28 +304,105 @@ function barrierGaps() {
   return gaps;
 }
 
+/* ------------------------------------------------------- Stahlschutzplanke
+   Profil A W-beam on Sigma posts. The old barrier was two flat 0.20 m
+   DoubleSide quads, which from the driver's seat projected as three enormous
+   pale ribbons across the left half of the screen — the single worst thing in
+   the frame. This is the real pressed section instead: nine quads round a
+   closed profile, with the bolts, the galvanising and the grime in the
+   texture rather than in geometry. */
+const BEAM_MID = 0.1555;              // beam centre below the top of the rail
+const POST_PITCH = 4;                 // Sigma posts every 4 m, as built
+
+/**
+ * One segment of beam. `face` is the lateral direction the pressing bulges
+ * in — toward the traffic it protects.
+ *
+ * W_BEAM traverses the (depth, height) plane clockwise, so with
+ * T × R = −up and T × up = R the natural corner order comes out facing
+ * outward only for face = −1; for face = +1 the quad has to be reversed,
+ * which also swaps the V pair because quad() maps corners to UVs by position.
+ */
+function railRun(m, s, s2, u, top, face) {
+  const cy = top - BEAM_MID;
+  const pt = (ss, k, depth) => {
+    const p = roadPt(ss, u + face * (depth ?? W_BEAM[k][0]));
+    return [p[0], p[1] + cy + W_BEAM[k][1], p[2]];
+  };
+  const U0 = s / POST_PITCH, U1 = s2 / POST_PITCH;
+  const emit = (k0, k1, d0, d1, v0, v1) => {
+    const a = pt(s, k0, d0), b = pt(s2, k0, d0), c = pt(s2, k1, d1), d = pt(s, k1, d1);
+    if (face > 0) m.quad(d, c, b, a, U0, v1, U1, v0);
+    else m.quad(a, b, c, d, U0, v0, U1, v1);
+  };
+  for (let k = 0; k < W_BEAM.length - 1; k++) emit(k, k + 1, null, null, BEAM_V[k], BEAM_V[k + 1]);
+  // closing back plate: bottom lip straight up to the top lip, at depth 0
+  emit(W_BEAM.length - 1, 0, 0, 0, BEAM_V[W_BEAM.length - 1], BEAM_V[W_BEAM.length]);
+}
+
+/** The post under the beam, sitting 12 mm behind the back plate. */
+function railPost(m, s, u, top, face) {
+  const cy = top - BEAM_MID;
+  const HW = 0.062, D_F = -0.012, D_B = -0.105;
+  const pts = [
+    roadPt(s - HW, u + face * D_F), roadPt(s + HW, u + face * D_F),
+    roadPt(s + HW, u + face * D_B), roadPt(s - HW, u + face * D_B),
+  ];
+  prismSides(m, pts, -0.17, cy + 0.10, 0, POST_V[0], 1, POST_V[1]);
+}
+
 function buildRoadChunks(mats) {
   const group = new THREE.Group();
   group.name = 'road';
   const gaps = barrierGaps();
   const gapped = (s) => gaps.some(([a, b]) => s >= a && s <= b);
+  const OUT = GEO.pavedOut;
+  /** [lateral, top of beam, direction the pressing faces] */
+  const railsAt = (s) => {
+    const r = [[-1.62, 0.75, -1], [1.62, 0.75, 1], [-(OUT + 0.45), 0.78, 1]];
+    if (!gapped(s)) r.push([OUT + 0.45, 0.78, -1]);
+    return r;
+  };
+  // Mittelstreifen cuts: a strip either side of each barrier line so the
+  // vertex tint can put the barriers' own shade into the grass.
+  const MED_CUTS = [-2.0, -1.62, -0.8, 0, 0.8, 1.62, 2.0];
+  const medianTone = (s, u) => {
+    const d = Math.min(Math.abs(Math.abs(u) - 1.62), 1);
+    let k = (0.80 + 0.20 * d) * (0.90 + 0.2 * hash1(Math.floor(s / 17), Math.floor(u * 2) + 40));
+    return [k, k * 1.02, k * 0.96];
+  };
 
   for (let c0 = 0; c0 < LENGTH; c0 += CHUNK) {
     const c1 = Math.min(LENGTH, c0 + CHUNK);
-    const asph = new Mesher(), med = new Mesher(), markW = new Mesher(), markY = new Mesher();
-    const steel = new Mesher(), posts = new Mesher();
+    const asph = new Mesher(), pol = new Mesher(), med = new Mesher();
+    const markW = new Mesher(), markY = new Mesher();
+    const rail = new Mesher(), seam = new Mesher();
 
     for (let s = c0; s < c1; s += SEG) {
       const s2 = Math.min(LENGTH - 0.01, s + SEG);
       const sec = sectionAt(s);
       const works = !!sec.works;
-      const IN = GEO.pavedIn, OUT = GEO.pavedOut;
+      const IN = GEO.pavedIn;
 
-      // ---- the two carriageways
-      ribbon(asph, s, s2, IN, OUT, 0, 1 / 7, 2.7);
-      ribbon(asph, s, s2, -IN, -OUT, 0, 1 / 7, 2.7);
+      // ---- the two carriageways, cut laterally so the wheel tracks, the
+      //      repairs and the pale hard shoulder can be vertex colours
+      for (let i = 0; i < LANE_CUTS.length - 1; i++) {
+        const a = LANE_CUTS[i], b = LANE_CUTS[i + 1];
+        const m = isTrack((a + b) / 2) ? pol : asph;
+        const ua = (a - IN) / (OUT - IN) * 2.7, ub = (b - IN) / (OUT - IN) * 2.7;
+        for (const sign of [1, -1]) {
+          const lo = lift(roadPt(s, sign * a), 0), hi = lift(roadPt(s, sign * b), 0);
+          const hi2 = lift(roadPt(s2, sign * b), 0), lo2 = lift(roadPt(s2, sign * a), 0);
+          const ca = asphaltTone(s, a), cb = asphaltTone(s, b);
+          const cc = asphaltTone(s2, b), cd = asphaltTone(s2, a);
+          if (sign > 0) m.quadC(lo, hi, hi2, lo2, ua, s / 7, ub, s2 / 7, ca, cb, cc, cd);
+          else m.quadC(hi, lo, lo2, hi2, ua, s / 7, ub, s2 / 7, cb, ca, cd, cc);
+        }
+      }
       // ---- Mittelstreifen, a shade lower than the carriageway
-      ribbon(med, s, s2, -IN, IN, -0.13, 1 / 12, 1);
+      for (let i = 0; i < MED_CUTS.length - 1; i++) {
+        ribbonC(med, s, s2, MED_CUTS[i], MED_CUTS[i + 1], -0.13, 1 / 4, 0.25, medianTone);
+      }
 
       // ---- markings. Solid lines follow the curve segment by segment.
       const lines = works
@@ -339,23 +416,21 @@ function buildRoadChunks(mats) {
           // so it is drawn as a broken wide line further down instead
           if (sign > 0 && off === GEO.kerbOut && rampAt(s)) continue;
           const u = sign * off;
-          ribbon(mesher, s, s2, u - w / 2, u + w / 2, 0.015);
+          ribbon(mesher, s, s2, u - w / 2, u + w / 2, 0.015, MARK_V, 1);
         }
       }
 
+      // ---- longitudinal paving joint between the two lanes
+      for (const sign of [1, -1]) {
+        ribbonC(seam, s, s2, sign * 6.25 - 0.035, sign * 6.25 + 0.035, 0.005, 1 / 7, 0.05, SEAM_TINT);
+      }
+
       // ---- Stahlschutzplanke: two in the median, one on each outer verge
-      const rails = [[-1.62, 0.74], [1.62, 0.74], [-(OUT + 0.45), 0.78]];
-      if (!gapped(s)) rails.push([OUT + 0.45, 0.78]);
-      for (const [u, h] of rails) {
-        const a = roadPt(s, u), b = roadPt(s2, u);
-        // upper and lower band of the W-beam
-        for (const dy of [h, h - 0.30]) {
-          steel.quad(lift(a, dy), lift(b, dy), lift(b, dy - 0.20), lift(a, dy - 0.20), 0, 0, 1, 1);
+      for (const [u, h, face] of railsAt(s)) {
+        railRun(rail, s, s2, u, h, face);
+        for (let ps = Math.ceil(s / POST_PITCH) * POST_PITCH; ps < s2; ps += POST_PITCH) {
+          railPost(rail, ps, u, h, face);
         }
-        // post at the start of every segment
-        const pw = 0.14;
-        const pa = roadPt(s, u - pw / 2), pb = roadPt(s, u + pw / 2);
-        posts.quad(lift(pa, h - 0.10), lift(pb, h - 0.10), lift(pb, -0.05), lift(pa, -0.05));
       }
     }
 
@@ -366,7 +441,7 @@ function buildRoadChunks(mats) {
       const w = sec.works ? 0.15 : 0.15;
       const mesher = sec.works ? markY : markW;
       const e = Math.min(s + 6, LENGTH - 0.01);
-      for (const sign of [1, -1]) ribbon(mesher, s, e, sign * off - w / 2, sign * off + w / 2, 0.015);
+      for (const sign of [1, -1]) ribbon(mesher, s, e, sign * off - w / 2, sign * off + w / 2, 0.015, MARK_V, 1);
     }
 
     // broken wide line between the acceleration lane and the through lanes
@@ -374,7 +449,29 @@ function buildRoadChunks(mats) {
       if (!rampAt(s)) continue;
       const e = Math.min(s + 6, ENTRY_LEN, c1);
       if (e <= s) continue;
-      ribbon(markW, s, e, GEO.kerbOut - 0.15, GEO.kerbOut + 0.15, 0.022);
+      ribbon(markW, s, e, GEO.kerbOut - 0.15, GEO.kerbOut + 0.15, 0.022, MARK_V, 1);
+    }
+
+    /* ---- day-work joints and machine-laid repairs. Both ride on one dark
+       material and are told apart by vertex tint, so the whole lot is a
+       single draw call per chunk. */
+    for (let s = Math.ceil(c0 / 57) * 57; s < c1; s += 57) {
+      if (hash1(Math.floor(s / 57), 7) > 0.45) continue;
+      const e = Math.min(s + 0.07, LENGTH - 0.01);
+      for (const sign of [1, -1]) {
+        ribbonC(seam, s, e, sign * 2.4, sign * 10.1, 0.005, 1 / 7, 2, SEAM_TINT);
+      }
+    }
+    for (let s = Math.ceil(c0 / 61) * 61; s < c1; s += 61) {
+      const r = hash1(Math.floor(s / 61) + 13, 29);
+      if (r > 0.34) continue;
+      const sign = r < 0.17 ? 1 : -1;
+      const u0 = 2.9 + hash1(Math.floor(s / 61), 3) * 5.6;
+      const w = 1.1 + hash1(Math.floor(s / 61), 5) * 2.2;
+      const len = 2.2 + hash1(Math.floor(s / 61), 9) * 5;
+      const e = Math.min(s + len, LENGTH - 0.01, c1);
+      if (e <= s) continue;
+      ribbonC(seam, s, e, sign * u0, sign * Math.min(u0 + w, 9.9), 0.004, 1 / 7, 0.6, PATCH_TINT);
     }
 
     const add = (m, mat, name) => {
@@ -382,15 +479,16 @@ function buildRoadChunks(mats) {
       const mesh = new THREE.Mesh(m.geo(), mat);
       mesh.name = name;
       mesh.matrixAutoUpdate = false;
-      mesh.receiveShadow = name === 'asphalt' || name === 'median';
+      mesh.receiveShadow = name === 'asphalt' || name === 'median' || name === 'polished';
       group.add(mesh);
     };
     add(asph, mats.asphalt, 'asphalt');
+    add(pol, mats.asphaltPolished, 'polished');
+    add(seam, mats.asphaltDark, 'seam');
     add(med, mats.median, 'median');
     add(markW, mats.markWhite, 'markW');
     add(markY, mats.markYellow, 'markY');
-    add(steel, mats.steel, 'steel');
-    add(posts, mats.postDark, 'posts');
+    add(rail, mats.rail, 'rail');
   }
   return group;
 }
