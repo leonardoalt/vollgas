@@ -575,7 +575,9 @@ export class Game {
           this.hud.blitzFlash();
           this.audio.flash();
           const sub = t('a.flash.sub', { speed: Math.round(ev.speed), limit: ev.limit })
-            + (p.points ? t('a.flash.points', { n: p.points }) : '');
+            + (p.points ? t('a.flash.points', {
+                n: p.points, pl: p.points === 1 ? '' : (lang === 'de' ? 'e' : 's'),
+              }) : '');
           this.hud.alert(t('a.flash', { fine: p.fine }), sub, 'bad', 5, 'flash');
           break;
         }

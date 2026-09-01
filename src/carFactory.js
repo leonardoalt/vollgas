@@ -1001,7 +1001,7 @@ export const CARS = {
     paints: [{ n: 'Gentianblau', c: 0x1b46b0 }, { n: 'Indischrot', c: 0xb0121f },
       { n: 'GT-Silber', c: 0xb9bdc0 }, { n: 'Achatgrau', c: 0x4a5157 }],
     perf: { mass: 1640, power: 478, cd: 0.72, vmax: 330, grip: 1.42, awd: true, gears: 8, launch: 0.78, redline: 7200 },
-    blurb: 'Heckmotor, Allrad, 650 PS. Klebt bei 300 noch auf der linken Spur und lässt sich vom Gegenverkehr nicht beeindrucken. Teuerste Art, in Flensburg Punkte zu sammeln.',
+    blurb: 'Heckmotor, Allrad, 650 PS. Klebt bei 300 noch auf der linken Spur und lässt sich vom Gegenverkehr nicht beeindrucken. Die teuerste Art, in Flensburg Punkte zu sammeln.',
 
     blurbEn: 'Rear engine, all-wheel drive, 650 hp. Still planted in the left-hand lane at 300, and utterly unbothered by oncoming traffic. The most expensive way there is to collect points in Flensburg.',  },
   m5: {
@@ -1017,7 +1017,7 @@ export const CARS = {
     paints: [{ n: 'Frozen Bluestone', c: 0x3b4350 }, { n: 'Marina-Bay-Blau', c: 0x1c56b4 },
       { n: 'Frozen Schwarz', c: 0x1a1c1f }, { n: 'Brands-Hatch-Grau', c: 0x6e757b }],
     perf: { mass: 1825, power: 467, cd: 0.78, vmax: 305, grip: 1.34, awd: true, gears: 8, launch: 0.73, redline: 7200 },
-    blurb: 'Vier Türen, Allrad, V8-Biturbo. Der Klassiker der linken Spur: fährt 300 als wäre es 130 und hat Platz für das Gepäck von vier Leuten, die das nicht wollten.',
+    blurb: 'Vier Türen, Allrad, V8-Biturbo. Der Klassiker auf der linken Spur: fährt 300, als wären es 130, und hat Platz für das Gepäck von vier Leuten, die lieber zu Hause geblieben wären.',
 
     blurbEn: 'Four doors, all-wheel drive, twin-turbo V8. The classic of the fast lane: does 300 like it is 130, with room for the luggage of four people who did not want to be here.',  },
   rs6: {
@@ -1031,7 +1031,7 @@ export const CARS = {
     plate: 'IN AU 6',
     paints: [{ n: 'Nardograu', c: 0x9a9da0 }, { n: 'Mythosschwarz', c: 0x22252a }, { n: 'Tangorot', c: 0x8e1a12 }],
     perf: { mass: 2075, power: 441, cd: 0.86, vmax: 305, grip: 1.38, awd: true, gears: 8, launch: 0.625, redline: 6800 },
-    blurb: 'Ein Kombi. Platz für Kinderwagen, Hund und den halben Baumarkt — und 600 PS. Die braucht man auf dem Rückweg aus dem Familienurlaub, wenn hinten zum vierzigsten Mal gefragt wird, ob man bald da ist. Man ist dann bald da.',
+    blurb: 'Ein Kombi. Platz für Kinderwagen, Hund und den halben Baumarkt — und 600 PS. Die braucht man auf der Rückfahrt aus dem Familienurlaub, wenn von hinten zum vierzigsten Mal die Frage kommt, ob man bald da ist. Dann ist man bald da.',
 
     blurbEn: 'An estate car. Room for the pram, the dog and half a hardware shop — and 600 hp. You need those on the drive home from the family holiday, when the back seat asks for the fortieth time whether you are nearly there. You are nearly there.',  },
   amg: {
@@ -1047,7 +1047,7 @@ export const CARS = {
     paints: [{ n: 'Graphitgrau', c: 0x44474c }, { n: 'Selenitgrau', c: 0x5b6066 },
       { n: 'Obsidianschwarz', c: 0x191b1e }, { n: 'Hyazinthrot', c: 0x7e1220 }],
     perf: { mass: 1800, power: 375, cd: 0.76, vmax: 290, grip: 1.30, awd: false, gears: 7, launch: 0.605, redline: 7000 },
-    blurb: 'Handgebauter V8, Hinterradantrieb, und ein Geräusch, das aus Nachbarn Feinde macht. Geradeaus fantastisch, in Kurven will das Heck gelegentlich mitreden. Verbraucht auf dem Weg zum Bäcker mehr als ein Kleinwagen im Monat.',
+    blurb: 'Handgebauter V8, Hinterradantrieb und ein Geräusch, das aus Nachbarn Feinde macht. Geradeaus fantastisch, in Kurven will das Heck gelegentlich mitreden. Verbraucht auf dem Weg zum Bäcker mehr als ein Kleinwagen im Monat.',
 
     blurbEn: 'A hand-built V8, rear-wheel drive, and a noise that turns neighbours into enemies. Magnificent in a straight line; in corners the back end likes to join the conversation. Uses more fuel going to the bakery than a small car does in a month.',  },
 
