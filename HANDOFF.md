@@ -470,11 +470,21 @@ below were measured on.
 Branch: `worktree-agent-a2414b96acb114bf0`. Worktree:
 `/home/leo/devel/autobahn/.claude/worktrees/agent-a2414b96acb114bf0`.
 
-**State at time of writing: WIP, DOES NOT BUILD.** `src/world.js` now imports
-`buildVergeGrass` from `src/scenery.js` and several new texture functions, and
-`makeMaterials()` has been rewritten — but `buildRoadChunks()` still contains the
-*old* flat-quad road and barrier code, and `buildVergeGrass` does not exist in
-`scenery.js` yet. See "Where I left off".
+> **STATUS: FINISHED AND VERIFIED.** All six items under "Where I left off"
+> are done, on a branch merged onto current `main`. The tree builds, every
+> gate passes including `fleet-check` at 14/14, and the seven world shots are
+> in `dev/shots/after-*.png` with a matching `dev/shots/base/` set taken on
+> main. What follows is the original author's design notes, kept because the
+> reasoning is still the reasoning; the paragraph below described the state
+> mid-flight and is no longer true. See "What actually happened" at the end
+> of this part for the corrections and for the four bugs that only showed up
+> once the thing could be run.
+>
+> ~~**State at time of writing: WIP, DOES NOT BUILD.** `src/world.js` now
+> imports `buildVergeGrass` from `src/scenery.js` and several new texture
+> functions, and `makeMaterials()` has been rewritten — but
+> `buildRoadChunks()` still contains the *old* flat-quad road and barrier
+> code, and `buildVergeGrass` does not exist in `scenery.js` yet.~~
 
 ## Goal
 
@@ -807,3 +817,95 @@ Useful probe one-liners:
     node dev/probe.mjs "<url>" "const b=window.__bench;let n=0;b.scene.traverse(o=>{if(o.isMesh&&o.name==='steel'){o.visible=false;n++;}});return {hidden:n};" out.png
     # real section positions
     node dev/probe.mjs "<url>" "const t=await import('/src/track.js');return t.SECTIONS.map(s=>[s.km,s.name]);"
+
+## What actually happened — corrections and the bugs that only showed on screen
+
+Written by the agent who finished the work. The design above held up almost
+everywhere; these are the places it did not, plus four bugs that were
+invisible until the tree could actually run.
+
+### Corrections to the notes above
+
+* **`buildRoadChunks()` was not still the old code.** Commit `c2631cd`
+  rewrote it as well as adding `railRun`/`railPost`, so item 1 of "Where I
+  left off" was already largely done. What was actually missing were three
+  constants it referenced and nobody had defined — `MARK_V`, `SEAM_TINT`,
+  `PATCH_TINT`.
+* **The guardrail winding derivation is correct.** It was typed in as
+  written and the beam faces outward on both carriageways. Do not re-derive.
+* **The stale numbers.** The baseline quoted above predates the car work.
+  Measured on current `main`: `dev/world.html?km=12&view=drive` is 395,800
+  tris / 913 calls, and `prod-check` is 1,408,264 tris / 1,941 calls with an
+  11.75 s load on a warm dev server. The 17 s first sample is vite's cold
+  start — always take a second measurement.
+
+### The four bugs
+
+* **`mats.asphalt` gained `vertexColors` but three meshes have no colour
+  attribute.** The slip roads, the entry ramp and the rest-area apron are
+  built with plain `quad()`. WebGL then supplies the default attribute
+  `(0,0,0)` and the surface renders *black*. They use `mats.asphaltPlain`
+  now. Any future mesher paired with a `vertexColors` material needs either
+  `quadC()` or the plain material.
+* **flipY vs. atlas layout.** The rail and noise-wall atlases are drawn with
+  V running *down* the canvas, but three.js uploads canvases with `flipY`, so
+  V addressed the opposite end of the image: the beam sampled the post band
+  upside down, the Sigma posts sampled the beam's bright crest and rendered
+  as white concrete columns, and the noise wall wore its coping at the foot.
+  Both atlases now go through `flipV()` on the way out — mirroring the canvas
+  rather than negating the V coordinates, so `normalFromHeight`'s flipY sign
+  convention stays valid because the height field is mirrored with it.
+  `tunnelLiningTex` is unaffected: everything in it is a function of U.
+* **An up-facing normal cannot be combined with `DoubleSide`.** The grass
+  tufts are shaded with their normals forced to +Y so they light like the
+  ground they grow from. three.js negates the normal on back-facing
+  fragments, so half of every tuft pointed *down*, lit by nothing but the
+  hemisphere's ground colour, and rendered nearly black — the verge read as
+  dark speckles. A tuft is now four single-sided quads (the crossed pair plus
+  a reverse-wound duplicate) on `FrontSide`.
+* **Canvas readback dominated load time.** Twelve textures call
+  `getImageData`, and the first read of a fresh GPU-backed canvas cost 2.3 s
+  against 7 ms for the second. This is easy to misattribute — whichever
+  texture is built first looks like the slow one, and reordering the list
+  moved the 2.7 s from asphalt to concrete. `canvas()` takes a `readable`
+  flag that requests the context once with `willReadFrequently`. Total
+  texture generation went 4,415 ms → 513 ms. **If you add a texture that
+  reads a canvas back, pass `readable`.**
+
+### Also worth knowing
+
+* **`blocked(s, u)` takes *signed* u**, not `|u|`. That is what lets the
+  tunnel rectangle clear the median and our verge while leaving the oncoming
+  carriageway's verge alone — the bore only spans u 1.8…14.4.
+* **The tunnel needed a concrete verge.** The bore's wall bases are at
+  u = 1.8 and 14.4 but the road is paved 2.0…12.5, so grass showed at both
+  wall feet *inside the tunnel*. It was there before and invisible only
+  because the old shell was flat grey. The outer edge cannot follow
+  `roadPt()`: at 2.5 % crossfall u = 14.4 is 31 cm down, under the flat verge
+  terrain at −30 cm, so it is lifted to rise away from the road.
+* **Wind the ribbons with the helper's corner order** — `(s,u1)`, `(s,u2)`,
+  `(s2,u2)`, `(s2,u1)` for u2 > u1. The tunnel verge was written the other
+  way round first and simply never drew, which is exactly the trap
+  `ribbon()` exists to centralise. The gotcha above is not theoretical.
+* **Measure the frame, don't squint at it.** `dev/probe.mjs` can render,
+  read the framebuffer back and diff two states. Hiding the terrain group and
+  counting changed pixels is how the tunnel grass was confirmed gone
+  (10,785 → 0); sampling min/max luminance over a verge strip is how the
+  black-tuft bug was found.
+
+### Final measurements
+
+| | main | after |
+|---|---|---|
+| `dev/world.html?km=12&view=drive` | 395,800 tris / 913 calls | 568,298 / 942 |
+| `prod-check` | 1,408,264 tris / 1,941 calls | ~1,790,000 / ~1,940 |
+| `prod-check` load, warm | 11.75 s | 13.9 s |
+| texture generation | — | 513 ms |
+
+Verge grass costs 18,896 triangles and 2 draw calls in a frame: 130 buckets
+are built, 2 are visible. Draw calls are flat because the rail's beam and
+post sharing one atlas removed about as many as the new meshes added.
+
+`dev/best-check.mjs` and `dev/start-check.mjs` now take `process.env.URL`,
+defaulting to the `http://localhost:5173/` they hardcoded before, so the old
+invocation is unchanged.
