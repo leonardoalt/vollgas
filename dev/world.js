@@ -75,6 +75,16 @@ window.__setCam = (az, el, dist) => {
   cam.position.set(w.x + Math.cos(az) * Math.cos(el) * dist, w.y + Math.sin(el) * dist, w.z + Math.sin(az) * Math.cos(el) * dist);
   cam.lookAt(w.x, w.y + 1, w.z);
 };
+/* handles for dev/probe.mjs: poke at materials and count triangles live */
+window.__bench = {
+  THREE, scene, cam, renderer, world,
+  stats() {
+    renderer.info.reset();
+    renderer.render(scene, cam);
+    return { tris: renderer.info.render.triangles, calls: renderer.info.render.calls,
+             geoms: renderer.info.memory.geometries, texs: renderer.info.memory.textures };
+  },
+};
 window.__ready = true;
 let last = performance.now();
 (function loop() {

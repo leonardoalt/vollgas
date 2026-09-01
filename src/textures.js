@@ -20,9 +20,19 @@ export const COL = {
 const DIN = '"Roboto Condensed","Arial Narrow",Helvetica,Arial,sans-serif';
 const _cache = new Map();
 
-function canvas(w, h) {
+/**
+ * `readable` marks a canvas we are going to call getImageData() on — the
+ * height fields and the alpha-cut tufts. Without willReadFrequently the
+ * browser keeps the canvas on the GPU and every read forces a full readback:
+ * measured here, the first getImageData on a fresh 512² canvas cost 2.3 s
+ * against 7 ms for the second. Requesting the context once with the hint is
+ * enough; a later getContext('2d') returns this same context and ignores its
+ * own attributes.
+ */
+function canvas(w, h, readable = false) {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
+  if (readable) c.getContext('2d', { willReadFrequently: true });
   return c;
 }
 
@@ -36,6 +46,58 @@ function finish(c, { repeat = null, srgb = true, aniso = 8 } = {}) {
   t.anisotropy = aniso;
   t.needsUpdate = true;
   return t;
+}
+
+/**
+ * Vertical mirror of a canvas.
+ *
+ * three.js uploads canvases with flipY, so texture V = 0 samples the *last*
+ * row of the canvas. That is invisible on a tiling surface, but an atlas whose
+ * bands mean something — the rail's beam-then-post layout, the noise wall's
+ * coping-to-foot — has to be mirrored once on the way out, or V addresses the
+ * opposite end of the image from the one it was drawn at. (The rail beam then
+ * samples the post band and the posts sample the beam's bright crest, which is
+ * exactly what they did before this existed.)
+ *
+ * Mirroring the canvas rather than negating the V coordinates keeps
+ * normalFromHeight's flipY sign convention valid, since the height field goes
+ * through the same mirror.
+ */
+function flipV(src) {
+  // readable: the mirrored height fields go straight into normalFromHeight
+  const out = canvas(src.width, src.height, true);
+  const ctx = out.getContext('2d');
+  ctx.translate(0, src.height);
+  ctx.scale(1, -1);
+  ctx.drawImage(src, 0, 0);
+  return out;
+}
+
+/**
+ * Give the fully transparent texels of an alpha-cut texture a sensible colour.
+ *
+ * A canvas starts as transparent *black*, and mip generation averages RGB
+ * without regard to alpha — so a tuft of grass drawn on bare canvas gets
+ * darker every mip level and a verge full of them reads as dark speckles in
+ * the mid-distance while looking fine up close. Flooding the invisible texels
+ * with the mean visible colour removes the bleed. (Only alpha == 0 needs it:
+ * canvas stores non-premultiplied RGBA, so the antialiased edge texels already
+ * carry the right colour.)
+ */
+function bleedAlpha(c, fallback = [120, 140, 70]) {
+  const ctx = c.getContext('2d');
+  const img = ctx.getImageData(0, 0, c.width, c.height);
+  const d = img.data;
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] > 200) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+  }
+  const m = n ? [r / n, g / n, b / n] : fallback;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) { d[i] = m[0]; d[i + 1] = m[1]; d[i + 2] = m[2]; }
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
 }
 
 function cached(key, build) {
@@ -323,7 +385,7 @@ export function ledTex(text, on) {
     ctx.fillRect(0, 0, W, H);
     if (on) {
       // draw the text once, then resample it into a dot matrix
-      const t = canvas(W, H), tc = t.getContext('2d');
+      const t = canvas(W, H, true), tc = t.getContext('2d');
       tc.fillStyle = '#fff'; tc.textAlign = 'center'; tc.textBaseline = 'middle';
       tc.font = `700 62px ${DIN}`;
       tc.fillText(text, W / 2, H / 2 + 2);
@@ -344,24 +406,714 @@ export function ledTex(text, on) {
 
 /* ================================================== surfaces & vegetation */
 
-export function asphaltTex(repeat = [1, 400]) {
-  return cached('asph' + repeat.join(), () => {
-    const S = 256, c = canvas(S, S), ctx = c.getContext('2d');
-    ctx.fillStyle = '#3b3d40'; ctx.fillRect(0, 0, S, S);
-    for (let i = 0; i < 9000; i++) {
-      const g = 30 + Math.random() * 55;
-      ctx.fillStyle = `rgba(${g},${g + 2},${g + 4},${0.25 + Math.random() * 0.5})`;
-      ctx.fillRect(Math.random() * S, Math.random() * S, 1.6, 1.6);
+/** Deterministic LCG, so every texture looks the same on every load. */
+function srand(seed) {
+  let a = (seed >>> 0) || 1;
+  return () => { a = (Math.imul(a, 1664525) + 1013904223) >>> 0; return a / 4294967296; };
+}
+
+/**
+ * Turn a greyscale height canvas into a tangent-space normal map.
+ *
+ * three.js uploads canvases with `flipY`, so +V runs *up* the canvas and the
+ * V gradient is the negated row gradient — which is why ny takes +dy while
+ * nx takes −dx. Get that backwards and every bump lights from the wrong side,
+ * which on asphalt is invisible but on a bolt head or a panel joint is not.
+ */
+function normalFromHeight(hc, strength = 2.2) {
+  const S = hc.width, H = hc.height;
+  const src = hc.getContext('2d').getImageData(0, 0, S, H).data;
+  const out = canvas(S, H), octx = out.getContext('2d');
+  const img = octx.createImageData(S, H);
+  const at = (x, y) => src[((((y % H) + H) % H) * S + (((x % S) + S) % S)) * 4];
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < S; x++) {
+      const dx = ((at(x + 1, y) - at(x - 1, y)) / 255) * strength;
+      const dy = ((at(x, y + 1) - at(x, y - 1)) / 255) * strength;
+      const nx = -dx, ny = dy;
+      const l = Math.sqrt(nx * nx + ny * ny + 1);
+      const o = (y * S + x) * 4;
+      img.data[o] = (nx / l * 0.5 + 0.5) * 255;
+      img.data[o + 1] = (ny / l * 0.5 + 0.5) * 255;
+      img.data[o + 2] = (1 / l * 0.5 + 0.5) * 255;
+      img.data[o + 3] = 255;
     }
-    // faint longitudinal tyre polishing in the wheel tracks
-    const grad = ctx.createLinearGradient(0, 0, S, 0);
-    grad.addColorStop(0.00, 'rgba(0,0,0,0)');
-    grad.addColorStop(0.28, 'rgba(20,20,22,.07)');
-    grad.addColorStop(0.5, 'rgba(0,0,0,0)');
-    grad.addColorStop(0.74, 'rgba(20,20,22,.07)');
-    grad.addColorStop(1.00, 'rgba(0,0,0,0)');
-    ctx.fillStyle = grad; ctx.fillRect(0, 0, S, S);
-    return finish(c, { repeat });
+  }
+  octx.putImageData(img, 0, 0);
+  return out;
+}
+
+/** Greyscale copy of a canvas remapped into [lo,hi] — for roughness maps. */
+function levels(src, lo, hi) {
+  const S = src.width, H = src.height;
+  const d = src.getContext('2d').getImageData(0, 0, S, H);
+  const p = d.data;
+  for (let i = 0; i < p.length; i += 4) {
+    const g = (lo + (p[i] / 255) * (hi - lo)) * 255;
+    p[i] = p[i + 1] = p[i + 2] = g; p[i + 3] = 255;
+  }
+  const out = canvas(S, H);
+  out.getContext('2d').putImageData(d, 0, 0);
+  return out;
+}
+
+/** Draw `fn` nine times so anything touching an edge wraps into the tile. */
+function tiled(S, fn) {
+  for (const ox of [-S, 0, S]) for (const oy of [-S, 0, S]) fn(ox, oy);
+}
+
+/* ------------------------------------------------------------------ asphalt
+   The close-range road is three aligned-but-differently-scaled maps:
+
+   · `asphaltTex`         colour, one tile per ~3.9 m — tone, segregation,
+                          bitumen streaks, oil. Too coarse to resolve a
+                          chipping, and it does not try to.
+   · `asphaltNormalTex`   one tile per ~1.3 m — the actual 8–14 mm chippings.
+                          This is what stops the surface going to mush at 2 m.
+   · `asphaltRoughTex`    same tile as the normal map, so chipping tops read
+                          slightly polished and the mastic between them matt.
+
+   Nothing lateral lives in these maps: the carriageway UV repeats 2.7× across
+   its width, so wheel tracks drawn into a tile would come out 2.7 times over.
+   Wheel tracks, repairs and the dusty hard shoulder are vertex colours and
+   separate strips in world.js instead. */
+
+/** Aggregate height field: chippings bedded in mastic. Tiles seamlessly. */
+function asphaltHeight(S, seed) {
+  const c = canvas(S, S, true), ctx = c.getContext('2d');
+  const r = srand(seed);
+  ctx.fillStyle = '#4c4c4c'; ctx.fillRect(0, 0, S, S);
+  for (let i = 0; i < 24000; i++) {                 // mastic grain
+    const g = 60 + r() * 30;
+    ctx.fillStyle = `rgb(${g},${g},${g})`;
+    ctx.fillRect(r() * S, r() * S, 1.6, 1.6);
+  }
+  for (let i = 0; i < 2300; i++) {                  // chippings
+    const x = r() * S, y = r() * S;
+    const rad = 2.4 + r() ** 1.8 * 6.2;
+    const top = 150 + r() * 100;
+    const n = 6 + Math.floor(r() * 3);
+    const pts = [];
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2 + r() * 0.35;
+      const rr = rad * (0.66 + r() * 0.52);
+      pts.push([Math.cos(a) * rr, Math.sin(a) * rr]);
+    }
+    tiled(S, (ox, oy) => {
+      const cx = x + ox, cy = y + oy;
+      if (cx < -rad || cx > S + rad || cy < -rad || cy > S + rad) return;
+      const g = ctx.createRadialGradient(cx - rad * 0.34, cy - rad * 0.34, 0, cx, cy, rad * 1.05);
+      g.addColorStop(0, `rgb(${top},${top},${top})`);
+      g.addColorStop(0.7, `rgb(${top - 40},${top - 40},${top - 40})`);
+      g.addColorStop(1, 'rgb(52,52,52)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      pts.forEach(([px, py], k) => (k ? ctx.lineTo(cx + px, cy + py) : ctx.moveTo(cx + px, cy + py)));
+      ctx.closePath(); ctx.fill();
+    });
+  }
+  return c;
+}
+const _asphH = () => cached('asphH', () => asphaltHeight(512, 8813));
+
+export function asphaltTex(repeat = [1, 1]) {
+  return cached('asph' + repeat.join(), () => {
+    const S = 512, c = canvas(S, S), ctx = c.getContext('2d');
+    const r = srand(4471);
+    ctx.fillStyle = '#3b3d40'; ctx.fillRect(0, 0, S, S);
+    // broad tonal blotches — separate paving runs, binder-rich patches
+    for (let i = 0; i < 110; i++) {
+      const x = r() * S, y = r() * S, rad = 34 + r() * 120, t = (r() - 0.5) * 22;
+      tiled(S, (ox, oy) => {
+        const cx = x + ox, cy = y + oy;
+        if (cx < -rad || cx > S + rad || cy < -rad || cy > S + rad) return;
+        const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad);
+        g.addColorStop(0, `rgba(${Math.round(60 + t)},${Math.round(62 + t)},${Math.round(66 + t)},.34)`);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(cx, cy, rad, 0, 7); ctx.fill();
+      });
+    }
+    // chipping speckle — a hint of the aggregate the normal map really carries
+    for (let i = 0; i < 17000; i++) {
+      const g = 44 + r() ** 1.6 * 74;
+      ctx.fillStyle = `rgba(${g},${g + 2},${g + 4},${0.3 + r() * 0.5})`;
+      ctx.fillRect(r() * S, r() * S, 1.4 + r() * 1.8, 1.4 + r() * 1.8);
+    }
+    // bitumen bleed: darker longitudinal streaks left by the paver screed
+    for (let i = 0; i < 40; i++) {
+      const x = r() * S, w = 2 + r() * 9;
+      ctx.fillStyle = `rgba(24,25,27,${0.05 + r() * 0.11})`;
+      ctx.fillRect(x, -4, w, S + 8);
+      if (x + w > S) ctx.fillRect(x - S, -4, w, S + 8);
+    }
+    // the odd oil drop
+    for (let i = 0; i < 7; i++) {
+      const x = r() * S, y = r() * S, rad = 5 + r() * 13;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, rad);
+      g.addColorStop(0, 'rgba(14,14,16,.5)');
+      g.addColorStop(1, 'rgba(14,14,16,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, rad, 0, 7); ctx.fill();
+    }
+    return finish(c, { repeat, aniso: 16 });
+  });
+}
+
+/** Chippings, at ~3× the colour map's frequency. This is the close-range win. */
+export function asphaltNormalTex(repeat = [3, 3]) {
+  return cached('asphN' + repeat.join(), () =>
+    finish(normalFromHeight(_asphH(), 2.6), { repeat, srgb: false, aniso: 16 }));
+}
+
+/** Chipping tops polished, mastic matt — free specular variation. */
+export function asphaltRoughTex(repeat = [3, 3]) {
+  return cached('asphR' + repeat.join(), () =>
+    finish(levels(_asphH(), 1.0, 0.74), { repeat, srgb: false, aniso: 8 }));
+}
+
+/* ---------------------------------------------------------- lane markings
+   Real Fahrbahnmarkierung is a 3 mm extruded thermoplastic band full of glass
+   beads: slightly raised with a bevelled edge, chipped where the ploughs have
+   been, grey with rubber down the middle of a wheel track. U runs across the
+   band (so the worn edges land on the actual edges), V along the road. */
+function markHeight(S) {
+  const c = canvas(S, S, true), ctx = c.getContext('2d');
+  const r = srand(60613);
+  // raised band with a bevel in the outer 7 % of the width
+  const g = ctx.createLinearGradient(0, 0, S, 0);
+  g.addColorStop(0.00, '#000'); g.addColorStop(0.07, '#c8c8c8');
+  g.addColorStop(0.93, '#c8c8c8'); g.addColorStop(1.00, '#000');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, S, S);
+  // glass-bead grain
+  for (let i = 0; i < 24000; i++) {
+    const v = 150 + r() * 105;
+    ctx.fillStyle = `rgba(${v},${v},${v},.55)`;
+    ctx.fillRect(0.07 * S + r() * S * 0.86, r() * S, 1.5, 1.5);
+  }
+  // chips knocked out of the edges
+  for (let i = 0; i < 90; i++) {
+    const side = r() < 0.5, w = 3 + r() * 16, h = 4 + r() * 26;
+    const x = side ? 0.07 * S - w * 0.4 : S * 0.93 - w * 0.6;
+    ctx.fillStyle = 'rgba(0,0,0,.85)';
+    ctx.beginPath(); ctx.ellipse(x, r() * S, w, h, 0, 0, 7); ctx.fill();
+  }
+  // transverse hairline cracks
+  for (let i = 0; i < 14; i++) {
+    ctx.strokeStyle = 'rgba(30,30,30,.75)'; ctx.lineWidth = 1 + r() * 1.6;
+    const y = r() * S;
+    ctx.beginPath(); ctx.moveTo(0.07 * S, y);
+    ctx.lineTo(S * 0.93, y + (r() - 0.5) * 10); ctx.stroke();
+  }
+  return c;
+}
+const _markH = () => cached('markH', () => markHeight(512));
+
+export function markingTex() {
+  return cached('markT', () => {
+    const S = 512, c = canvas(S, S, true), ctx = c.getContext('2d');
+    const r = srand(9021);
+    ctx.fillStyle = '#3b3d40'; ctx.fillRect(0, 0, S, S);   // asphalt showing at the edges
+    ctx.fillStyle = '#eeece3';
+    ctx.fillRect(S * 0.055, 0, S * 0.89, S);
+    // grubby, unevenly worn paint
+    for (let i = 0; i < 15000; i++) {
+      const v = 196 + r() * 58;
+      ctx.fillStyle = `rgba(${v},${v},${v - 4},${0.25 + r() * 0.4})`;
+      ctx.fillRect(S * 0.055 + r() * S * 0.89, r() * S, 1.6, 1.6);
+    }
+    // rubber scuffed off the tyres, and road grime settling at the edges
+    for (let i = 0; i < 34; i++) {
+      ctx.fillStyle = `rgba(96,96,92,${0.06 + r() * 0.16})`;
+      const w = 6 + r() * 40;
+      ctx.fillRect(S * 0.055 + r() * (S * 0.89 - w), r() * S, w, 3 + r() * 30);
+    }
+    for (const x of [S * 0.055, S * 0.945]) {
+      const g = ctx.createLinearGradient(x - S * 0.05, 0, x + S * 0.05, 0);
+      g.addColorStop(0, 'rgba(70,72,74,.55)'); g.addColorStop(1, 'rgba(70,72,74,0)');
+      ctx.fillStyle = g; ctx.fillRect(x - S * 0.05, 0, S * 0.1, S);
+    }
+    // the chips and cracks from the height field, so both maps agree
+    const h = _markH().getContext('2d').getImageData(0, 0, S, S).data;
+    const img = ctx.getImageData(0, 0, S, S);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const k = h[i] / 255;
+      if (k < 0.4) {                            // a chip: asphalt shows through
+        const t = 1 - k / 0.4;
+        img.data[i] += (59 - img.data[i]) * t * 0.9;
+        img.data[i + 1] += (61 - img.data[i + 1]) * t * 0.9;
+        img.data[i + 2] += (64 - img.data[i + 2]) * t * 0.9;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    return finish(c, { repeat: [1, 1], aniso: 16 });
+  });
+}
+export function markingNormalTex() {
+  return cached('markN', () => finish(normalFromHeight(_markH(), 3.4), { repeat: [1, 1], srgb: false, aniso: 16 }));
+}
+export function markingRoughTex() {
+  return cached('markR', () => finish(levels(_markH(), 0.95, 0.42), { repeat: [1, 1], srgb: false, aniso: 8 }));
+}
+
+/* -------------------------------------------------------- Stahlschutzplanke
+   Profil A W-beam: 311 mm deep section, 83 mm out of the post plane, three
+   corrugations. Points are [depth toward the road, height about the beam
+   centre], listed top to bottom; a tenth edge closes the section flat along
+   the post plane. Geometry (world.js) and texture (below) are both laid out
+   from this one list, so the bolt drawn in the texture lands exactly in the
+   central valley of the pressing. */
+export const W_BEAM = [
+  [0.000, 0.1555], [0.048, 0.1330], [0.083, 0.0760], [0.083, 0.0420],
+  [0.028, 0.0000], [0.083, -0.0420], [0.083, -0.0760], [0.048, -0.1330],
+  [0.000, -0.1555],
+];
+/** The atlas: beam profile in V 0..0.72, post in V 0.78..1. */
+export const BEAM_V_MAX = 0.72;
+export const POST_V = [0.78, 1.0];
+/** V of every profile vertex; the last entry closes the back plate. */
+export const BEAM_V = (() => {
+  const seg = [];
+  let total = 0;
+  for (let i = 0; i < W_BEAM.length; i++) {
+    const a = W_BEAM[i], b = W_BEAM[(i + 1) % W_BEAM.length];
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    seg.push(l); total += l;
+  }
+  const v = [0];
+  for (let i = 0; i < seg.length; i++) v.push(v[i] + (seg[i] / total) * BEAM_V_MAX);
+  return v;
+})();
+
+/** Height field for the rail atlas: bolt heads, spangle, post ribs. */
+function railHeight(W, H) {
+  const c = canvas(W, H, true), ctx = c.getContext('2d');
+  const r = srand(31771);
+  ctx.fillStyle = '#8a8a8a'; ctx.fillRect(0, 0, W, H);
+  const vy = (v) => v * H;
+  // hot-dip spangle: big soft crystalline facets
+  for (let i = 0; i < 340; i++) {
+    const x = r() * W, y = r() * H, rad = 5 + r() * 26, g = 118 + r() * 60;
+    tiled(W, (ox) => {
+      ctx.fillStyle = `rgba(${g},${g},${g},.30)`;
+      ctx.beginPath();
+      for (let k = 0; k < 5; k++) {
+        const a = (k / 5) * 6.283 + r() * 0.4, rr = rad * (0.6 + r() * 0.6);
+        const px = x + ox + Math.cos(a) * rr, py = y + Math.sin(a) * rr;
+        k ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+      }
+      ctx.closePath(); ctx.fill();
+    });
+  }
+  // bolt heads in the central valley, at each end of the tile (= each post)
+  for (const bx of [0, W]) {
+    const by = vy((BEAM_V[4] + BEAM_V[5]) / 2);
+    const rad = H * 0.030;
+    const g = ctx.createRadialGradient(bx - rad * 0.3, by - rad * 0.3, 0, bx, by, rad);
+    g.addColorStop(0, '#ffffff'); g.addColorStop(0.68, '#d0d0d0'); g.addColorStop(1, '#3a3a3a');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(bx, by, rad, 0, 7); ctx.fill();
+    ctx.fillStyle = '#6d6d6d';
+    ctx.beginPath(); ctx.arc(bx, by, rad * 1.5, 0, 7); ctx.fill();   // washer
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(bx, by, rad, 0, 7); ctx.fill();
+  }
+  // the overlap of one beam panel onto the next, at the post line
+  for (const bx of [0, W]) {
+    ctx.fillStyle = 'rgba(200,200,200,.45)';
+    ctx.fillRect(bx - W * 0.012, vy(0), W * 0.024, vy(BEAM_V_MAX));
+  }
+  // fine along-road scratches
+  for (let i = 0; i < 260; i++) {
+    ctx.strokeStyle = `rgba(${r() < 0.5 ? 60 : 190},${r() < 0.5 ? 60 : 190},190,.2)`;
+    ctx.lineWidth = 1;
+    const y = r() * vy(BEAM_V_MAX), x = r() * W, l = 8 + r() * 90;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + l, y + (r() - 0.5) * 2); ctx.stroke();
+  }
+  // post band: vertical ribs of a Sigma post
+  ctx.fillStyle = '#8a8a8a';
+  ctx.fillRect(0, vy(BEAM_V_MAX), W, H - vy(BEAM_V_MAX));
+  for (const [x0, x1, g] of [[0.30, 0.36, 190], [0.64, 0.70, 190], [0.46, 0.54, 60]]) {
+    ctx.fillStyle = `rgb(${g},${g},${g})`;
+    ctx.fillRect(x0 * W, vy(POST_V[0]), (x1 - x0) * W, H - vy(POST_V[0]));
+  }
+  return c;
+}
+const _railH = () => cached('railH', () => flipV(railHeight(512, 512)));
+
+export function railTex() {
+  return cached('railT', () => {
+    const W = 512, H = 512, c = canvas(W, H), ctx = c.getContext('2d');
+    const r = srand(5519);
+    const vy = (v) => v * H;
+    ctx.fillStyle = '#b2b8bc'; ctx.fillRect(0, 0, W, H);
+    // spangle mottling of hot-dip galvanising
+    for (let i = 0; i < 420; i++) {
+      const x = r() * W, y = r() * H, rad = 6 + r() * 30;
+      const g = 168 + r() * 46, b = g + 6;
+      tiled(W, (ox) => {
+        ctx.fillStyle = `rgba(${g},${g + 2},${b},${0.1 + r() * 0.22})`;
+        ctx.beginPath(); ctx.arc(x + ox, y, rad, 0, 7); ctx.fill();
+      });
+    }
+    for (let i = 0; i < 9000; i++) {
+      const g = 150 + r() * 80;
+      ctx.fillStyle = `rgba(${g},${g + 2},${g + 6},.22)`;
+      ctx.fillRect(r() * W, r() * H, 2, 2);
+    }
+    /* Ambient occlusion of the pressing: the two crests catch the sky, the
+       valley and the return lips sit in shade. Baked, because a 20 cm deep
+       section never gets a shadow map of its own. */
+    for (const [v0, v1, a] of [[BEAM_V[0], BEAM_V[1], -0.14], [BEAM_V[3], BEAM_V[5], -0.20],
+                               [BEAM_V[7], BEAM_V[8], -0.16], [BEAM_V[8], BEAM_V[9], -0.10]]) {
+      ctx.fillStyle = `rgba(40,44,48,${-a})`;
+      ctx.fillRect(0, vy(v0), W, vy(v1) - vy(v0));
+    }
+    // grime thrown up off the road: worst along the bottom of the pressing
+    const grime = ctx.createLinearGradient(0, vy(BEAM_V[6]), 0, vy(BEAM_V[9]));
+    grime.addColorStop(0, 'rgba(74,66,54,0)');
+    grime.addColorStop(0.55, 'rgba(74,66,54,.34)');
+    grime.addColorStop(1, 'rgba(58,52,44,.5)');
+    ctx.fillStyle = grime; ctx.fillRect(0, vy(BEAM_V[6]), W, vy(BEAM_V[9]) - vy(BEAM_V[6]));
+    for (let i = 0; i < 900; i++) {                    // mud splatter
+      const v = BEAM_V[5] + r() ** 0.6 * (BEAM_V[9] - BEAM_V[5]);
+      ctx.fillStyle = `rgba(${58 + r() * 30},${50 + r() * 26},${40 + r() * 22},${0.2 + r() * 0.5})`;
+      ctx.beginPath(); ctx.arc(r() * W, vy(v), 0.8 + r() * 2.6, 0, 7); ctx.fill();
+    }
+    // rust weeping from the bolt, and the bolt itself
+    for (const bx of [0, W]) {
+      const by = vy((BEAM_V[4] + BEAM_V[5]) / 2);
+      const rad = H * 0.030;
+      ctx.fillStyle = 'rgba(126,84,48,.30)';
+      ctx.beginPath(); ctx.ellipse(bx, by + rad * 2.6, rad * 1.5, rad * 3.4, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#9aa0a4';
+      ctx.beginPath(); ctx.arc(bx, by, rad * 1.5, 0, 7); ctx.fill();
+      const g = ctx.createRadialGradient(bx - rad * 0.4, by - rad * 0.4, 0, bx, by, rad);
+      g.addColorStop(0, '#e2e6e8'); g.addColorStop(1, '#7d8388');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(bx, by, rad, 0, 7); ctx.fill();
+      ctx.strokeStyle = 'rgba(50,54,58,.8)'; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(bx, by, rad * 0.55, 0, 7); ctx.stroke();
+      ctx.fillStyle = 'rgba(150,156,160,.9)';           // panel overlap edge
+      ctx.fillRect(bx - W * 0.010, vy(0), W * 0.020, vy(BEAM_V_MAX));
+      ctx.fillStyle = 'rgba(60,64,68,.35)';
+      ctx.fillRect(bx + W * 0.010, vy(0), W * 0.006, vy(BEAM_V_MAX));
+    }
+    // the post band, dirtier and darker toward its foot
+    ctx.fillStyle = '#9ca2a6';
+    ctx.fillRect(0, vy(BEAM_V_MAX), W, H - vy(BEAM_V_MAX));
+    for (let i = 0; i < 3500; i++) {
+      const g = 130 + r() * 80;
+      ctx.fillStyle = `rgba(${g},${g + 2},${g + 5},.3)`;
+      ctx.fillRect(r() * W, vy(BEAM_V_MAX) + r() * (H - vy(BEAM_V_MAX)), 2, 2);
+    }
+    const pg = ctx.createLinearGradient(0, vy(POST_V[0]), 0, H);
+    pg.addColorStop(0, 'rgba(70,64,52,.10)');
+    pg.addColorStop(0.6, 'rgba(66,60,48,.34)');
+    pg.addColorStop(1, 'rgba(44,40,32,.72)');
+    ctx.fillStyle = pg; ctx.fillRect(0, vy(POST_V[0]), W, H - vy(POST_V[0]));
+    for (const [x0, x1, a] of [[0.0, 0.30, 0.22], [0.36, 0.46, 0.16], [0.54, 0.64, 0.16], [0.70, 1.0, 0.22]]) {
+      ctx.fillStyle = `rgba(48,52,56,${a})`;
+      ctx.fillRect(x0 * W, vy(POST_V[0]), (x1 - x0) * W, H - vy(POST_V[0]));
+    }
+    return finish(flipV(c), { repeat: [1, 1], aniso: 16 });
+  });
+}
+export function railNormalTex() {
+  return cached('railN', () => finish(normalFromHeight(_railH(), 2.4), { repeat: [1, 1], srgb: false, aniso: 16 }));
+}
+
+/* --------------------------------------------------------- grass and verge
+   The terrain is vertex-coloured per biome, so its map has to be a neutral
+   *modulation* around 1.0 — anything with colour in it fights the palette. */
+function grassHeight(S) {
+  const c = canvas(S, S, true), ctx = c.getContext('2d');
+  const r = srand(77213);
+  ctx.fillStyle = '#7a7a7a'; ctx.fillRect(0, 0, S, S);
+  for (let i = 0; i < 5200; i++) {              // blade clumps
+    const x = r() * S, y = r() * S, len = 5 + r() * 15, a = r() * 6.283;
+    const g = 100 + r() * 130;
+    tiled(S, (ox, oy) => {
+      ctx.strokeStyle = `rgba(${g},${g},${g},.6)`;
+      ctx.lineWidth = 1 + r() * 1.8;
+      ctx.beginPath();
+      ctx.moveTo(x + ox, y + oy);
+      ctx.lineTo(x + ox + Math.cos(a) * len, y + oy + Math.sin(a) * len * 0.6);
+      ctx.stroke();
+    });
+  }
+  for (let i = 0; i < 260; i++) {               // tussocks
+    const x = r() * S, y = r() * S, rad = 4 + r() * 16;
+    tiled(S, (ox, oy) => {
+      const g = ctx.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, rad);
+      g.addColorStop(0, 'rgba(210,210,210,.5)');
+      g.addColorStop(1, 'rgba(210,210,210,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(x + ox, y + oy, rad, 0, 7); ctx.fill();
+    });
+  }
+  return c;
+}
+const _grassH = () => cached('grassH', () => grassHeight(512));
+
+/** Neutral grass modulation: multiplies the biome vertex colour. */
+export function grassTex(repeat = [1, 1]) {
+  return cached('grassT' + repeat.join(), () => {
+    const S = 512, c = canvas(S, S), ctx = c.getContext('2d');
+    const r = srand(1201);
+    ctx.fillStyle = '#f0f0f0'; ctx.fillRect(0, 0, S, S);
+    for (let i = 0; i < 240; i++) {             // patchiness
+      const x = r() * S, y = r() * S, rad = 18 + r() * 74;
+      const v = r() < 0.5 ? 200 : 255;
+      tiled(S, (ox, oy) => {
+        const g = ctx.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, rad);
+        g.addColorStop(0, `rgba(${v},${v},${v - 6},.3)`);
+        g.addColorStop(1, `rgba(${v},${v},${v - 6},0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(x + ox, y + oy, rad, 0, 7); ctx.fill();
+      });
+    }
+    for (let i = 0; i < 9000; i++) {            // blade speckle
+      const v = r() < 0.42 ? 176 + r() * 40 : 244 + r() * 11;
+      ctx.fillStyle = `rgba(${v},${v + 3},${v - 6},${0.3 + r() * 0.45})`;
+      const len = 2 + r() * 5;
+      ctx.fillRect(r() * S, r() * S, 1.5, len);
+    }
+    for (let i = 0; i < 40; i++) {              // bare earth
+      const x = r() * S, y = r() * S, rad = 3 + r() * 11;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, rad);
+      g.addColorStop(0, 'rgba(196,178,150,.55)');
+      g.addColorStop(1, 'rgba(196,178,150,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, rad, 0, 7); ctx.fill();
+    }
+    return finish(c, { repeat, aniso: 8 });
+  });
+}
+export function grassNormalTex(repeat = [1, 1]) {
+  return cached('grassN' + repeat.join(), () =>
+    finish(normalFromHeight(_grassH(), 1.5), { repeat, srgb: false, aniso: 8 }));
+}
+
+/** Alpha-cut grass tuft for the cross-billboards along the verge. */
+/**
+ * A clump of blades, alpha-cut, for the verge billboards.
+ *
+ * The palette matters more than the drawing here. The terrain's verge is an
+ * olive around rgb(120,141,56) once the biome colour and the mown-verge
+ * brightening are applied; a saturated grass green (low red) reads as a row of
+ * little shrubs sitting *on* the verge rather than as part of it. So these
+ * blades are khaki-olive, with a scatter of dead straw ones, and the tuft is
+ * drawn wide and low rather than tall and spiky.
+ */
+export function tuftTex() {
+  return cached('tuft', () => {
+    const W = 256, H = 128, c = canvas(W, H, true), ctx = c.getContext('2d');
+    const r = srand(4242);
+    ctx.clearRect(0, 0, W, H);
+    for (let i = 0; i < 132; i++) {
+      const x0 = W * 0.5 + (r() - 0.5) * W * 0.94;
+      const h = H * (0.26 + r() ** 1.5 * 0.70);
+      const lean = (r() - 0.5) * W * 0.22;
+      const wid = 1.5 + r() * 3.0;
+      const dry = r() < 0.10;
+      // olive-green, or straw for the dead blades left by the mower
+      const g = dry ? 158 + r() * 34 : 124 + r() * 48;
+      const rd = dry ? 166 + r() * 34 : 90 + r() * 42;
+      const bl = dry ? 98 + r() * 30 : 52 + r() * 28;
+      /* Each blade runs dark at the root and lightens to the tip. A flat blade
+         colour makes the whole tuft one value lighter than the verge, so every
+         tuft pops as a separate sprite; grading it means only the tips catch
+         the light and the base merges into the ground it stands on. */
+      const grad = ctx.createLinearGradient(0, H, 0, H - h);
+      grad.addColorStop(0, `rgb(${(rd * 0.52) | 0},${(g * 0.58) | 0},${(bl * 0.56) | 0})`);
+      grad.addColorStop(0.45, `rgb(${(rd * 0.80) | 0},${(g * 0.84) | 0},${(bl * 0.82) | 0})`);
+      grad.addColorStop(1, `rgb(${rd | 0},${g | 0},${bl | 0})`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(x0 - wid, H);
+      ctx.quadraticCurveTo(x0 - wid * 0.4 + lean * 0.5, H - h * 0.6, x0 + lean, H - h);
+      ctx.quadraticCurveTo(x0 + wid * 0.5 + lean * 0.5, H - h * 0.6, x0 + wid, H);
+      ctx.closePath(); ctx.fill();
+    }
+    /* A little darker at the very base, where a tuft is thatch rather than
+       blades. Keep this weak: the billboards are wider than they are tall, so
+       from a low camera the base is most of what you see, and a heavy gradient
+       here turns the whole verge into dark smudges. */
+    const g = ctx.createLinearGradient(0, H * 0.72, 0, H);
+    g.addColorStop(0, 'rgba(52,56,34,0)'); g.addColorStop(1, 'rgba(52,56,34,.2)');
+    ctx.fillStyle = g; ctx.fillRect(0, H * 0.72, W, H * 0.28);
+    return finish(bleedAlpha(c), { aniso: 4 });
+  });
+}
+
+/* ------------------------------------------------------ concrete & walls */
+
+/** Board-marked in-situ concrete: parapets, piers, Baustelle barriers. */
+export function concreteTex(repeat = [1, 1]) {
+  return cached('conc' + repeat.join(), () => {
+    const S = 256, c = canvas(S, S), ctx = c.getContext('2d');
+    const r = srand(3307);
+    ctx.fillStyle = '#bcb9b1'; ctx.fillRect(0, 0, S, S);
+    for (let i = 0; i < 9000; i++) {
+      const v = 168 + r() * 46;
+      ctx.fillStyle = `rgba(${v},${v - 2},${v - 8},.3)`;
+      ctx.fillRect(r() * S, r() * S, 2, 2);
+    }
+    for (let i = 0; i < 80; i++) {                 // blotchy curing
+      const x = r() * S, y = r() * S, rad = 10 + r() * 50, v = r() < 0.5 ? 150 : 210;
+      tiled(S, (ox, oy) => {
+        const g = ctx.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, rad);
+        g.addColorStop(0, `rgba(${v},${v - 2},${v - 8},.22)`);
+        g.addColorStop(1, `rgba(${v},${v},${v},0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(x + ox, y + oy, rad, 0, 7); ctx.fill();
+      });
+    }
+    for (let y = 0; y < S; y += S / 4) {           // formwork board joints
+      ctx.fillStyle = 'rgba(126,122,114,.5)'; ctx.fillRect(0, y, S, 1.6);
+      ctx.fillStyle = 'rgba(226,224,218,.35)'; ctx.fillRect(0, y + 1.6, S, 1.2);
+    }
+    for (let i = 0; i < 6; i++) {                  // tie-rod plugs
+      ctx.fillStyle = 'rgba(140,136,128,.6)';
+      ctx.beginPath(); ctx.arc(r() * S, r() * S, 2.5 + r() * 2, 0, 7); ctx.fill();
+    }
+    for (let i = 0; i < 22; i++) {                 // rain streaks
+      ctx.fillStyle = `rgba(122,120,112,${0.05 + r() * 0.1})`;
+      ctx.fillRect(r() * S, 0, 1 + r() * 5, S);
+    }
+    return finish(c, { repeat, aniso: 8 });
+  });
+}
+export function concreteNormalTex(repeat = [1, 1]) {
+  return cached('concN' + repeat.join(), () => {
+    const S = 256, hc = canvas(S, S, true), ctx = hc.getContext('2d');
+    const r = srand(3307);
+    ctx.fillStyle = '#808080'; ctx.fillRect(0, 0, S, S);
+    for (let i = 0; i < 14000; i++) {
+      const v = 108 + r() * 40;
+      ctx.fillStyle = `rgb(${v},${v},${v})`;
+      ctx.fillRect(r() * S, r() * S, 2, 2);
+    }
+    for (let y = 0; y < S; y += S / 4) {
+      ctx.fillStyle = '#4a4a4a'; ctx.fillRect(0, y, S, 1.8);
+      ctx.fillStyle = '#c0c0c0'; ctx.fillRect(0, y + 1.8, S, 1.4);
+    }
+    return finish(normalFromHeight(hc, 1.6), { repeat, srgb: false, aniso: 8 });
+  });
+}
+
+/**
+ * Lärmschutzwand. Precast concrete panels stacked between steel posts:
+ * V = 0 is the coping at the top, V = 1 the grubby foot, U one 4 m bay.
+ * The old wall reused `facadeTex`, which meant the noise barriers along the
+ * Stuttgart basin had rows of lit office windows in them.
+ */
+function noiseWallHeight(W, H) {
+  const c = canvas(W, H, true), ctx = c.getContext('2d');
+  const r = srand(8123);
+  ctx.fillStyle = '#8c8c8c'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#c4c4c4'; ctx.fillRect(0, 0, W, H * 0.055);          // coping
+  ctx.fillStyle = '#3c3c3c'; ctx.fillRect(0, H * 0.055, W, H * 0.016);
+  for (let i = 1; i < 6; i++) {                                          // panel joints
+    const y = H * 0.07 + (i / 6) * H * 0.93;
+    ctx.fillStyle = '#3a3a3a'; ctx.fillRect(0, y, W, H * 0.012);
+    ctx.fillStyle = '#aaaaaa'; ctx.fillRect(0, y + H * 0.012, W, H * 0.008);
+  }
+  for (let i = 0; i < 16000; i++) {                                      // aggregate
+    const v = 116 + r() * 38;
+    ctx.fillStyle = `rgb(${v},${v},${v})`;
+    ctx.fillRect(r() * W, r() * H, 2, 2);
+  }
+  return c;
+}
+const _wallH = () => cached('wallH', () => flipV(noiseWallHeight(256, 512)));
+
+export function noiseWallTex() {
+  return cached('nwall', () => {
+    const W = 256, H = 512, c = canvas(W, H), ctx = c.getContext('2d');
+    const r = srand(2266);
+    ctx.fillStyle = '#a9a7a0'; ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 12000; i++) {
+      const v = 150 + r() * 46;
+      ctx.fillStyle = `rgba(${v},${v - 2},${v - 8},.32)`;
+      ctx.fillRect(r() * W, r() * H, 2, 2);
+    }
+    // panels alternate very slightly in tone, as precast units do
+    for (let i = 0; i < 6; i++) {
+      const y0 = H * 0.07 + (i / 6) * H * 0.93, y1 = H * 0.07 + ((i + 1) / 6) * H * 0.93;
+      ctx.fillStyle = `rgba(${r() < 0.5 ? 255 : 120},${r() < 0.5 ? 255 : 120},120,${0.03 + r() * 0.05})`;
+      ctx.fillRect(0, y0, W, y1 - y0);
+      ctx.fillStyle = 'rgba(96,94,88,.55)'; ctx.fillRect(0, y0, W, 3);
+      ctx.fillStyle = 'rgba(232,230,224,.3)'; ctx.fillRect(0, y0 + 3, W, 2);
+    }
+    ctx.fillStyle = '#c2bfb7'; ctx.fillRect(0, 0, W, H * 0.055);          // coping
+    ctx.fillStyle = 'rgba(70,68,62,.6)'; ctx.fillRect(0, H * 0.055, W, 5);
+    // weathering: streaks off the coping, algae and spray at the foot
+    for (let i = 0; i < 60; i++) {
+      const x = r() * W, w = 1 + r() * 7;
+      const g = ctx.createLinearGradient(0, H * 0.06, 0, H * (0.3 + r() * 0.6));
+      g.addColorStop(0, `rgba(96,94,86,${0.12 + r() * 0.2})`);
+      g.addColorStop(1, 'rgba(96,94,86,0)');
+      ctx.fillStyle = g; ctx.fillRect(x, H * 0.06, w, H);
+    }
+    const foot = ctx.createLinearGradient(0, H * 0.72, 0, H);
+    foot.addColorStop(0, 'rgba(74,72,58,0)');
+    foot.addColorStop(1, 'rgba(60,60,46,.5)');
+    ctx.fillStyle = foot; ctx.fillRect(0, H * 0.72, W, H * 0.28);
+    for (let i = 0; i < 700; i++) {
+      const y = H * (0.78 + r() ** 0.5 * 0.22);
+      ctx.fillStyle = `rgba(${64 + r() * 26},${58 + r() * 24},${44 + r() * 20},${0.2 + r() * 0.4})`;
+      ctx.beginPath(); ctx.arc(r() * W, y, 0.8 + r() * 2, 0, 7); ctx.fill();
+    }
+    return finish(flipV(c), { repeat: [1, 1], aniso: 16 });
+  });
+}
+export function noiseWallNormalTex() {
+  return cached('nwallN', () => finish(normalFromHeight(_wallH(), 2.6), { repeat: [1, 1], srgb: false, aniso: 16 }));
+}
+
+/**
+ * Engelbergtunnel lining. U runs right across the arch (0 and 1 are the two
+ * wall bases at road level), V one 9 m ring along the bore — so the grubby
+ * plinth, the painted band and the ring joints can all be baked in place.
+ */
+export function tunnelLiningTex() {
+  return cached('tunlin', () => {
+    const W = 1024, H = 256, c = canvas(W, H), ctx = c.getContext('2d');
+    const r = srand(6631);
+    ctx.fillStyle = '#b4b1a9'; ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 22000; i++) {
+      const v = 156 + r() * 48;
+      ctx.fillStyle = `rgba(${v},${v - 2},${v - 8},.28)`;
+      ctx.fillRect(r() * W, r() * H, 2, 2);
+    }
+    // the crown is painted light; the walls carry a washable panel band
+    const band = ctx.createLinearGradient(0, 0, W, 0);
+    band.addColorStop(0.00, 'rgba(120,116,108,.55)');
+    band.addColorStop(0.09, 'rgba(226,224,216,.35)');
+    band.addColorStop(0.30, 'rgba(238,236,228,.30)');
+    band.addColorStop(0.70, 'rgba(238,236,228,.30)');
+    band.addColorStop(0.91, 'rgba(226,224,216,.35)');
+    band.addColorStop(1.00, 'rgba(120,116,108,.55)');
+    ctx.fillStyle = band; ctx.fillRect(0, 0, W, H);
+    // soot and spray on the wall bases
+    for (const [x0, x1] of [[0, W * 0.10], [W * 0.90, W]]) {
+      const g = ctx.createLinearGradient(x0, 0, x1, 0);
+      const inner = x0 === 0 ? 1 : 0;
+      g.addColorStop(inner, 'rgba(44,42,38,.62)');
+      g.addColorStop(1 - inner, 'rgba(44,42,38,0)');
+      ctx.fillStyle = g; ctx.fillRect(x0, 0, x1 - x0, H);
+    }
+    // ring joint at the tile edge, plus a longitudinal construction joint
+    ctx.fillStyle = 'rgba(66,64,58,.65)'; ctx.fillRect(0, 0, W, 4);
+    ctx.fillStyle = 'rgba(228,226,218,.3)'; ctx.fillRect(0, 4, W, 2);
+    for (const x of [W * 0.14, W * 0.86]) {
+      ctx.fillStyle = 'rgba(72,70,64,.5)'; ctx.fillRect(x, 0, 3, H);
+    }
+    for (let i = 0; i < 40; i++) {                  // grime streaks
+      ctx.fillStyle = `rgba(84,80,72,${0.04 + r() * 0.09})`;
+      ctx.fillRect(r() * W, 0, 2 + r() * 12, H);
+    }
+    return finish(c, { repeat: [1, 1], aniso: 16 });
   });
 }
 

@@ -7,7 +7,7 @@ const browser = await puppeteer.launch({
 const page = await browser.newPage();
 await page.setViewport({ width: 1280, height: 760 });
 const errs=[]; page.on('pageerror',e=>errs.push(e.message));
-await page.goto('http://localhost:5173/', { waitUntil:'networkidle0', timeout:90000 });
+await page.goto(process.env.URL || 'http://localhost:5173/', { waitUntil:'networkidle0', timeout:90000 });
 await page.waitForFunction('window.__ready === true', { timeout:90000 });
 await page.click('#start-btn');
 // step the sim a little so we are mid-slip-road, then freeze for the shot
