@@ -20,9 +20,19 @@ export const COL = {
 const DIN = '"Roboto Condensed","Arial Narrow",Helvetica,Arial,sans-serif';
 const _cache = new Map();
 
-function canvas(w, h) {
+/**
+ * `readable` marks a canvas we are going to call getImageData() on — the
+ * height fields and the alpha-cut tufts. Without willReadFrequently the
+ * browser keeps the canvas on the GPU and every read forces a full readback:
+ * measured here, the first getImageData on a fresh 512² canvas cost 2.3 s
+ * against 7 ms for the second. Requesting the context once with the hint is
+ * enough; a later getContext('2d') returns this same context and ignores its
+ * own attributes.
+ */
+function canvas(w, h, readable = false) {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
+  if (readable) c.getContext('2d', { willReadFrequently: true });
   return c;
 }
 
@@ -54,7 +64,8 @@ function finish(c, { repeat = null, srgb = true, aniso = 8 } = {}) {
  * through the same mirror.
  */
 function flipV(src) {
-  const out = canvas(src.width, src.height);
+  // readable: the mirrored height fields go straight into normalFromHeight
+  const out = canvas(src.width, src.height, true);
   const ctx = out.getContext('2d');
   ctx.translate(0, src.height);
   ctx.scale(1, -1);
@@ -374,7 +385,7 @@ export function ledTex(text, on) {
     ctx.fillRect(0, 0, W, H);
     if (on) {
       // draw the text once, then resample it into a dot matrix
-      const t = canvas(W, H), tc = t.getContext('2d');
+      const t = canvas(W, H, true), tc = t.getContext('2d');
       tc.fillStyle = '#fff'; tc.textAlign = 'center'; tc.textBaseline = 'middle';
       tc.font = `700 62px ${DIN}`;
       tc.fillText(text, W / 2, H / 2 + 2);
@@ -469,7 +480,7 @@ function tiled(S, fn) {
 
 /** Aggregate height field: chippings bedded in mastic. Tiles seamlessly. */
 function asphaltHeight(S, seed) {
-  const c = canvas(S, S), ctx = c.getContext('2d');
+  const c = canvas(S, S, true), ctx = c.getContext('2d');
   const r = srand(seed);
   ctx.fillStyle = '#4c4c4c'; ctx.fillRect(0, 0, S, S);
   for (let i = 0; i < 24000; i++) {                 // mastic grain
@@ -566,7 +577,7 @@ export function asphaltRoughTex(repeat = [3, 3]) {
    been, grey with rubber down the middle of a wheel track. U runs across the
    band (so the worn edges land on the actual edges), V along the road. */
 function markHeight(S) {
-  const c = canvas(S, S), ctx = c.getContext('2d');
+  const c = canvas(S, S, true), ctx = c.getContext('2d');
   const r = srand(60613);
   // raised band with a bevel in the outer 7 % of the width
   const g = ctx.createLinearGradient(0, 0, S, 0);
@@ -599,7 +610,7 @@ const _markH = () => cached('markH', () => markHeight(512));
 
 export function markingTex() {
   return cached('markT', () => {
-    const S = 512, c = canvas(S, S), ctx = c.getContext('2d');
+    const S = 512, c = canvas(S, S, true), ctx = c.getContext('2d');
     const r = srand(9021);
     ctx.fillStyle = '#3b3d40'; ctx.fillRect(0, 0, S, S);   // asphalt showing at the edges
     ctx.fillStyle = '#eeece3';
@@ -675,7 +686,7 @@ export const BEAM_V = (() => {
 
 /** Height field for the rail atlas: bolt heads, spangle, post ribs. */
 function railHeight(W, H) {
-  const c = canvas(W, H), ctx = c.getContext('2d');
+  const c = canvas(W, H, true), ctx = c.getContext('2d');
   const r = srand(31771);
   ctx.fillStyle = '#8a8a8a'; ctx.fillRect(0, 0, W, H);
   const vy = (v) => v * H;
@@ -815,7 +826,7 @@ export function railNormalTex() {
    The terrain is vertex-coloured per biome, so its map has to be a neutral
    *modulation* around 1.0 — anything with colour in it fights the palette. */
 function grassHeight(S) {
-  const c = canvas(S, S), ctx = c.getContext('2d');
+  const c = canvas(S, S, true), ctx = c.getContext('2d');
   const r = srand(77213);
   ctx.fillStyle = '#7a7a7a'; ctx.fillRect(0, 0, S, S);
   for (let i = 0; i < 5200; i++) {              // blade clumps
@@ -895,7 +906,7 @@ export function grassNormalTex(repeat = [1, 1]) {
  */
 export function tuftTex() {
   return cached('tuft', () => {
-    const W = 256, H = 128, c = canvas(W, H), ctx = c.getContext('2d');
+    const W = 256, H = 128, c = canvas(W, H, true), ctx = c.getContext('2d');
     const r = srand(4242);
     ctx.clearRect(0, 0, W, H);
     for (let i = 0; i < 132; i++) {
@@ -974,7 +985,7 @@ export function concreteTex(repeat = [1, 1]) {
 }
 export function concreteNormalTex(repeat = [1, 1]) {
   return cached('concN' + repeat.join(), () => {
-    const S = 256, hc = canvas(S, S), ctx = hc.getContext('2d');
+    const S = 256, hc = canvas(S, S, true), ctx = hc.getContext('2d');
     const r = srand(3307);
     ctx.fillStyle = '#808080'; ctx.fillRect(0, 0, S, S);
     for (let i = 0; i < 14000; i++) {
@@ -997,7 +1008,7 @@ export function concreteNormalTex(repeat = [1, 1]) {
  * Stuttgart basin had rows of lit office windows in them.
  */
 function noiseWallHeight(W, H) {
-  const c = canvas(W, H), ctx = c.getContext('2d');
+  const c = canvas(W, H, true), ctx = c.getContext('2d');
   const r = srand(8123);
   ctx.fillStyle = '#8c8c8c'; ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = '#c4c4c4'; ctx.fillRect(0, 0, W, H * 0.055);          // coping
