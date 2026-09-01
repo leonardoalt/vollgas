@@ -23,7 +23,7 @@
    letting go, and both are slow enough that a car with real yaw inertia is
    never asked for a step input. */
 const WIND_ON = 3.4;
-const WIND_OFF = 5.2;
+const WIND_OFF = 6.5;
 export class Input {
   constructor() {
     this.keys = new Set();

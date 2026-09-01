@@ -35,10 +35,14 @@ import { BODY } from './suspension.js';
 export { laneAssist };
 
 const G = 9.81;
-/* Brake bias. The front does most of the work, which is why the nose dives —
-   and why the front axle is the one that runs out of cornering grip on the
-   way into a corner. */
-const BRAKE_FRONT = 0.66;
+/* Deliberately front-heavy: under hard braking the rear axle is unloaded, and
+   charging too much brake force to it makes a tiny bend become lift-off
+   oversteer. This bias keeps emergency/police stops directionally stable. */
+const BRAKE_FRONT = 0.80;
+/* A locked/sliding rear tyre does not follow the ordinary friction-circle
+   equation cleanly. Charge only this share of handbrake force against its
+   lateral budget; the full force still slows the car in stepLong(). */
+const HAND_FX_USE = 0.45;
 /* Guards for the dynamic lateral model. The heading clamp is wider than the
    kinematic one (0.7) because a car with real yaw inertia is allowed to get
    properly sideways before the model gives up on it. */
@@ -156,7 +160,7 @@ export class Vehicle {
        throttle-induced oversteer and every car understeer on the brakes. */
     const rb = this.ch ? this.ch.rearDrive : (p.awd ? 0.60 : 1);
     this.fxF = tract * (1 - rb) - fbrake * BRAKE_FRONT;
-    this.fxR = tract * rb - fbrake * (1 - BRAKE_FRONT) - fhand;
+    this.fxR = tract * rb - fbrake * (1 - BRAKE_FRONT) - fhand * HAND_FX_USE;
 
     this.aLong = F / p.mass;
     this.v = Math.max(0, this.v + this.aLong * dt);
@@ -449,27 +453,65 @@ export class Player extends Vehicle {
          brakes to a standstill first can never steer off the carriageway and
          you end up parked in a live lane. */
       this.stoppedT -= dt;
-      const target = GEO.kerbOut + GEO.shoulder * 0.5;
-      const err = target - this.u;
-      const arrived = Math.abs(err) < 0.7;
+      this.hand = 0;                 // never carry a player's handbrake into autopilot
+      if (this._pullOverU === undefined) this._pullOverU = this.u;
+      const shoulder = GEO.kerbOut + GEO.shoulder * 0.5;
+      /* A stop can be triggered above 200 km/h. Brake in the current lane
+         first; asking for the shoulder at that speed made the controller throw
+         the car into a full spin before it had any chance to slow down. */
+      const slowing = this.v > 17;
+      const target = slowing ? this._pullOverU : shoulder;
+      const err = shoulder - this.u;
+      const arrived = !slowing && Math.abs(err) < 0.7;
       this.pulledOver = arrived && this.v < 1.5;
-      const wantV = arrived ? 0 : 10;
+      const wantV = slowing ? 16 : (arrived ? 0 : 10);
       let thr = 0, brk = 0;
-      if (this.v > wantV + 0.5) brk = Math.min(1, 0.18 + (this.v - wantV) * 0.05);
+      if (this.v > wantV + 0.5) {
+        /* Leave the tyres enough lateral budget to follow the road while the
+           automated stop sheds speed. Full emergency braking plus even a tiny
+           curvature correction can saturate opposite axles and start a spin. */
+        const cap = slowing ? 0.55 : 0.78;
+        brk = Math.min(cap, 0.18 + (this.v - wantV) * 0.05);
+      }
       else if (this.v < wantV - 0.5) thr = 0.32;
       this.stepLong(dt, thr, brk, ctx);
       /* A car with yaw inertia needs a damped controller, not a bare gain on
          lateral error — that is an undamped second-order loop and it weaves. */
-      this.stepLat(dt, laneAssist(this, target, { kp: 1.3, kd: 2.5, lim: 0.7 }), ctx);
+      const assist = slowing
+        ? { kp: 0.65, kd: 2.1, lim: 0.35, ay: 3.5 }
+        : { kp: 0.70, kd: 1.9, lim: 0.45, ay: 4.5 };
+      this.stepLat(dt, laneAssist(this, target, assist), ctx);
+      if (slowing) {
+        /* The automated stop has the equivalent of ESC: damp excess yaw and
+           sideslip around the road yaw rate while braking. This operates only
+           during the non-interactive police deceleration phase. */
+        const roadR = this.v * sample(this.s).curv * this.dir;
+        const esc = Math.exp(-dt * 7);
+        this.r = roadR + (this.r - roadR) * esc;
+        this.vy *= esc;
+      }
       if (this.v < 0.3) this.v = 0;
       return;
     }
     let thr = input.throttle, brk = input.brake;
     if (this.damage >= 100) { thr = 0; brk = Math.max(brk, 0.5); }
-    this.hand = input.handbrake ? 1 : 0;
+    const handWant = input.handbrake ? 1 : 0;
+    this.hand += (handWant - this.hand) * Math.min(1, dt * (handWant ? 7 : 12));
+    if (!handWant && this.hand < 0.01) this.hand = 0;
     this.stepLong(dt, thr, brk, ctx);
     this.stepLat(dt, input.steer, ctx);
-    if (this.hand) this.slip = Math.min(1, this.slip + dt * 1.6);
+    if (this.hand) {
+      /* A keyboard offers no proportional counter-steer, so cap the locked-
+         rear-axle breakaway at a catchable drift instead of letting the tyre
+         curve wind into a 150 deg/s spin. Braking strength is unaffected. */
+      const rCap = 0.48;                         // 27.5 deg/s
+      if (this.r > rCap) this.r = rCap;
+      else if (this.r < -rCap) this.r = -rCap;
+      const vyCap = 0.08 * this.v + 0.5;
+      if (this.vy > vyCap) this.vy = vyCap;
+      else if (this.vy < -vyCap) this.vy = -vyCap;
+      this.slip = Math.min(1, this.slip + dt * 1.6);
+    }
     this.vmaxSeen = Math.max(this.vmaxSeen, this.v * KMH);
   }
 }

@@ -32,7 +32,7 @@ history on `gh-pages`; rename the repo and that base path has to change with it.
 | `W` / `↑` | throttle |
 | `S` / `↓` | brake |
 | `A` `D` / `←` `→` | steer |
-| `Space` | handbrake — a locked rear axle: ~0.5 g and 42 % less cornering grip |
+| `Space` | handbrake — ~0.5 g with a progressive, catchable rear slide |
 | `C` | cycle camera (chase / close / cockpit / bonnet / cinematic) |
 | `M` | mute · `P` pause · `R` restart |
 

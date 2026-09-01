@@ -55,13 +55,10 @@ const TUNE = {
    it costs about 4 % of cornering grip. */
 const LOAD_SENS = 0.13;
 
-/* Locked rear axle. stepLong() already provides the ~0.5 g of retardation and
-   is not touched; this is the lateral half of the handbrake, applied to the
-   rear axle only, because that is the axle that is locked. Together with the
-   rear friction circle eating the handbrake's own longitudinal force it lands
-   near the documented ~42 % loss of cornering grip — but delivered as a car
-   that pivots rather than one that uniformly slides. */
-export const HAND_LAT_CUT = 0.20;
+/* A pulled handbrake still destabilises the rear, but it must leave enough
+   lateral authority to catch the slide with a keyboard. The longitudinal
+   braking force remains unchanged; this is only the extra lateral loss. */
+export const HAND_LAT_CUT = 0.07;
 
 const X_PEAK = 0.71;
 const CURVE_C = 1.45;

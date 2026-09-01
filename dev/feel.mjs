@@ -23,6 +23,11 @@
                         the car must end up in the same place
      7  stability       release everything from a yaw disturbance and watch the
                         tyres damp it out on their own
+     8  handbrake       a mild turn with the rear brake held must remain a
+                        catchable slide rather than becoming a full spin
+     9  reversal        left-to-right key reversal time at input and rack
+    10  police stop     high-speed automatic stop must brake, merge and park
+                        without spinning or touching a barrier
 
    Usage: node dev/feel.mjs [url] [--json]
    ========================================================================== */
@@ -416,6 +421,66 @@ const out = await page.evaluate(async () => {
              psi_retained: Math.abs(end.psi) > 0.5 };
   }
 
+  /* ========================================================== 8. handbrake
+     Hold substantial lock, then pull the handbrake. Pin u so a barrier
+     cannot hide an unstable car by damping its yaw for us. */
+  function handbrake(id) {
+    const p = useCar(id);
+    const dt = 1 / 100, V = 120 / 3.6;
+    place(p, SITE.straight, LANES[0], V);
+    let maxR = 0, maxVy = 0;
+    for (let i = 0; i < 3 / dt; i++) {
+      stepWith(p, dt, null, null, {
+        pin: LANES[0], steer: 0.30, hand: i >= 0.8 / dt,
+      });
+      maxR = Math.max(maxR, Math.abs(p.r));
+      maxVy = Math.max(maxVy, Math.abs(p.vy));
+    }
+    return { car: id, peak_yaw_deg_s: +(maxR * R2D).toFixed(1),
+             peak_sideslip_ms: +maxVy.toFixed(2), exit_kmh: Math.round(p.v * 3.6) };
+  }
+
+  /* =========================================================== 9. reversal
+     Binary steering is filtered once by Input and once by Rack. Measure the
+     actual through-centre delay so making the rack weighty does not make a
+     quick correction feel ignored. */
+  function reversal() {
+    const p = useCar('turbo');
+    const dt = 1 / 100, V = 200 / 3.6;
+    place(p, SITE.straight, LANES[0], V);
+    for (let i = 0; i < 0.7 / dt; i++) stepWith(p, dt, 'a', V, { pin: LANES[0] });
+    let inputT = null, rackT = null;
+    for (let i = 0; i < 1.2 / dt; i++) {
+      stepWith(p, dt, 'd', V, { pin: LANES[0] });
+      if (inputT === null && g.input.steer >= 0) inputT = +(i * dt).toFixed(2);
+      if (rackT === null && p.rack.pos >= 0) rackT = +(i * dt).toFixed(2);
+    }
+    return { input_cross_s: inputT, rack_cross_s: rackT };
+  }
+
+  /* ========================================================= 10. police stop
+     A stop can trigger while the player is still above 200 km/h. Exercise the
+     Player's real automatic control directly and retain the worst transient. */
+  function policeStop() {
+    const p = useCar('turbo');
+    const dt = 1 / 40;
+    place(p, SITE.straight, LANES[0], 62);
+    p.stoppedT = 999;
+    let maxR = 0, maxPsi = 0, scrapes = 0, parkedAt = null;
+    for (let i = 0; i < 40 / dt; i++) {
+      p.control(dt, { throttle: 0, brake: 0, steer: 0, handbrake: false }, null);
+      p.sync(dt);
+      maxR = Math.max(maxR, Math.abs(p.r));
+      maxPsi = Math.max(maxPsi, Math.abs(p.psi));
+      scrapes += p.scrape;
+      if (parkedAt === null && p.pulledOver) parkedAt = +(i * dt).toFixed(2);
+    }
+    return { peak_yaw_deg_s: +(maxR * R2D).toFixed(1),
+             peak_heading_deg: +(maxPsi * R2D).toFixed(1),
+             scrape_frames: scrapes, damage: +p.damage.toFixed(2),
+             parked_at_s: parkedAt, final_u: +p.u.toFixed(2) };
+  }
+
   const cars = ['turbo', 'm5', 'rs6', 'amg'];
   return {
     site: { straight_s: SITE.straight, tight_s: SITE.tight,
@@ -427,6 +492,9 @@ const out = await page.evaluate(async () => {
     balance: cars.map(balance),
     timestep: cars.map(timestep),
     stability: cars.map(stability),
+    handbrake: cars.map(handbrake),
+    reversal: reversal(),
+    policeStop: policeStop(),
   };
 });
 
@@ -459,6 +527,12 @@ if (JSON_OUT) {
   }
   console.log('\n=== 7. STABILITY  (8 deg/s yaw kick, hands off) ===');
   console.table(out.stability);
+  console.log('\n=== 8. HANDBRAKE  (30 % steer, rear brake held) ===');
+  console.table(out.handbrake);
+  console.log('\n=== 9. STEERING REVERSAL  (full left to full right) ===');
+  console.table([out.reversal]);
+  console.log('\n=== 10. POLICE STOP  (223 km/h to parked shoulder) ===');
+  console.table([out.policeStop]);
 
   /* -------------------------------------------------------------- verdicts */
   const fail = [];
@@ -515,6 +589,20 @@ if (JSON_OUT) {
       `${s.car}: heading error survives (psi = ${s.psi_after_5s_deg} deg after 5 s) — ` +
       `the car does NOT magically realign with the road`);
   }
+  for (const h of out.handbrake) {
+    ok(h.peak_yaw_deg_s < 35,
+      `${h.car}: handbrake peak yaw = ${h.peak_yaw_deg_s} deg/s (want < 35: catchable, no spin)`);
+  }
+  ok(out.reversal.input_cross_s !== null && out.reversal.input_cross_s <= 0.17,
+    `steering input crosses centre in ${out.reversal.input_cross_s} s (want <= 0.17)`);
+  ok(out.reversal.rack_cross_s !== null && out.reversal.rack_cross_s <= 0.30,
+    `actual rack crosses centre in ${out.reversal.rack_cross_s} s (want <= 0.30)`);
+  ok(out.policeStop.peak_yaw_deg_s < 25,
+    `police stop peak yaw = ${out.policeStop.peak_yaw_deg_s} deg/s (want < 25: no spin)`);
+  ok(out.policeStop.scrape_frames === 0 && out.policeStop.damage === 0,
+    `police stop has ${out.policeStop.scrape_frames} scrape frames and ${out.policeStop.damage} damage (want clean)`);
+  ok(out.policeStop.parked_at_s !== null && out.policeStop.parked_at_s < 20,
+    `police stop parks in ${out.policeStop.parked_at_s} s (want < 20)`);
   console.log(`\n${fail.length ? fail.length + ' FAILURES' : 'ALL CHECKS PASS'}`);
 }
 console.log(errs.length ? '\n' + errs.slice(0, 8).join('\n') : '\nno page errors');

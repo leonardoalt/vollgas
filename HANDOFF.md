@@ -34,6 +34,13 @@ escape margins) must not drift.
 - The harness fixes described below (pinned open-loop tests and a sub-limit
   step steer) are now applied. The remaining feel-harness failures concern the
   unfinished balance/lane-controller tuning, not the corrected visual yaw.
+- Follow-up play testing found three control issues and they are now covered by
+  feel-harness cases 8–10. Handbrake yaw is capped at a catchable 27.5 deg/s
+  instead of reaching the model's 149 deg/s guard; steering crosses from full
+  left to full right in 0.28 s at the rack (was 0.34 s); and a police stop from
+  223 km/h brakes in-lane before merging, peaks at 13.9 deg/s yaw, and parks in
+  13.6 s without a scrape. `physics2-check` and all three `busted-check` endings
+  pass with no page errors.
 
 ## Diagnosis — what is actually wrong in the old code
 
@@ -132,7 +139,7 @@ Rejected alternatives:
     scaled to the lock the car actually needs, so full lock over-drives the
     front by roughly 2:1 (greed → understeer) while always leaving authority to
     catch the back end. Understeering cars automatically get more lock.
-  - `HAND_LAT_CUT = 0.20` — handbrake lateral cut, **rear axle only** (see
+  - `HAND_LAT_CUT = 0.07` — handbrake lateral cut, **rear axle only** (see
     Gotchas).
 - **`src/steering.js`** — `Rack` (second-order, hand rate limit 3.2 full-lock/s,
   self-aligning-torque feedback with pneumatic trail collapse so the steering
@@ -161,7 +168,7 @@ Rejected alternatives:
   only; kinematic keeps ±0.7.
 - `stepLong()`: **arithmetically unchanged** (verified byte-identical
   `phys.mjs`). Only addition is booking the same newtons to axles as
-  `this.fxF` / `this.fxR`, using `BRAKE_FRONT = 0.66`.
+  `this.fxF` / `this.fxR`, using `BRAKE_FRONT = 0.80`.
 - `sync()`: roll/pitch now sprung (same steady-state gain as before, so the
   look is preserved), plus small player-only heave over crests (±0.038 m).
 - Barrier scrape now also damps `r` and `vy`, not just `psi`.
@@ -291,11 +298,11 @@ node dev/drive.mjs         "http://localhost:5203/" /tmp/out 200 fast
 
 - `dev/feel.mjs` numbers are **not yet validated**; the first run was invalid.
   Do not trust any feel claim until step 1 above is done.
-- The handbrake lateral cut moved from whole-car 42 % to rear-axle 20 % *plus*
-  the rear friction circle eating the handbrake's own longitudinal force. Net
-  rear lateral loss lands near the documented 40 %, but the *character* changes
-  from a uniform slide to a pivot. Intentional (README calls it "a locked rear
-  axle") but it is a gameplay change and needs a play test.
+- The handbrake's full longitudinal retardation is preserved, but only 45 % of
+  that force is charged to the simplified rear friction circle and its extra
+  lateral cut is 7 %. A soft yaw/sideslip guard keeps sustained keyboard input
+  at a catchable drift instead of allowing a full spin; feel test 8 exercises
+  30 % steering demand on all four cars.
 - Removing the `delta` friction-circle clamp means full lock at speed now
   over-drives the front. `steerLock()` is tuned to make that ratio ~2:1, but
   that ratio is the main driveability knob and is unvalidated.

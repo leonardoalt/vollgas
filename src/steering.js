@@ -39,6 +39,10 @@ export class Rack {
     this.kAlign = o.kAlign ?? 30;
     /* a hand can only move so fast: full lock in about a third of a second */
     this.rate = o.rate ?? 3.2;
+    /* Crossing through centre is quicker than winding on more lock. This is
+       especially important for binary keys, where input shaping and the rack
+       would otherwise make a left-to-right correction feel filtered twice. */
+    this.reverseRate = o.reverseRate ?? 4.6;
   }
 
   reset() { this.pos = 0; this.vel = 0; }
@@ -56,8 +60,9 @@ export class Rack {
     const ka = this.kAlign * (loose ? 0.55 : 1);
     const acc = k * (cmd - this.pos) - c * this.vel - ka * align;
     let vel = this.vel + acc * h;
-    if (vel > this.rate) vel = this.rate;
-    else if (vel < -this.rate) vel = -this.rate;
+    const rate = cmd * this.pos < 0 ? this.reverseRate : this.rate;
+    if (vel > rate) vel = rate;
+    else if (vel < -rate) vel = -rate;
     this.vel = vel;
     this.pos += vel * h;
     if (this.pos > 1) { this.pos = 1; if (this.vel > 0) this.vel = 0; }
