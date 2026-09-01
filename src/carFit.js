@@ -479,3 +479,226 @@ export function wheelCorners(geo) {
   }
   return Object.keys(res).length ? res : null;
 }
+
+/* ==========================================================================
+   Wheels that a four-corner split cannot find.
+
+   `wheelCorners` above assumes four wheels and splits them by the sign of a
+   triangle's centroid. A lorry has eight wheel units on four axles, some of
+   them twinned, and no quadrant split reaches them.
+
+   The obvious next move — cluster wheel triangles by distance — does not work
+   and it is worth writing down why, because it cost a previous attempt at this
+   the whole job. On a lorry the tyres are about 1.39 m across and the trailer's
+   axles about 1.5 m apart, so there is no radius that separates two axles
+   without also cutting one tyre into pieces: at 0.5 m one wheel becomes three,
+   at 0.8 m two axles become one.
+
+   Distance is the wrong property. Connectivity is the right one: whatever else
+   is true of two adjacent wheels, no triangle of one shares an edge with a
+   triangle of the other. So:
+
+     1. weld vertices by position — glTF duplicates them per face, and an
+        unwelded index buffer has no connectivity in it at all;
+     2. union-find over the index buffer;
+     3. that gives ISLANDS, not wheels. A wheel is several islands: the tyre,
+        the rim, the dish, the hub cap and ten wheel nuts are all modelled as
+        separate closed shells. On the lorry, eighteen wheels come to eighty-two
+        islands.
+     4. but every island of one wheel is concentric with it, so their centroids
+        sit within a hub's width of each other while two axles are a metre and
+        a half apart. Clustering ISLAND CENTROIDS therefore has a threshold with
+        two orders of separation instead of none, and — this is the point — it
+        cannot fragment a wheel, because a wheel's islands are not spread out.
+
+   `wheelIslands` does steps 1 to 3 and `groupWheels` does step 4.            */
+
+/**
+ * Label every vertex of `geo` with the connected component it belongs to.
+ * Vertices are welded by quantised position first: an exported glTF routinely
+ * carries one vertex per face-corner, and without welding every triangle is
+ * its own island.
+ *
+ * @param tol  weld tolerance in metres. Well under a millimetre: it has to be
+ *             loose enough to catch float noise and meshopt's quantisation,
+ *             and tight enough never to bridge two surfaces that only touch.
+ */
+export function componentLabels(geo, tol = 2e-4) {
+  const pos = geo.attributes.position;
+  const n = pos.count;
+  const rep = new Int32Array(n);
+  const weld = new Map();
+  const q = 1 / tol;
+  for (let i = 0; i < n; i++) {
+    const k = `${Math.round(pos.getX(i) * q)},${Math.round(pos.getY(i) * q)},${Math.round(pos.getZ(i) * q)}`;
+    const r = weld.get(k);
+    if (r === undefined) { weld.set(k, i); rep[i] = i; } else rep[i] = r;
+  }
+  const par = Int32Array.from(rep);
+  const find = (a) => { while (par[a] !== a) { par[a] = par[par[a]]; a = par[a]; } return a; };
+  const uni = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) par[rb] = ra; };
+  const idx = geo.index;
+  const m = idx ? idx.count : n;
+  for (let t = 0; t + 2 < m; t += 3) {
+    const a = rep[idx ? idx.getX(t) : t];
+    const b = rep[idx ? idx.getX(t + 1) : t + 1];
+    const c = rep[idx ? idx.getX(t + 2) : t + 2];
+    uni(a, b); uni(a, c);
+  }
+  const label = new Int32Array(n);
+  const seen = new Map();
+  let count = 0;
+  for (let i = 0; i < n; i++) {
+    const r = find(rep[i]);
+    let l = seen.get(r);
+    if (l === undefined) { l = count++; seen.set(r, l); }
+    label[i] = l;
+  }
+  return { label, count };
+}
+
+/**
+ * The connected components of `geo`, as triangle lists with their extents.
+ * Every triangle lands in exactly one island — its three corners are welded
+ * into the same component by construction.
+ */
+export function wheelIslands(geo, tol = 2e-4) {
+  const { label, count } = componentLabels(geo, tol);
+  const idx = geo.index;
+  const pos = geo.attributes.position;
+  const n = idx ? idx.count : pos.count;
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    out.push({ tris: [], box: new THREE.Box3(), centre: new THREE.Vector3(), verts: 0 });
+  }
+  const v = new THREE.Vector3();
+  for (let t = 0; t + 2 < n; t += 3) {
+    const i0 = idx ? idx.getX(t) : t;
+    const isl = out[label[i0]];
+    isl.tris.push(t / 3);
+    for (let k = 0; k < 3; k++) {
+      const vi = idx ? idx.getX(t + k) : t + k;
+      v.set(pos.getX(vi), pos.getY(vi), pos.getZ(vi));
+      isl.box.expandByPoint(v);
+      isl.centre.add(v);
+      isl.verts++;
+    }
+  }
+  const kept = [];
+  for (const isl of out) {
+    if (!isl.tris.length) continue;
+    isl.centre.divideScalar(isl.verts);
+    kept.push(isl);
+  }
+  return kept;
+}
+
+/**
+ * Gather islands into wheel units.
+ *
+ * Left and right are split by the sign of the centroid's x — no road wheel
+ * straddles the centreline — and then each side is clustered along z by single
+ * linkage. `link` is the gap that separates two axles; the default is a
+ * fraction of the tyre diameter, which is the only length in the problem that
+ * scales with the vehicle. A twinned pair stays one unit, which is what we
+ * want: it turns as one and it is drawn as one.
+ *
+ * Anything that is not round in side elevation is dropped. Axle beams,
+ * driveshafts, landing legs and the spare lashed flat under the bed all share
+ * the wheel materials on real models, and all of them fail this test.
+ */
+export function groupWheels(islands, opts = {}) {
+  if (!islands.length) return [];
+  const dia = opts.diameter || Math.max(...islands.map(i => {
+    const s = i.box.getSize(new THREE.Vector3());
+    return Math.min(s.y, s.z);
+  }));
+  const link = opts.link ?? dia * 0.42;
+  const minSize = opts.minSize ?? dia * 0.35;
+
+  const units = [];
+  for (const side of [-1, 1]) {
+    const mine = islands.filter(i => Math.sign(i.centre.x) === side)
+      .sort((a, b) => a.centre.z - b.centre.z);
+    let cur = null;
+    for (const isl of mine) {
+      if (cur && isl.centre.z - cur.lastZ <= link) {
+        cur.islands.push(isl); cur.box.union(isl.box); cur.lastZ = isl.centre.z;
+      } else {
+        cur = { islands: [isl], box: isl.box.clone(), lastZ: isl.centre.z, side };
+        units.push(cur);
+      }
+    }
+  }
+
+  const out = [];
+  for (const u of units) {
+    const s = u.box.getSize(new THREE.Vector3());
+    const c = u.box.getCenter(new THREE.Vector3());
+    /* Round in side elevation, and standing up rather than lying down. A wheel
+       is as tall as it is long; a spare on its side is as wide as it is long. */
+    const round = Math.min(s.y, s.z) > Math.max(s.y, s.z) * 0.82;
+    if (!round || s.y < minSize || s.y < s.x * 0.9) continue;
+    out.push({
+      islands: u.islands, box: u.box, centre: c,
+      radius: (s.y + s.z) / 4, width: s.x, side: u.side,
+    });
+  }
+  out.sort((a, b) => b.centre.z - a.centre.z || a.centre.x - b.centre.x);
+  return out;
+}
+
+/**
+ * Build a geometry from a subset of another one's triangles, keeping every
+ * attribute. `tris` is a list of triangle indices, as `wheelIslands` returns.
+ */
+export function trianglesToGeometry(geo, tris) {
+  const idx = geo.index;
+  const names = Object.keys(geo.attributes);
+  const remap = new Map();
+  const order = [];
+  const out = new Uint32Array(tris.length * 3);
+  let w = 0;
+  for (const t of tris) {
+    for (let k = 0; k < 3; k++) {
+      const vi = idx ? idx.getX(t * 3 + k) : t * 3 + k;
+      let n = remap.get(vi);
+      if (n === undefined) { n = order.length; remap.set(vi, n); order.push(vi); }
+      out[w++] = n;
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  for (const name of names) {
+    const a = geo.attributes[name];
+    const k = a.itemSize;
+    const arr = new Float32Array(order.length * k);
+    for (let i = 0; i < order.length; i++) {
+      const src = order[i];
+      if (k > 0) arr[i * k] = a.getX(src);
+      if (k > 1) arr[i * k + 1] = a.getY(src);
+      if (k > 2) arr[i * k + 2] = a.getZ(src);
+      if (k > 3) arr[i * k + 3] = a.getW(src);
+    }
+    g.setAttribute(name, new THREE.BufferAttribute(arr, k));
+  }
+  g.setIndex(new THREE.BufferAttribute(out, 1));
+  return g;
+}
+
+/**
+ * The yaw from `squareYaw`, snapped to a right angle when it is within
+ * `tolDeg` of one.
+ *
+ * A minimum-area rectangle is exact but it is fitted to the whole silhouette,
+ * so an asymmetric detail — a mirror arm, an exhaust stack, a spare slung on
+ * one side — drags it a degree or two off true on a model that was in fact
+ * exported axis-aligned. A degree does not matter on a 4 m car. On a 16 m
+ * lorry it moves the steer axle 15 cm sideways relative to the tail, and the
+ * wheels come out visibly staggered.
+ */
+export function squaredYaw(geos, tolDeg = 3) {
+  const raw = squareYaw(geos);
+  const step = Math.PI / 2;
+  const snapped = Math.round(raw / step) * step;
+  return Math.abs(raw - snapped) <= tolDeg * Math.PI / 180 ? snapped : raw;
+}

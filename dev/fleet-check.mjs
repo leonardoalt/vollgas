@@ -253,8 +253,12 @@ for (const r of rows) {
 if (Object.keys(fit).length) {
   console.log('\nfitted models:');
   for (const [id, f] of Object.entries(fit)) {
+    /* The lorry is scaled on length and width, not on a wheelbase — it has
+       four axles and nothing that answers to that name. */
+    const how = f.wheelbase !== undefined
+      ? `wb=${f.wheelbase}/${f.rigWheelbase}` : `wheels=${f.wheels}`;
     console.log(`  ${id.padEnd(13)} yaw=${String(f.yaw).padStart(7)}deg nose=${f.nose > 0 ? '+Z' : '-Z'} conf=${f.noseConf} `
-      + `wb=${f.wheelbase}/${f.rigWheelbase} scale=${f.scale} tris=${f.tris}` + (f.notes.length ? `  [${f.notes.join('; ')}]` : ''));
+      + `${how} scale=${f.scale} tris=${f.tris}` + (f.notes.length ? `  [${f.notes.join('; ')}]` : ''));
   }
 }
 

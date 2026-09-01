@@ -229,6 +229,78 @@ The estate the fictional-marque catalogue could not supply.
   motorway.
 * Invented marque; no badges.
 
+### Truck — used for `truck`, the lorry
+
+The last vehicle to come off the procedural loft, and the only one that is not
+a car. A cab-over box lorry on four axles: steer, drive and a tandem rear
+bogie on twinned tyres.
+
+* Author: **ROY** — <https://sketchfab.com/roy.3dartist>
+* Source: <https://sketchfab.com/3d-models/truck-eda924f23ba04cd5b1e5160abf2320fa>
+* Mirror used: <https://huggingface.co/datasets/allenai/objaverse/resolve/main/glbs/000-086/eda924f23ba04cd5b1e5160abf2320fa.glb>
+* Licence: **CC BY 4.0**, and here checked twice over.
+
+  From the file's own `asset.extras`, which is what we ship
+  (`node dev/glb-licence.mjs src/assets/models/car-lorry.glb`):
+  > `"license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"`
+  > `"author": "ROY (https://sketchfab.com/roy.gearloft.in)"`
+  > `"source": "https://sketchfab.com/3d-models/truck-eda924f23ba04cd5b1e5160abf2320fa"`
+
+  And independently from Sketchfab's live model API, which is the licence of
+  record rather than a string an exporter wrote into a file in 2022 —
+  <https://api.sketchfab.com/v3/models/eda924f23ba04cd5b1e5160abf2320fa>:
+  > `"license": { "label": "CC Attribution", "slug": "by",`
+  > `  "fullName": "Creative Commons Attribution",`
+  > `  "requirements": "Author must be credited. Commercial use is allowed.",`
+  > `  "url": "http://creativecommons.org/licenses/by/4.0/" }`
+
+  `CC Attribution`, not `CC Attribution-ShareAlike`: commercial use allowed,
+  no copyleft, attribution required. Published 2022-08-30, inside the
+  Objaverse snapshot.
+* Required credit:
+  > This work is based on "Truck"
+  > (https://sketchfab.com/3d-models/truck-eda924f23ba04cd5b1e5160abf2320fa)
+  > by ROY (https://sketchfab.com/roy.3dartist) licensed under CC-BY-4.0
+  > (http://creativecommons.org/licenses/by/4.0/)
+
+  **The handle in the file is stale.** `asset.extras` records the author as
+  `sketchfab.com/roy.gearloft.in`, which is what the profile was called when
+  Objaverse took its snapshot; it 404s today. The same account is now at
+  `roy.3dartist` — same uid, same model, same author — so the credit above
+  points at where the author actually is, which is what the attribution is
+  for. Both handles are recorded here so the trail is complete.
+* Shipped as `src/assets/models/car-lorry.glb` (129 kB, 17.9 k triangles).
+* **What we changed:** `dev/optimise-model.sh in.glb out.glb 512 0.35 0.005`,
+  1.30 MB → 129 kB and 36.3 k → 17.9 k triangles, which reproduces the shipped
+  file byte for byte. Two thirds of the original count was in the wheels — the
+  tractor rims alone were 3 052 triangles each — and the default 0.0012 error
+  bound will not touch them, because on a 1.4 m wheel that is under two
+  millimetres. At 0.005 the rims lose a ring of wheel-nut detail nobody can
+  resolve from a car and the body is untouched. At load time `src/carModels.js`
+  squares it up, turns it to face +Z, splits the wheels out of the body,
+  scales it to the rig and tucks the steer axle 9.5 cm inboard so the tyres do
+  not stand proud of the cab. The cab material (`head_paint`) and the box
+  material (`bodycolour`) are tinted separately, which is what the traffic
+  director was already asking `buildTruck` for.
+* No badges, no marque. The title is "Truck", the author's description names
+  no manufacturer, and nothing is modelled in the middle of the grille where a
+  badge would go — see `dev/shots/after-lorry-front.png`. This is a cleaner
+  case than the estate below, where the author's own description named the car.
+* **Not an articulated lorry.** The rig is called a Sattelzug in the source and
+  the physics is a 38 t artic's, but this model is a rigid box lorry: the body
+  runs straight back from the cab with no fifth wheel and no articulation.
+  That was a deliberate trade. Every full tractor-and-semitrailer in the mirror
+  under an acceptable licence is an **American conventional** — a long-nose
+  Peterbilt/Kenworth shape with a US flatbed or reefer behind it — which is the
+  wrong vehicle for a German Autobahn in a way nobody would miss. Eight were
+  downloaded and rendered side-on before this call was made
+  (`Truck Trailer` cmitche1, `Semi Truck` Burhan / rio3dstudios / Urdons /
+  Ervinas, `Semi-Truck Lowpoly Model` Syed.Irfan, `18 Wheeler` Kyle Valadez,
+  `Semi Truck (5 Axles)` MiriamJardine — all CC BY, all conventionals). A
+  four-axle cab-over box lorry is ordinary on the A81; a long-nose American
+  tractor is not. Nothing user-facing says "Sattelzug", so the only cost is a
+  comment in `src/carFactory.js`, now corrected.
+
 ### Provenance note
 
 Both were checked for signs of being re-uploaded rips of commercial game

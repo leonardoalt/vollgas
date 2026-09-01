@@ -960,7 +960,7 @@ function sideDetail(spec, dims, bucket, stations, tier, arch) {
 }
 
 /* ---------------------------------------------------------- plate & LEDs */
-function plateMesh(text, w, h, x, y, z, ry = 0) {
+export function plateMesh(text, w, h, x, y, z, ry = 0) {
   const { tex, aspect } = plateTex(text);
   const g = new THREE.PlaneGeometry(w, w / aspect);
   const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55, metalness: 0.0 }));
@@ -1236,6 +1236,12 @@ function bakeCar(id) {
 let _modelProvider = null;
 export function setModelProvider(fn) { _modelProvider = fn; }
 
+/* The same hook for the lorry. It is separate because a lorry is not a member
+   of `CARS` — it has no spec, no player rig and no four corners — so it cannot
+   go through `buildCar`. */
+let _truckProvider = null;
+export function setTruckProvider(fn) { _truckProvider = fn; }
+
 /**
  * Build a complete car.
  * opts: { paint, plate, police:{blue:true, led:true}, marked }
@@ -1382,8 +1388,21 @@ export function finishCar(g, ctx) {
   return g;
 }
 
-/* ===================================================== Sattelzug (artic) */
+/* ============================================== the lorry (Sattelzug rig)
+
+   The physics here is an artic's — 38 t, 12 gears, 90 km/h limiter — and the
+   collision box is 15.8 m long. The procedural body below draws that literally:
+   a tractor unit and a separate semi-trailer on twenty-two wheels.
+
+   The model that carModels.js fits over the top is a rigid four-axle box lorry
+   instead, because every licensable tractor-and-semitrailer in the mirror is an
+   American conventional. CREDITS.md has the reasoning. Nothing user-facing
+   names the vehicle either way. */
 export function buildTruck(opts = {}) {
+  if (_truckProvider) {
+    const m = _truckProvider(opts);
+    if (m) return m;
+  }
   const g = new THREE.Group();
   const cabCol = opts.cab ?? 0x2f5fa8;
   const boxCol = opts.box ?? 0xe8e9e6;

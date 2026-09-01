@@ -71,6 +71,18 @@ export const ATTRIBUTIONS = [
     licence: 'CC BY 4.0',
     licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
   },
+  {
+    /* The author's handle was `roy.gearloft.in` when Objaverse snapshotted the
+       file, and that is still what `asset.extras` says; the account is at
+       `roy.3dartist` now. Credit the live profile — an attribution nobody can
+       follow is not an attribution. CREDITS.md records both. */
+    title: 'Truck',
+    author: 'ROY',
+    authorUrl: 'https://sketchfab.com/roy.3dartist',
+    source: 'https://sketchfab.com/3d-models/truck-eda924f23ba04cd5b1e5160abf2320fa',
+    licence: 'CC BY 4.0',
+    licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
+  },
 ];
 
 const CSS = 'margin:12px 0 0;padding-top:9px;'
