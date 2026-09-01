@@ -6,7 +6,6 @@ import { buildWorld } from './world.js';
 import { initMaterials, CARS, PLAYER_CARS } from './carFactory.js';
 import { roadEnv } from './carEnv.js';
 import { createPostFX } from './postfx.js';
-import { mountHero } from './carHero.js';
 import { mountCredits } from './credits.js';
 import { preloadCarModels } from './carModels.js';
 import { createPerfHud } from './perfHud.js';
@@ -119,8 +118,13 @@ export class Game {
     GLOBALS.km = STAGE_KM;
     document.documentElement.lang = lang;
     applyDom();
-    // [car visuals] CC-BY on the car models requires a visible credit
-    mountCredits($('car-detail'));
+    // Keep required model attribution available without making the selector a
+    // wall of links. The compact menu entry opens this dedicated sheet.
+    mountCredits($('credits-content'));
+    const credits = $('credits-dialog');
+    $('credits-btn').onclick = () => credits.showModal();
+    $('credits-close').onclick = () => credits.close();
+    credits.onclick = (ev) => { if (ev.target === credits) credits.close(); };
     /* The car pictures are live renders, which means a second WebGL context.
        Creating it here delayed the loading screen clearing by well over a
        second, so it is built on the first menu frame instead and the list is
@@ -128,7 +132,11 @@ export class Game {
     this.showroom = null;
     this._needShowroom = true;
     const langBtn = $('lang-btn');
-    if (langBtn) langBtn.onclick = () => { toggleLang(); mountCredits($('car-detail')); this.buildMenu(); };
+    if (langBtn) langBtn.onclick = () => {
+      toggleLang();
+      mountCredits($('credits-content'));
+      this.buildMenu();
+    };
     this.buildMenu();
     $('loading').classList.add('done');
     this.state = 'menu';
@@ -223,8 +231,10 @@ export class Game {
     list.innerHTML = '';
     PLAYER_CARS.forEach((id, i) => {
       const spec = CARS[id];
-      const card = document.createElement('div');
+      const card = document.createElement('button');
+      card.type = 'button';
       card.className = 'car-card' + (i === this.selected ? ' sel' : '');
+      card.setAttribute('aria-pressed', i === this.selected ? 'true' : 'false');
       // use a cached render if we have one; otherwise a swatch that gets
       // swapped for the render a frame or two later (see scheduleThumbs)
       const thumb = this.showroom && this.showroom.ok
@@ -241,10 +251,6 @@ export class Game {
     const id = PLAYER_CARS[this.selected];
     const spec = CARS[id];
     if (this.showroom) this.showroom.setCar(id, spec.paints[this.paintIdx % spec.paints.length].c);
-    // [car visuals] still photograph as the hero image where we have one
-    /* The live model is the default view: it is the car you actually drive,
-       and making that look right is the point. The photo is one click away. */
-    mountHero($('car-stage'), $('car-canvas'), id, this._heroPhoto === true);
     $('car-detail-name').textContent = spec.name;
     $('car-detail-sub').textContent =
       `${spec.marque} · ${t(spec.perf.awd ? 'car.awd' : 'car.rwd')} · ${t('car.gears', { n: spec.perf.gears })}`;
@@ -253,14 +259,11 @@ export class Game {
     const stats = [
       [t('stat.vmax'), p.vmax, 340, `${p.vmax} km/h`],
       [t('stat.power'), p.power, 500, hp],
-      [t('stat.kgkw'), 1 - (p.mass / p.power) / 6, 1, `${(p.mass / p.power).toFixed(1)}`],
       [t('stat.grip'), p.grip, 1.5, `${p.grip.toFixed(2)} g`],
-      [t('stat.mass'), 1 - (p.mass - 1500) / 800, 1, `${p.mass} kg`],
     ];
     $('car-stats').innerHTML = stats.map(([l, v, max, txt]) =>
       `<div class="stat"><span class="sl">${l}</span><span class="sb"><i style="width:${Math.max(4, Math.min(100, (v / max) * 100)).toFixed(0)}%"></i></span><span class="sv">${txt}</span></div>`
     ).join('');
-    $('car-blurb').textContent = (lang === 'en' && spec.blurbEn) ? spec.blurbEn : spec.blurb;
     this.scheduleThumbs();
   }
 

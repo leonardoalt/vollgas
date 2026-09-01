@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Vollgas</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -104,49 +104,45 @@
             <h1>VOLLGAS</h1>
             <p data-i18n="menu.tagline">Stuttgart &rarr; Singen</p>
           </div>
-          <div id="menu-head-actions">
-            <div id="menu-actions">
-              <button id="tutorial-btn" class="button-secondary" data-i18n="menu.tutorial">FAHRSCHULE</button>
-              <button id="start-btn" data-i18n="menu.start">RENNEN STARTEN</button>
-            </div>
-            <button id="lang-btn" type="button" title="Sprache / Language">EN</button>
-          </div>
+          <button id="lang-btn" type="button" title="Sprache / Language">EN</button>
         </header>
 
         <div id="car-select">
-          <div id="car-list"></div>
+          <div id="car-picker">
+            <div class="menu-label" data-i18n="menu.choose">FAHRZEUG WÄHLEN</div>
+            <div id="car-list"></div>
+          </div>
           <div id="car-detail">
             <div id="car-stage"><canvas id="car-canvas"></canvas></div>
-            <div id="car-detail-name">&nbsp;</div>
-            <div id="car-detail-sub">&nbsp;</div>
+            <div id="car-detail-copy">
+              <div id="car-detail-name">&nbsp;</div>
+              <div id="car-detail-sub">&nbsp;</div>
+            </div>
             <div id="car-stats"></div>
-            <p id="car-blurb">&nbsp;</p>
           </div>
         </div>
 
-        <div id="menu-foot">
-          <div id="briefing">
-            <div class="brief-col">
-              <h3 data-i18n="menu.controls">Steuerung</h3>
-              <ul>
-                <li data-i18n-html="menu.c1"></li>
-                <li data-i18n-html="menu.c2"></li>
-                <li data-i18n-html="menu.c3"></li>
-                <li data-i18n-html="menu.c4"></li>
-              </ul>
-            </div>
-            <div class="brief-col">
-              <h3 data-i18n="menu.police">Zivile Streifen</h3>
-              <ul>
-                <li data-i18n-html="menu.p1"></li>
-                <li data-i18n-html="menu.p2"></li>
-                <li data-i18n-html="menu.p3"></li>
-              </ul>
-            </div>
+        <div id="menu-launch">
+          <div id="tutorial-entry">
+            <button id="tutorial-btn" class="button-secondary" data-i18n="menu.tutorial">FAHRSCHULE</button>
+            <span data-i18n="menu.tutorial.hint">Neu hier? Die Fahrstunde erklärt Regeln und Kontrollen.</span>
           </div>
+          <button id="start-btn" data-i18n="menu.start">RENNEN STARTEN</button>
         </div>
+
+        <footer id="menu-foot">
+          <button id="credits-btn" type="button" data-i18n="menu.credits">CREDITS &amp; LIZENZEN</button>
+        </footer>
       </div>
     </div>
+
+    <dialog id="credits-dialog">
+      <div class="credits-head">
+        <h2 data-i18n="menu.credits.title">Credits &amp; Lizenzen</h2>
+        <button id="credits-close" type="button" aria-label="Schließen" data-i18n-aria="menu.credits.close">×</button>
+      </div>
+      <div id="credits-content"></div>
+    </dialog>
 
     <!-- ============================ RESULTS ============================ -->
     <div id="results" class="hidden">
