@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vollgas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <!-- Roboto Condensed stands in for DIN 1451, the typeface of German road signs -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&display=swap" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23004a99'/><text y='24' x='16' text-anchor='middle' font-family='sans-serif' font-weight='bold' font-size='18' fill='white'>81</text></svg>" />
+  <script type="module" crossorigin src="/vollgas/assets/index-BMCFjl0R.js"></script>
+  <link rel="stylesheet" crossorigin href="/vollgas/assets/index-CQCih5PI.css">
+</head>
+<body>
+  <div id="app">
+    <canvas id="scene"></canvas>
+
+    <!-- ============================ HUD ============================ -->
+    <div id="hud" class="hidden">
+      <!-- top left: route / section -->
+      <div id="hud-route">
+        <div class="sign-ab" id="hud-ab">A 81</div>
+        <div id="hud-section">
+          <div id="hud-section-name">Stuttgart-Zuffenhausen</div>
+          <div id="hud-section-sub" data-i18n="hud.dir">Richtung Singen (Bodensee)</div>
+        </div>
+      </div>
+
+      <!-- top center: race state -->
+      <div id="hud-race">
+        <div class="race-row">
+          <div class="race-cell"><span class="lbl" data-i18n="hud.time">Zeit</span><span class="val" id="hud-time">0:00.0</span></div>
+          <div class="race-cell"><span class="lbl" data-i18n="hud.best">Best</span><span class="val" id="hud-best">—</span></div>
+          <div class="race-cell"><span class="lbl" data-i18n="hud.goal">Ziel</span><span class="val" id="hud-dist">42.0 km</span></div>
+          <div class="race-cell"><span class="lbl" data-i18n="hud.vmax">V max</span><span class="val" id="hud-vmax">0</span></div>
+        </div>
+        <div id="hud-progress"><div id="hud-progress-fill"></div><div id="hud-progress-me"></div></div>
+      </div>
+
+      <!-- top right: legal status -->
+      <div id="hud-legal">
+        <div id="hud-limit" class="limit-sign limit-none"><span>ENDE</span></div>
+        <div id="hud-legal-stats">
+          <div class="legal-row"><span class="lbl" data-i18n="hud.fine">Bu&szlig;geld</span><span class="val" id="hud-fine">0 &euro;</span></div>
+          <div class="legal-row"><span class="lbl" data-i18n="hud.points">Flensburg</span><span class="val" id="hud-points">0 P</span></div>
+          <div class="legal-row"><span class="lbl" data-i18n="hud.damage">Schaden</span><span class="val" id="hud-damage">0 %</span></div>
+        </div>
+      </div>
+
+      <!-- bottom right: speedo -->
+      <div id="hud-cluster">
+        <canvas id="tacho" width="440" height="440"></canvas>
+      </div>
+
+      <!-- bottom left: mirror / rear radar -->
+      <div id="hud-rear">
+        <canvas id="radar" width="240" height="240"></canvas>
+      </div>
+
+      <!-- center: alerts -->
+      <div id="hud-alerts"></div>
+
+      <!-- provida measurement -->
+      <div id="hud-provida" class="hidden">
+        <div class="pv-head"><span class="pv-dot"></span> P R O V I D A &nbsp;&middot;&nbsp; <span data-i18n="pv.head">MESSUNG L&Auml;UFT</span></div>
+        <div class="pv-bar"><div class="pv-fill"></div></div>
+        <div class="pv-sub" data-i18n="pv.close">Zivilfahrzeug hinter dir</div>
+      </div>
+
+      <div id="countdown" class="hidden"><span></span></div>
+
+      <div id="busted" class="hidden"><div class="bg"></div><div class="word"><h2></h2><p></p></div></div>
+
+      <div id="flash"></div>
+      <div id="vignette"></div>
+    </div>
+
+    <!-- ========================= TUTORIAL ========================= -->
+    <div id="tutorial" class="hidden" role="dialog" aria-modal="true" aria-labelledby="tutorial-title">
+      <div id="tutorial-focus" class="hidden"></div>
+      <button id="tutorial-exit" type="button" data-i18n="tut.exit">FAHRSCHULE BEENDEN</button>
+      <div id="tutorial-card" data-placement="center">
+        <div id="tutorial-kicker">FAHRSCHULE</div>
+        <h2 id="tutorial-title"></h2>
+        <p id="tutorial-body"></p>
+        <div class="tutorial-actions">
+          <button id="tutorial-secondary" class="button-secondary hidden" type="button"></button>
+          <button id="tutorial-next" type="button"></button>
+        </div>
+        <small data-i18n="tut.keyhint">ENTER oder LEERTASTE</small>
+      </div>
+    </div>
+    <div id="tutorial-objective" class="hidden">
+      <span data-i18n="tut.objective">FAHRSCHULE</span>
+      <strong id="tutorial-objective-text"></strong>
+    </div>
+
+    <!-- ============================ MENU ============================ -->
+    <div id="menu">
+      <div class="menu-bg"></div>
+      <div class="menu-inner">
+        <header id="menu-head">
+          <div class="sign-ab big">A 81</div>
+          <div class="menu-title">
+            <h1>VOLLGAS</h1>
+            <p data-i18n="menu.tagline">Stuttgart &rarr; Singen</p>
+          </div>
+          <button id="lang-btn" type="button" title="Language / Sprache">DE</button>
+        </header>
+
+        <div id="car-select">
+          <div id="car-picker">
+            <div class="menu-label" data-i18n="menu.choose">FAHRZEUG WÄHLEN</div>
+            <div id="car-list"></div>
+          </div>
+          <div id="car-detail">
+            <div id="car-stage"><canvas id="car-canvas"></canvas></div>
+            <div id="car-detail-copy">
+              <div id="car-detail-name">&nbsp;</div>
+              <div id="car-detail-sub">&nbsp;</div>
+            </div>
+            <div id="car-stats"></div>
+          </div>
+        </div>
+
+        <div id="menu-launch">
+          <div id="tutorial-entry">
+            <button id="tutorial-btn" class="button-secondary" data-i18n="menu.tutorial">FAHRSCHULE</button>
+            <span data-i18n="menu.tutorial.hint">Neu hier? Die Fahrstunde erklärt Regeln und Kontrollen.</span>
+          </div>
+          <button id="start-btn" data-i18n="menu.start">RENNEN STARTEN</button>
+        </div>
+
+        <footer id="menu-foot">
+          <button id="credits-btn" type="button" data-i18n="menu.credits">CREDITS &amp; LIZENZEN</button>
+        </footer>
+      </div>
+    </div>
+
+    <dialog id="credits-dialog">
+      <div class="credits-head">
+        <h2 data-i18n="menu.credits.title">Credits &amp; Lizenzen</h2>
+        <button id="credits-close" type="button" aria-label="Schließen" data-i18n-aria="menu.credits.close">×</button>
+      </div>
+      <div id="credits-content"></div>
+    </dialog>
+
+    <!-- ============================ RESULTS ============================ -->
+    <div id="results" class="hidden">
+      <div class="menu-bg"></div>
+      <div id="results-inner">
+        <h2 id="results-title">ZIEL &middot; SINGEN</h2>
+        <div id="results-place">&nbsp;</div>
+        <table id="results-table"></table>
+        <div id="results-ticket"></div>
+        <button id="again-btn" data-i18n="menu.again">NOCH EINMAL</button>
+      </div>
+    </div>
+
+    <div id="loading"><div class="load-inner"><div class="sign-ab big">A 81</div><p id="load-text" data-i18n="load">Strecke wird gebaut</p></div></div>
+    <div id="pause" class="hidden"><div><span data-i18n="pause">PAUSE</span><small data-i18n="pause.hint">P zum Fortsetzen</small></div></div>
+  </div>
+</body>
+</html>
