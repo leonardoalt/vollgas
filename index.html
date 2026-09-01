@@ -74,16 +74,42 @@
       <div id="vignette"></div>
     </div>
 
+    <!-- ========================= TUTORIAL ========================= -->
+    <div id="tutorial" class="hidden" role="dialog" aria-modal="true" aria-labelledby="tutorial-title">
+      <div id="tutorial-focus" class="hidden"></div>
+      <button id="tutorial-exit" type="button" data-i18n="tut.exit">FAHRSCHULE BEENDEN</button>
+      <div id="tutorial-card" data-placement="center">
+        <div id="tutorial-kicker">FAHRSCHULE</div>
+        <h2 id="tutorial-title"></h2>
+        <p id="tutorial-body"></p>
+        <div class="tutorial-actions">
+          <button id="tutorial-secondary" class="button-secondary hidden" type="button"></button>
+          <button id="tutorial-next" type="button"></button>
+        </div>
+        <small data-i18n="tut.keyhint">ENTER oder LEERTASTE</small>
+      </div>
+    </div>
+    <div id="tutorial-objective" class="hidden">
+      <span data-i18n="tut.objective">FAHRSCHULE</span>
+      <strong id="tutorial-objective-text"></strong>
+    </div>
+
     <!-- ============================ MENU ============================ -->
     <div id="menu">
       <div class="menu-bg"></div>
       <div class="menu-inner">
         <header id="menu-head">
-          <button id="lang-btn" type="button" title="Sprache / Language">EN</button>
           <div class="sign-ab big">A 81</div>
           <div class="menu-title">
             <h1>VOLLGAS</h1>
             <p data-i18n="menu.tagline">Stuttgart &rarr; Singen</p>
+          </div>
+          <div id="menu-head-actions">
+            <div id="menu-actions">
+              <button id="tutorial-btn" class="button-secondary" data-i18n="menu.tutorial">FAHRSCHULE</button>
+              <button id="start-btn" data-i18n="menu.start">RENNEN STARTEN</button>
+            </div>
+            <button id="lang-btn" type="button" title="Sprache / Language">EN</button>
           </div>
         </header>
 
@@ -118,7 +144,6 @@
               </ul>
             </div>
           </div>
-          <button id="start-btn" data-i18n="menu.start">RENNEN STARTEN</button>
         </div>
       </div>
     </div>

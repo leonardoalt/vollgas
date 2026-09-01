@@ -566,6 +566,32 @@ export class Traffic {
     }
     return out;
   }
+
+  /** Guarantee one readable oncoming headlight warning for the lesson. */
+  stageTutorialFlasher(playerS) {
+    const t = this.opp[0];
+    if (!t) return null;
+    t.s = playerS + 150;
+    t.lane = 0;
+    t.u = -LANES[0];
+    t.v = 31;
+    t.cruise = 31;
+    t.psi = 0;
+    t.warnFlash = false; t.flashHold = 0; t.flashPhase = 0; t.flashOn = false;
+    t.sync(0);
+    return t;
+  }
+
+  /** Keep ordinary traffic from masking the lesson's parked camera van. */
+  clearTutorialCameraSightline(cameraS, playerS) {
+    for (const t of this.same) {
+      if (t.s < playerS - 25 || t.s > cameraS + 220) continue;
+      /* Recycle beyond the whole teaching area, not merely into the other
+         lane: a lorry in either lane can fill the camera spotlight. */
+      this._placeSame(t, cameraS + 260, false);
+      t.sync(0);
+    }
+  }
 }
 
 /* ============================================================= collisions */
