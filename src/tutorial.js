@@ -13,7 +13,8 @@ import { t } from './i18n.js';
 export const TUTORIAL_ROUTE = {
   startS: 13200,
   cameraS: 14920,
-  freeS: 16230,
+  providaS: 15460,
+  freeSignS: 16219,
   finishS: 16720,
 };
 
@@ -29,6 +30,9 @@ export class Tutorial {
     this.target = null;
     this._next = null;
     this._worldPoint = new THREE.Vector3();
+    this.flashArmed = false;
+    this.pendingCameraResult = null;
+    this.pendingProvidaResult = null;
 
     this.el = $('tutorial');
     this.focus = $('tutorial-focus');
@@ -129,15 +133,20 @@ export class Tutorial {
           next: () => {
             this.stage = 'await-flash';
             this.objective(t('tut.flash.objective'));
-            this.game.enf.tutorialWarningsArmed = true;
-            this.game.traffic.stageTutorialFlasher(p.s);
           },
         });
       }
       return;
     }
 
-    if (this.stage === 'approach-camera' && cam && cam.s - p.s < 135) {
+    if (this.stage === 'await-flash' && cam && !this.flashArmed && cam.s - p.s < 440) {
+      this.flashArmed = true;
+      this.game.enf.tutorialWarningsArmed = true;
+      this.game.traffic.stageTutorialFlasher(p.s);
+      return;
+    }
+
+    if (this.stage === 'approach-camera' && cam && cam.s - p.s < 82) {
       this.stage = 'camera';
       this.show({
         step: 5,
@@ -146,28 +155,69 @@ export class Tutorial {
         target: { world: cam.mesh, size: 150 },
         placement: 'bottom',
         next: () => {
-          this.stage = 'await-provida';
+          this.stage = 'await-camera-result';
           this.objective(t('tut.camera.objective'));
         },
       });
       return;
     }
 
-    if (this.stage === 'await-provida' && p.s > this.route.cameraS + 150) {
+    if (this.stage === 'camera-result-pending') {
+      this.pendingCameraResult = null;
+      this.stage = 'camera-result';
+      this.show({
+        step: 5,
+        title: t('tut.camera.caught.title'),
+        body: t('tut.camera.caught.body'),
+        target: this.alertTarget('flash'),
+        placement: 'right',
+        next: () => {
+          this.stage = 'post-camera';
+          this.objective(t('tut.provida.approach'));
+        },
+      });
+      return;
+    }
+
+    if (this.stage === 'post-camera' && p.s > this.route.providaS) {
       this.stage = 'provida-starting';
       this.game.enf.startTutorialMeasure(p);
       return;
     }
 
-    if ((this.stage === 'measure' || this.stage === 'measure-resolved') && p.s >= this.route.freeS) {
+    if (this.stage === 'provida-result-pending') {
+      const result = this.pendingProvidaResult;
+      this.pendingProvidaResult = null;
+      this.game.enf.dismissTutorialCop();
+      this.game.hud.el.provida.classList.add('hidden');
+      this.stage = 'provida-result';
+      const outcome = result.type === 'measure-abort' ? 'abort'
+        : result.type === 'measure-lost' ? 'lost'
+          : result.type === 'measure-freed' ? 'freed' : 'caught';
+      this.show({
+        step: 6,
+        title: t(`tut.provida.${outcome}.title`),
+        body: t(`tut.provida.${outcome}.body`),
+        target: this.alertTarget(outcome === 'caught' ? 'charge' : 'provida'),
+        placement: 'right',
+        next: () => {
+          this.stage = 'measure-resolved';
+          this.objective(t('tut.free.approach'), outcome !== 'caught');
+        },
+      });
+      return;
+    }
+
+    if (this.stage === 'measure-resolved' && p.s >= this.route.freeSignS - 85) {
       this.game.enf.dismissTutorialCop();
       this.stage = 'free';
+      const sign = this.game.world.regimeSignAt(this.route.freeSignS);
       this.show({
         step: 7,
         title: t('tut.free.title'),
         body: t('tut.free.body'),
-        target: { dom: '#hud-limit' },
-        placement: 'left',
+        target: sign ? { world: sign, size: 118 } : { dom: '#hud-limit' },
+        placement: 'bottom',
         next: () => {
           this.stage = 'free-drive';
           this.freeT = 0;
@@ -182,6 +232,11 @@ export class Tutorial {
       this.freeT += dt;
       if (this.freeT > 6 || p.s > this.freeStartS + 420) this.complete();
     }
+  }
+
+  alertTarget(key) {
+    const alert = this.game.hud.alerts.find(a => a.key === key);
+    return alert ? { element: alert.el } : null;
   }
 
   handleEvent(ev) {
@@ -217,39 +272,52 @@ export class Tutorial {
       return true;
     }
 
-    if (['measure-abort', 'measure-lost', 'measure-freed'].includes(ev.type)
-        && this.stage === 'measure') {
-      this.stage = 'measure-resolved';
-      const key = ev.type === 'measure-lost' ? 'tut.provida.lost'
-        : ev.type === 'measure-freed' ? 'tut.provida.freed' : 'tut.provida.safe';
-      this.objective(t(key), true);
-      return false;                         // keep the normal green HUD alert
+    if (ev.type === 'camera-pass-clean' && this.stage === 'await-camera-result') {
+      this.stage = 'post-camera';
+      this.objective(t('tut.provida.approach'));
+      return true;
     }
 
-    if ((ev.type === 'measure-done' || (ev.type === 'criminal' && ev.source === 'provida'))
-        && (this.stage === 'measure' || this.stage === 'measure-resolved')) {
-      this.game.enf.dismissTutorialCop();
-      this.stage = 'measure-resolved';
-      this.show({
-        step: 6,
-        title: t('tut.provida.caught.title'),
-        body: t('tut.provida.caught.body'),
-        placement: 'center',
-        next: () => this.objective(t('tut.free.approach')),
-      });
+    if (ev.type === 'flash' && this.stage === 'await-camera-result') {
+      this.pendingCameraResult = ev;
+      this.stage = 'camera-result-pending';
+      return false;                         // create the normal flash alert first
+    }
+
+    if (['measure-abort', 'measure-lost', 'measure-freed', 'measure-done'].includes(ev.type)
+        && this.stage === 'measure') {
+      this.pendingProvidaResult = ev;
+      this.stage = 'provida-result-pending';
+      return false;                         // retain and spotlight the normal HUD result
+    }
+
+    if (ev.type === 'criminal' && ev.source === 'provida' && this.stage === 'measure') {
+      this.addCriminalAlert(ev);
+      this.pendingProvidaResult = ev;
+      this.stage = 'provida-result-pending';
       return true;                          // never end a lesson with an arrest
     }
 
     /* Going absurdly fast past the tutorial camera can cross the game's
        criminal-offence threshold. Show the flash, but do not terminate the
        lesson before the player has seen the remaining mechanics. */
-    if (ev.type === 'criminal' && ev.source === 'blitzer') {
+    if (ev.type === 'criminal' && ev.source === 'blitzer'
+        && this.stage === 'await-camera-result') {
       this.game.hud.blitzFlash();
       this.game.audio.flash();
+      this.addCriminalAlert(ev, 'flash');
+      this.pendingCameraResult = ev;
+      this.stage = 'camera-result-pending';
       return true;
     }
 
     return false;
+  }
+
+  addCriminalAlert(ev, key = 'charge') {
+    this.game.hud.alert(t('a.racing'), t('a.racing.sub', {
+      speed: Math.round(ev.speed), limit: ev.limit,
+    }), 'bad', 9, key);
   }
 
   complete() {
@@ -270,8 +338,8 @@ export class Tutorial {
     }
 
     let x, y, w, h;
-    if (this.target.dom) {
-      const node = document.querySelector(this.target.dom);
+    if (this.target.dom || this.target.element) {
+      const node = this.target.element || document.querySelector(this.target.dom);
       if (!node) return;
       const r = node.getBoundingClientRect();
       x = r.left - 12; y = r.top - 12; w = r.width + 24; h = r.height + 24;

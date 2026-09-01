@@ -37,17 +37,17 @@ await expectStage('limit', '03-limit');
 await next();
 await page.evaluate(() => {
   const g = window.__game;
-  g.player.s = 13360;
+  g.player.s = g.enf.tutorialCamera.s - 430;
   g._camPos.set(0, 0, 0); g._camLook.set(0, 0, 0);
-  g.traffic.stageTutorialFlasher(g.player.s);
   g.enf._warnT = 0;
+  g.step(0.05);
   g.step(0.05);
 });
 await expectStage('flash', '04-headlights');
 await next();
 await page.evaluate(() => {
   const g = window.__game;
-  g.player.s = g.enf.tutorialCamera.s - 130;
+  g.player.s = g.enf.tutorialCamera.s - 78;
   g._camPos.set(0, 0, 0); g._camLook.set(0, 0, 0);
   g.step(0.05);
 });
@@ -55,9 +55,19 @@ await expectStage('camera', '05-camera');
 await next();
 await page.evaluate(() => {
   const g = window.__game;
-  g.player.s = g.enf.tutorialCamera.s + 160;
+  g.player.s = g.enf.tutorialCamera.s + 40;
+  g.player.v = 35;
   g._camPos.set(0, 0, 0); g._camLook.set(0, 0, 0);
-  g.tutorial.update(0.1);
+  g.step(0.05);
+});
+await expectStage('camera-result', '05b-flashed');
+assert.equal(await page.evaluate(() => window.__game.tutorial.target?.element?.isConnected), true);
+await next();
+await page.evaluate(() => {
+  const g = window.__game;
+  g.player.s = g.tutorial.route.providaS + 5;
+  g._camPos.set(0, 0, 0); g._camLook.set(0, 0, 0);
+  g.step(0.05);
   g.step(0.05);
 });
 await expectStage('measure', '06-provida');
@@ -65,16 +75,24 @@ await next();
 await page.evaluate(() => {
   const g = window.__game;
   g.enf.dismissTutorialCop();
-  g.tutorial.handleEvent({ type: 'measure-abort' });
+  g.enf.events.push({ type: 'measure-abort' });
+  g.handleEvents();
+  g.tutorial.update(0.05);
 });
-await expectStage('measure-resolved', '06b-resolved');
+await expectStage('provida-result', '06b-resolved');
+assert.equal(await page.evaluate(() => window.__game.tutorial.target?.element?.isConnected), true);
+await next();
 await page.evaluate(() => {
   const g = window.__game;
-  g.player.s = 16235;
+  g.player.s = g.tutorial.route.freeSignS - 82;
   g._camPos.set(0, 0, 0); g._camLook.set(0, 0, 0);
   g.step(0.05);
 });
 await expectStage('free', '07-unrestricted');
+assert.equal(await page.evaluate(() => {
+  const g = window.__game;
+  return g.tutorial.route.freeSignS > g.player.s && g.hud._lastLimit === '80|false';
+}), true);
 await next();
 await page.evaluate(() => {
   const g = window.__game;

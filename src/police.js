@@ -506,8 +506,12 @@ export class Enforcement {
     for (const cam of this.cameras) {
       const rel = cam.s - player.s;
       if (rel < -60) { cam.warned = false; continue; }
-      // far enough out to be useful: 550 m is ~8 s at 250 km/h
-      if (rel > 550 && rel < 1700 && !cam.warned) { threat = { kind: 'blitzer', rel, obj: cam }; break; }
+      /* The lesson stages its own oncoming car, so it can teach the connection
+         with a shorter, more memorable gap. In a race the wider window still
+         gives naturally occurring traffic time to provide a warning. */
+      const near = cam === this.tutorialCamera ? 350 : 550;
+      const far = cam === this.tutorialCamera ? 500 : 1700;
+      if (rel > near && rel < far && !cam.warned) { threat = { kind: 'blitzer', rel, obj: cam }; break; }
     }
     if (!threat) return;
 
