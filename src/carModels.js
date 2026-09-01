@@ -1017,10 +1017,20 @@ function fitTruck(gltfScene, envMap) {
     const up = upgradeMaterial(mat,
       kind === 'cab' || kind === 'box' ? 'paint' : kind === 'glass' ? 'glass' : 'other', envMap);
     /* vehicles.js drives these two by emissiveIntensity, so they have to have
-       an emissive colour to drive. The model's own lens geometry keeps its own
-       shape and its own maps; only the emission is ours. */
+       an emissive colour to drive. The model's own lens geometry keeps its
+       shape; only the emission is ours.
+
+       The base colour matters as much as the emissive. ROY's rear cluster is
+       white with a red emissive, which in daylight reads as a pink panel
+       rather than a lamp — the white diffuse swamps the glow. A tail light is
+       a dark red lens that lights up, so the lens goes dark and the emissive
+       does the talking, exactly as `MAT.tail` does for the cars. */
     if (kind === 'lamp') { up.emissive = new THREE.Color(0xada18c); up.emissiveIntensity = 0.4; }
-    if (kind === 'tail') { up.emissive = new THREE.Color(0xff2410); up.emissiveIntensity = 0.75; }
+    if (kind === 'tail') {
+      up.color.setHex(0x59060a);
+      up.emissive = new THREE.Color(0xff2410);
+      up.emissiveIntensity = 0.75;
+    }
     const geo = geos.length === 1 ? geos[0] : mergeGeometries(geos);
     if (!geo) continue;
     const mesh = new THREE.Mesh(geo, up);

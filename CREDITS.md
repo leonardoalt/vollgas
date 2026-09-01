@@ -269,9 +269,14 @@ bogie on twinned tyres.
   `roy.3dartist` — same uid, same model, same author — so the credit above
   points at where the author actually is, which is what the attribution is
   for. Both handles are recorded here so the trail is complete.
-* Shipped as `src/assets/models/car-lorry.glb` (164 kB, 36.3 k triangles).
-* **What we changed:** `dev/optimise-model.sh` with no simplification pass,
-  1.30 MB → 164 kB, triangle count untouched. At load time `src/carModels.js`
+* Shipped as `src/assets/models/car-lorry.glb` (129 kB, 17.9 k triangles).
+* **What we changed:** `dev/optimise-model.sh in.glb out.glb 512 0.35 0.005`,
+  1.30 MB → 129 kB and 36.3 k → 17.9 k triangles, which reproduces the shipped
+  file byte for byte. Two thirds of the original count was in the wheels — the
+  tractor rims alone were 3 052 triangles each — and the default 0.0012 error
+  bound will not touch them, because on a 1.4 m wheel that is under two
+  millimetres. At 0.005 the rims lose a ring of wheel-nut detail nobody can
+  resolve from a car and the body is untouched. At load time `src/carModels.js`
   squares it up, turns it to face +Z, splits the wheels out of the body,
   scales it to the rig and tucks the steer axle 9.5 cm inboard so the tyres do
   not stand proud of the cab. The cab material (`head_paint`) and the box
