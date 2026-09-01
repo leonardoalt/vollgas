@@ -27,10 +27,14 @@ const gains = () => page.evaluate(() => {
 const driving = await gains();
 
 await page.keyboard.press('p');
+// SwiftShader can render below 1 fps on a busy CI host. Wait for the game to
+// consume the key instead of sampling before the next simulation frame.
+await page.waitForFunction('window.__game.paused === true', { timeout: 30000, polling: 100 });
 await new Promise(r => setTimeout(r, 1200));
 const paused = await gains();
 
 await page.keyboard.press('p');           // unpause
+await page.waitForFunction('window.__game.paused === false', { timeout: 30000, polling: 100 });
 await page.keyboard.down('w');
 await new Promise(r => setTimeout(r, 3000));
 const resumed = await gains();

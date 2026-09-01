@@ -407,8 +407,22 @@ const curves = await page.evaluate(async () => {
   const slid = Object.assign({}, base, { speed: 60, slip: 0.9 });
   for (let i = 0; i < 26; i++) { a.update(1 / 60, slid); await new Promise(r => setTimeout(r, 16)); }
   const scrub = { tyre: +a.tyre.g.gain.value.toFixed(4), squeal: +a.squealG.gain.value.toFixed(4) };
+
+  // Control-event wiring: a real upshift must reach bark(), and lifting after
+  // building boost must reach blowOff(). Wrap the actual methods so the sound
+  // still fires while we count the calls.
+  let barks = 0, blowOffs = 0;
+  const bark = a.eng.bark.bind(a.eng), blowOff = a.eng.blowOff.bind(a.eng);
+  a.eng.bark = (...args) => { barks++; return bark(...args); };
+  a.eng.blowOff = (...args) => { blowOffs++; return blowOff(...args); };
+  a._gear = 2;
+  a.update(1 / 60, Object.assign({}, base, { gear: 3, throttle: 1 }));
+  a.eng.boost = 0.8; a.eng._lastTh = 1;
+  a.update(1 / 60, Object.assign({}, base, { gear: 3, throttle: 0 }));
+  a.eng.bark = bark; a.eng.blowOff = blowOff;
+
   clearInterval(window.__poll);
-  return { res, scrub };
+  return { res, scrub, events: { barks, blowOffs } };
 });
 
 /* ------------------------------------------------------------------- report */
@@ -542,6 +556,11 @@ check('no clipping at 320 km/h', C[320].peak < 1.0, `peak ${C[320].peak}`);
 say(`     scrub at 60 km/h, slip 0.9: ${JSON.stringify(curves.scrub)}`);
 check('a slide makes scrub noise and a squeal',
   curves.scrub.tyre > 0.05 && curves.scrub.squeal > 0.01, JSON.stringify(curves.scrub));
+say(`     control events: ${JSON.stringify(curves.events)}`);
+check('an upshift fires the exhaust bark', curves.events.barks === 1,
+  `${curves.events.barks} bark call(s)`);
+check('lifting off boost fires the dump valve', curves.events.blowOffs === 1,
+  `${curves.events.blowOffs} blow-off call(s)`);
 
 say('');
 say(errs.length ? errs.slice(0, 10).join('\n') : 'no page errors');

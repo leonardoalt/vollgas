@@ -998,8 +998,9 @@ thing the owner actually asked for. Zero art assets is also the project's ethos.
   exhaust pressure, DC-removed).
 - `src/engineWorkletSource.js` — the worklet DSP **as an exported string**. It
   must be a string: the game ships as one HTML file via
-  `dev/build-artifact.mjs`, so the worklet becomes a `Blob` URL at runtime and
-  there is no second file to fetch. Contains `Pipe` (waveguide),
+  `dev/build-artifact.mjs`, so the worklet becomes a `Blob` URL at runtime (or
+  a `data:` URL when a `file://` page refuses the blob) and there is no second
+  file to fetch. Contains `Pipe` (waveguide),
   `Pulse` (two cascaded one-poles → `t·exp(-t/tau)`, band-limited by
   construction), `Reso` (intake plenum), and the processor.
 - `src/engineSound.js` — `PlayerEngine` (worklet host + post chain + turbo +
@@ -1039,39 +1040,29 @@ surface in a file another agent owns.
 - Live master bus does not clip (0.32 open road, 0.44 in the tunnel); tunnel is
   louder than open road; reverb send is 0 outside and rises inside.
 
-## Half-done / where I left off
+## Completion status
 
-`dev/sound-check.mjs` section **F (live mix)** has three failing/blocked checks,
-all one root cause: **under swiftshader the game renders at ~2 fps and the main
-loop clamps `dt` to 50 ms, so simulated time runs ~10× slower than wall time.**
-17 s of held throttle produced only 70 km/h in first gear. I replaced the
-stopwatch with `page.waitForFunction('… v*3.6 > 235')` and it **timed out at
-180 s** — the car may never get there while ploughing into traffic.
+The follow-up pass rebased this work onto `c832622` and completed the remaining
+items:
 
-**Fix I was about to make:** stop requiring a speed from the physics. Instead add
-a deterministic *mix-curve probe*: set `game.state = 'probe'` so the loop stops
-calling `step()`, then call `audio.update(1/60, {…synthetic…})` in a loop for
-~300 ms per point at 60/140/200/250/320 km/h, letting the `setTargetAtTime`
-ramps settle, and read back `wind.g.gain.value`, `road.g.gain.value`,
-`engine.gain.value`. Assert wind grows superlinearly and overtakes road roar
-above ~200 km/h. Keep the live drive but only to prove it runs and does not
-clip (drop the 235 km/h requirement, e.g. wait for `v*3.6 > 120` with a
-generous timeout, or just drive 20 s and report whatever speed it reached).
-
-Also still to do:
-1. Re-run `node dev/audio-check.mjs` and `node dev/prod-check.mjs` — **neither
-   has been run since the rewrite.** `audio-check` reads `a.engine`,
-   `a.wind.g`, `a.tyre.g`, `a.sirenG` by name; those names were deliberately
-   preserved, but it is unverified.
-2. `npm run build` — **not yet run.**
-3. `traffic voice engine lookup`: `audio.js` `_traffic()` calls
-   `engineFor(tgt.spec && tgt.spec.id ? … : tgt.kind)`. **`spec.id` does not
-   exist** on `CARS` entries (only `mesh.userData.id` has an id, and only for
-   the truck). So every car voice currently falls back to `tgt.kind`
-   (`'traffic'`/`'truck'`/`'police'`) → always `four`. Either use
-   `tgt.mesh.userData.id`, or map `kind` → engine explicitly. Harmless today
-   (it just means less variety), but it is not doing what it claims.
-4. Verify the blow-off/upshift bark actually fires in-game (only unit-reasoned).
+- The deterministic 60/125/200/250/320 km/h mix probe passes. Road roar is the
+  low-speed floor; exterior airflow rises superlinearly and overtakes it at
+  200 km/h. Peak at 320 km/h was 0.74.
+- `file://` builds now try the normal blob module first and fall back to a
+  base64 `data:application/javascript` module. The built single-file artifact
+  was opened directly in Chromium and reported `mode=worklet`,
+  `transport=data`, and a running AudioContext.
+- Traffic voices map the vehicle's actual `CARS` spec object back to its engine
+  instead of incorrectly treating `kind` as a car id.
+- The harness observes one bark from an upshift and one dump-valve event from a
+  boosted throttle lift.
+- Replacing a player engine while its worklet is loading can no longer attach a
+  stale second voice after the replacement.
+- `audio-check` passes pause, resume, and results silence. Its pause waits now
+  follow game state so SwiftShader cannot sample before the next frame.
+- `npm run build` passes. `prod-check` passes against the built `/vollgas/`
+  layout (1,642,108 tris / 1,883 calls in the sampled frame, no console errors).
+- The full `sound-check` ends with `ALL CHECKS PASS` and no page errors.
 
 ## Gotchas found the hard way
 

@@ -294,8 +294,10 @@ export class Audio {
     // ---- wind. Aeroacoustic noise climbs far faster than linearly; ~v^2.7 is
     // the usual fit for cabin wind noise, and it is why 250 is loud.
     const vr = v / 72;
-    const hiss = Math.min(0.42, 0.34 * Math.pow(Math.max(0, vr), 2.7));
-    this.wind.g.gain.setTargetAtTime(hiss * (inside ? 1.15 : 0.8), now, k);
+    const hiss = Math.min(0.42, 0.36 * Math.pow(Math.max(0, vr), 2.7));
+    // An exterior camera sits directly in the airflow; the cabin damps the
+    // hiss even though it still carries the lower body-pressure buffet.
+    this.wind.g.gain.setTargetAtTime(hiss * (inside ? 0.82 : 1.15), now, k);
     this.wind.f.frequency.setTargetAtTime(560 + v * 13, now, k);
     this.windLow.g.gain.setTargetAtTime(Math.min(0.16, 0.13 * vr * vr), now, k);
     this.windLow.f.frequency.setTargetAtTime(120 + v * 1.6, now, k);

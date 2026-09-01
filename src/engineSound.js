@@ -35,12 +35,45 @@ const C_AIR = 343;
 export const IMAG_SIGN = 1;
 
 let workletUrl = null;
+let workletDataUrl = null;
 /** Blob URL for the worklet module. Built once; survives the single-file build. */
 export function engineWorkletUrl() {
   if (!workletUrl) {
-    workletUrl = URL.createObjectURL(new Blob([ENGINE_WORKLET_SOURCE], { type: 'text/javascript' }));
+    workletUrl = URL.createObjectURL(new Blob([ENGINE_WORKLET_SOURCE], { type: 'application/javascript' }));
   }
   return workletUrl;
+}
+
+/**
+ * A data URL fallback for browsers that reject blob: modules on file:// pages.
+ * TextEncoder keeps this correct if the worklet source ever gains non-ASCII
+ * comments, and chunking avoids overflowing Function.apply on a large module.
+ */
+export function engineWorkletDataUrl() {
+  if (!workletDataUrl) {
+    const bytes = new TextEncoder().encode(ENGINE_WORKLET_SOURCE);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    }
+    workletDataUrl = `data:application/javascript;base64,${btoa(binary)}`;
+  }
+  return workletDataUrl;
+}
+
+/** Load the module into one AudioContext, preferring the smaller blob URL. */
+export async function loadEngineWorklet(ctx) {
+  try {
+    await ctx.audioWorklet.addModule(engineWorkletUrl());
+    return 'blob';
+  } catch (blobError) {
+    try {
+      await ctx.audioWorklet.addModule(engineWorkletDataUrl());
+      return 'data';
+    } catch (dataError) {
+      throw new AggregateError([blobError, dataError], 'Could not load the Vollgas engine worklet');
+    }
+  }
 }
 
 /**
@@ -96,6 +129,8 @@ export class PlayerEngine {
     this.eng = ENGINES[this.engKey];
     this.seed = seed;
     this.mode = 'pending';
+    this.workletTransport = null;
+    this._stopped = false;
     this.boost = 0;
     this._lastTh = 0;
 
@@ -181,6 +216,7 @@ export class PlayerEngine {
       },
     };
     const attach = () => {
+      if (this._stopped) return;
       try {
         const node = new AudioWorkletNode(ctx, 'vollgas-engine', opts);
         node.connect(this.exIn, 0);
@@ -197,15 +233,16 @@ export class PlayerEngine {
         this._startFallback();
       }
     };
-    this.readyPromise = ctx.audioWorklet.addModule(engineWorkletUrl())
-      .then(attach).catch(() => this._startFallback());
+    this.readyPromise = loadEngineWorklet(ctx)
+      .then((transport) => { this.workletTransport = transport; attach(); })
+      .catch(() => this._startFallback());
   }
 
   /* No worklet (ancient browser, or a CSP that will not have a Blob URL):
      drive the same post chain from a PeriodicWave oscillator instead. Less
      alive, still the right engine. */
   _startFallback() {
-    if (this.mode === 'worklet' || this.mode === 'wave') return;
+    if (this._stopped || this.mode === 'worklet' || this.mode === 'wave') return;
     const ctx = this.ctx;
     this.wave = new WaveEngine(ctx, this.exIn, this.eng, { level: 0.55 });
     this.mode = 'wave';
@@ -297,7 +334,9 @@ export class PlayerEngine {
   }
 
   stop() {
+    this._stopped = true;
     if (this.node) { try { this.node.port.postMessage({ t: 'stop' }); } catch (e) { /* gone */ } }
+    if (this.wave) this.wave.silence();
   }
 }
 
