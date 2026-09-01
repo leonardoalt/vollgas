@@ -25,13 +25,22 @@ export function makeCarMaterials(envMap) {
   const peel = flakeNormal();
   peel.repeat.set(9, 15);
 
+  /* Gloss is deliberately below a showroom finish.
+
+     At clearcoatRoughness 0.055 the lacquer is very nearly a mirror, and with
+     the environment at 1.18 the sky lands on a flank as a small, near-white
+     streak. On a curved panel that streak sweeps as the car turns and reads as
+     glare rather than as paint. Roughening the lacquer spreads the same energy
+     over a wider band and drops its peak, and pulling the environment back
+     under 1 stops it blowing out; the second specular lobe that keeps paint
+     from looking like plastic is still there, just calmer. */
   const paintBase = (hex, metal, rough) => ({
     color: hex,
     metalness: metal,
     roughness: rough,
-    envMap, envMapIntensity: 1.18,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.055,
+    envMap, envMapIntensity: 0.86,
+    clearcoat: 0.82,
+    clearcoatRoughness: 0.13,
     clearcoatNormalMap: peel,
     clearcoatNormalScale: new THREE.Vector2(0.085, 0.085),
   });

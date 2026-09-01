@@ -250,7 +250,7 @@ RECIPE.kombi = { ...WAGON_EU };
    An unmarked patrol car is an ordinary saloon or estate — that is the whole
    point of one — so they share bodies with the traffic and the player's cars
    rather than having anything special of their own. The earlier note in
-   HANDOFF.md said the pack did not fit them; that was read off the broken
+   An earlier note claimed the pack did not fit them; that was read off the broken
    wheel measurement fixed in Phase A.
 
    `zivi_limo` reuses the sedan the `m5` is built from. That is not laziness:

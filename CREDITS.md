@@ -394,7 +394,7 @@ bogie on twinned tyres.
   director was already asking `buildTruck` for.
 * No badges, no marque. The title is "Truck", the author's description names
   no manufacturer, and nothing is modelled in the middle of the grille where a
-  badge would go — see `dev/shots/after-lorry-front.png`. This is a cleaner
+  badge would go. This is a cleaner
   case than the estate below, where the author's own description named the car.
 * **Not an articulated lorry.** The rig is called a Sattelzug in the source and
   the physics is a 38 t artic's, but this model is a rigid box lorry: the body
