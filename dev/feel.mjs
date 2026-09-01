@@ -50,6 +50,7 @@ const out = await page.evaluate(async () => {
   const { laneAssist } = await import('/src/vehicles.js');
   const { PLAYER_CARS } = await import('/src/carFactory.js');
   const R2D = 180 / Math.PI;
+  const angle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
   /* ---------------------------------------------------------------- rigging */
   g.hud.drawTacho = () => {}; g.hud.drawRadar = () => {};
@@ -82,8 +83,17 @@ const out = await page.evaluate(async () => {
   const SITE = survey();
 
   /** One physics step with a real keyboard key held, and a speed controller on
-      the pedals so a lateral test is not also an acceleration test. */
+      the pedals so a lateral test is not also an acceleration test.
+
+      `opts.pin` pins u to a fixed offset at the TOP of the step, which turns
+      the road into an infinitely wide test track. That is legitimate: u is a
+      pure *output* of the lateral state, and feeds back only through the
+      offroad/barrier checks. Without it, an open-loop steer test at 200 km/h
+      puts the car into a Stahlschutzplanke inside a second and you end up
+      measuring a crash rather than a step response. Pinned before the step,
+      never after, so the barrier clamp never runs at all. */
   function stepWith(p, dt, key, holdV, opts = {}) {
+    if (opts.pin !== undefined) { p.u = opts.pin; p.offroad = false; p.scrape = 0; }
     g.input.keys.clear();
     if (key) g.input.keys.add(key);
     g.input.update(dt);
@@ -108,22 +118,30 @@ const out = await page.evaluate(async () => {
   }
 
   /* Settle the car so the test starts from a genuinely steady state. */
-  function settle(p, holdV, secs = 2.5, dt = 1 / 100) {
-    for (let i = 0; i < secs / dt; i++) stepWith(p, dt, null, holdV);
+  function settle(p, holdV, secs = 2.5, dt = 1 / 100, pin) {
+    for (let i = 0; i < secs / dt; i++) stepWith(p, dt, null, holdV, { pin });
   }
 
   /* ================================================== 1. step steer response
-     Full lock right held for 3 s at 200 km/h on a straight, then released. */
+     A sub-limit steer step — 0.28 of lock, about half of what the tyres will
+     take — held for 3 s at 200 km/h on a straight, then released.
+
+     Sub-limit on purpose. Full lock always over-drives the front axle (that is
+     what steerLock() is tuned to do), so a full-lock test measures tyre
+     saturation, not the yaw response. The classic rise/overshoot/settling
+     numbers only mean anything in the responsive part of the range. The
+     keyboard's actual full-lock behaviour is test 2. */
   function stepSteer(id) {
     const p = useCar(id);
     const dt = 1 / 100, V = 200 / 3.6;
+    const AMP = 0.28;
     place(p, SITE.straight, LANES[0], V);
-    settle(p, V);
+    settle(p, V, 2.5, dt, LANES[0]);
 
     const tr = [];
     const N = Math.round(3.0 / dt), M = Math.round(2.5 / dt);
     for (let i = 0; i < N + M; i++) {
-      stepWith(p, dt, i < N ? 'd' : null, V);
+      stepWith(p, dt, null, V, { pin: LANES[0], steer: i < N ? AMP : 0 });
       tr.push({
         t: +(i * dt).toFixed(3),
         cmd: +g.input.steer.toFixed(4),
@@ -135,6 +153,13 @@ const out = await page.evaluate(async () => {
         ar: +(p.slipR * R2D).toFixed(3),
         roll: +(p.roll * R2D).toFixed(3),
         vy: +p.vy.toFixed(3),
+        /* psi is right-positive, rotation.y is left-positive. Compare the
+           rendered nose with the actual velocity vector so a sign mismatch
+           can never masquerade as "handling feel" again. */
+        noseTravel: +(Math.abs(angle(
+          angle(sample(p.s).head - p.mesh.rotation.y)
+          - angle(p.psi + Math.atan2(p.vy, Math.max(0.1, p.v)))
+        )) * R2D).toFixed(3),
       });
     }
     const on = tr.slice(0, N);
@@ -143,6 +168,7 @@ const out = await page.evaluate(async () => {
     const ss = tail.reduce((a, x) => a + x.r, 0) / tail.length;
     const ssAy = tail.reduce((a, x) => a + x.ay, 0) / tail.length;
     const ssRoll = tail.reduce((a, x) => a + x.roll, 0) / tail.length;
+    const ssNoseTravel = tail.reduce((a, x) => a + x.noseTravel, 0) / tail.length;
 
     const at = (frac) => {
       const want = ss * frac;
@@ -167,6 +193,7 @@ const out = await page.evaluate(async () => {
       car: id,
       ss_yaw_deg_s: +ss.toFixed(3), ss_ay_g: +ssAy.toFixed(3),
       ss_roll_deg: +ssRoll.toFixed(3), ss_delta_deg: +tail[0].delta.toFixed(2),
+      ss_nose_travel_error_deg: +ssNoseTravel.toFixed(2),
       rise10_90_s: at(0.1) !== null && at(0.9) !== null ? +(at(0.9) - at(0.1)).toFixed(3) : null,
       t90_s: at(0.9),
       overshoot_pct: +(((peak - ss) / Math.abs(ss)) * 100).toFixed(1),
@@ -186,7 +213,10 @@ const out = await page.evaluate(async () => {
     const p = useCar(id);
     const dt = 1 / 100, V = 250 / 3.6;
     place(p, SITE.straight, LANES[0], V);
-    settle(p, V);
+    settle(p, V, 2.5, dt, LANES[0]);
+    /* From here u runs free — a lane change is exactly a test of where the car
+       ends up — but the straight is 1600 m of zero curvature and the car has
+       the whole carriageway, so nothing touches a barrier. */
     const u0 = p.u;
     const tr = [];
     const seq = [['d', 0.9], ['a', 0.9], [null, 5.2]];
@@ -229,20 +259,22 @@ const out = await page.evaluate(async () => {
     const p = useCar(id);
     const dt = 1 / 100, V = kmh / 3.6;
     place(p, SITE.straight, LANES[1], V);
-    settle(p, V);
-    let peak = 0, peakAtF = 0, peakAtR = 0, bal = 0;
-    for (let i = 0; i < 9 / dt; i++) {
+    settle(p, V, 2.5, dt, LANES[1]);
+    let peak = 0, peakAtF = 0, peakAtR = 0, bal = 0, lockAtPeak = 0, atFull = 0;
+    for (let i = 0; i < 10 / dt; i++) {
       const steer = Math.min(1, i * dt / 6);        // 6 s to full lock
-      stepWith(p, dt, null, V, { steer });
+      stepWith(p, dt, null, V, { steer, pin: LANES[1] });
       if (Math.abs(p.aLat) > peak) {
         peak = Math.abs(p.aLat);
         peakAtF = Math.abs(p.slipF) * R2D; peakAtR = Math.abs(p.slipR) * R2D;
-        bal = p.balance;
+        bal = p.balance; lockAtPeak = steer;
       }
-      // let it run wide; the barrier logic would otherwise cap it
-      if (Math.abs(p.u) > 40) p.u = LANES[1];
+      if (steer >= 1) atFull = Math.abs(p.aLat);
     }
     return { car: id, kmh, peak_ay_g: +(peak / 9.81).toFixed(3),
+             at_full_lock_g: +(atFull / 9.81).toFixed(3),
+             lock_at_peak: +lockAtPeak.toFixed(2),
+             mu_g: +(p.ch.mu).toFixed(2),
              slipF_deg: +peakAtF.toFixed(2), slipR_deg: +peakAtR.toFixed(2),
              balance: +bal.toFixed(3) };
   }
@@ -254,7 +286,12 @@ const out = await page.evaluate(async () => {
     const p = useCar(id);
     const dt = 1 / 100, V = 300 / 3.6;
     place(p, SITE.tight - 900, LANES[0], V);
-    settle(p, V, 1.5);
+    /* Settle with the assist working, not hands-off: 900 m before the apex the
+       road is already turning, and a hands-off run-up just drifts off the
+       carriageway before the test starts. */
+    for (let i = 0; i < 1.5 / dt; i++) {
+      stepWith(p, dt, null, V, { steer: laneAssist(p, LANES[0]) });
+    }
     const tr = [];
     let maxAy = 0, maxOff = 0, dmg0 = p.damage, scrapes = 0;
     for (let i = 0; i < 26 / dt; i++) {
@@ -284,19 +321,17 @@ const out = await page.evaluate(async () => {
     const dt = 1 / 100, V = 200 / 3.6;
     const probe = (thr, brk) => {
       place(p, SITE.straight, LANES[1], V);
-      settle(p, V);
+      settle(p, V, 2.5, dt, LANES[1]);
       let steer = 0;
       // wind on until we are at about 0.75 g, holding speed
-      for (let i = 0; i < 4 / dt; i++) {
+      for (let i = 0; i < 5 / dt; i++) {
         if (Math.abs(p.aLat) < 0.75 * 9.81) steer = Math.min(1, steer + dt * 0.30);
-        stepWith(p, dt, null, V, { steer });
-        if (Math.abs(p.u) > 40) p.u = LANES[1];
+        stepWith(p, dt, null, V, { steer, pin: LANES[1] });
       }
       // now the probe input, same lock, for 1.2 s
       let bal = 0, ay = 0, ar = 0, af = 0;
       for (let i = 0; i < 1.2 / dt; i++) {
-        stepWith(p, dt, null, null, { steer, throttle: thr, brake: brk });
-        if (Math.abs(p.u) > 40) p.u = LANES[1];
+        stepWith(p, dt, null, null, { steer, throttle: thr, brake: brk, pin: LANES[1] });
         bal = p.balance; ay = p.aLat / 9.81; af = p.slipF * R2D; ar = p.slipR * R2D;
       }
       return { bal: +bal.toFixed(3), ay: +ay.toFixed(3),
@@ -319,7 +354,7 @@ const out = await page.evaluate(async () => {
       const p = useCar(id);
       const V = 250 / 3.6;
       place(p, SITE.straight, LANES[0], V);
-      settle(p, V, 2.5, dt);
+      settle(p, V, 2.5, dt, LANES[0]);
       const u0 = p.u, s0 = p.s;
       let peakAy = 0, peakR = 0;
       const seq = [['d', 0.9], ['a', 0.9], [null, 3.2]];
@@ -354,12 +389,15 @@ const out = await page.evaluate(async () => {
     const p = useCar(id);
     const dt = 1 / 100, V = 250 / 3.6;
     place(p, SITE.straight, LANES[0], V);
-    settle(p, V);
+    settle(p, V, 2.5, dt, LANES[0]);
     p.r = 8 / R2D;                  // 8 deg/s of yaw, hands off
     p.vy = 0;
     const tr = [];
+    /* u pinned: the point of the test is whether the TYRES damp the yaw, and a
+       car left yawing at 8 deg/s reaches a barrier in about a second, where the
+       scrape logic would damp it for them and fake a pass. */
     for (let i = 0; i < 5 / dt; i++) {
-      stepWith(p, dt, null, V);
+      stepWith(p, dt, null, V, { pin: LANES[0] });
       tr.push({ t: +(i * dt).toFixed(3), r: p.r * R2D, psi: p.psi * R2D, vy: p.vy });
     }
     const r0 = 8;
@@ -398,7 +436,7 @@ if (JSON_OUT) {
   const strip = (o) => { const { trace, ...rest } = o; return rest; };
   console.log('\nSITE', JSON.stringify(out.site));
 
-  console.log('\n=== 1. STEP STEER  (full lock right, 200 km/h, straight road) ===');
+  console.log('\n=== 1. STEP STEER  (28 % lock right, 200 km/h, straight road) ===');
   console.table(out.stepSteer.map(strip));
   console.log('\n=== 2. LANE CHANGE  (0.9 s right, 0.9 s left, hands off, 250 km/h) ===');
   console.table(out.laneChange.map(strip));
@@ -435,6 +473,8 @@ if (JSON_OUT) {
       `${s.car}: release decay to 10 % = ${s.release_to_10pct_s} s (want > 0.12: unwinds, does not snap)`);
     ok(s.roll_overshoot_pct > 1,
       `${s.car}: body roll overshoot = ${s.roll_overshoot_pct} % (want > 1: sprung, not algebraic)`);
+    ok(s.ss_nose_travel_error_deg < 6,
+      `${s.car}: rendered nose is ${s.ss_nose_travel_error_deg}° from travel (want < 6°: turns, not sideways drift)`);
   }
   for (const l of out.laneChange) {
     ok(l.yaw_sign_flips_after_release <= 3,

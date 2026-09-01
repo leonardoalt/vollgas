@@ -166,10 +166,14 @@ speed* so each car actually tops out where it should, rolling resistance, and
 gradient from the road profile. Gears have a 5 % hysteresis band and a shift
 torque cut.
 
-Laterally a bicycle model in track coordinates, with the steer angle clamped by a
-**friction circle** — so braking genuinely costs you cornering grip, and the 2.1 t
-estate runs wide where the 911 does not. Minimum corner radius on the route is
-815 m, which is 0.87 g at 300 km/h.
+The player uses a dynamic single-track model in track coordinates: separate
+front and rear slip angles and tyre forces, real yaw inertia, longitudinal load
+transfer, and a friction circle per axle. Braking therefore costs front cornering
+grip, power costs grip at the driven axle, and the rear-drive AMG can move its
+balance differently from the AWD estate. Steering passes through a rate-limited,
+self-aligning rack instead of snapping straight to the grip limit. Traffic and
+patrol cars retain the cheaper kinematic model. Minimum corner radius on the
+route is 815 m, which is 0.87 g at 300 km/h.
 
 ## Layout
 
@@ -186,6 +190,9 @@ src/
                  squaring up, which end is the nose, where the axles are, and
                  splitting merged wheels by connected component
   carModels.js   the glTF pipeline — load, strip, bake, fit, hand back a body
+  tyres.js       player chassis data, per-axle grip and steering-lock model
+  steering.js    dynamic steering rack and damped lane-keeping controller
+  suspension.js  sprung roll, pitch and heave responses
   world.js       carriageways with crossfall, StVO markings, Stahlschutzplanken,
                  signage and gantries, Engelbergtunnel, bridges, Baustelle,
                  services, slip roads, sky/light/fog

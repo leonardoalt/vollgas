@@ -394,7 +394,13 @@ export class Vehicle {
     }
 
     m.position.set(w.x, w.y + heave, w.z);
-    m.rotation.y = c.head + this.psi + (this.dir < 0 ? Math.PI : 0);
+    /* Track-space yaw is positive to the car's right, while THREE's positive
+       rotation.y turns local +Z to the left of the track. Convert between the
+       two conventions here. Using `+ psi` made the nose point left while the
+       physics moved a player steering right to the right, so every manoeuvre
+       looked like a sideways drift. `dir` reverses that conversion for an
+       oncoming vehicle. */
+    m.rotation.y = c.head - this.psi * this.dir + (this.dir < 0 ? Math.PI : 0);
     m.rotation.x = -Math.atan(c.grade) * this.dir + pitch * this.dir;
     m.rotation.z = roll * this.dir;
 

@@ -16,6 +16,25 @@ So the visual weight transfer is liked and must be preserved; the *lateral
 motion* is the problem. Balance figures (0–100, top speed, braking, police
 escape margins) must not drift.
 
+## Continuation after merging `main` (2026-09-01)
+
+- Synced local `main` to `origin/main` at `c832622` and merged it as `2f69799`.
+  The handling implementation merged automatically with the newer real-car
+  bodies; this handling-specific handoff won the only add/add conflict.
+- Found the reported "drifts left/right instead of turning" regression at the
+  rendering boundary. Physics uses positive `psi` for a right turn, while
+  THREE's positive `rotation.y` turns local +Z left. `sync()` added those two
+  angles, so the car moved right with its nose visibly pointing left. It now
+  converts conventions with `head - psi * dir`; the same correction also keeps
+  oncoming cars consistent.
+- Extended `dev/feel.mjs` to compare the rendered nose with the actual velocity
+  vector. All four player cars now pass at 0.98–1.25 degrees of ordinary tyre
+  sideslip (limit 6 degrees). The step-response and straight-line figures did
+  not change.
+- The harness fixes described below (pinned open-loop tests and a sub-limit
+  step steer) are now applied. The remaining feel-harness failures concern the
+  unfinished balance/lane-controller tuning, not the corrected visual yaw.
+
 ## Diagnosis — what is actually wrong in the old code
 
 All line references are to `src/vehicles.js` **before** my changes (commit
