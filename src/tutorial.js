@@ -143,22 +143,26 @@ export class Tutorial {
       this.flashArmed = true;
       this.game.enf.tutorialWarningsArmed = true;
       this.game.traffic.stageTutorialFlasher(p.s);
+      this.game.traffic.clearTutorialCameraSightline(cam.s, p.s);
       return;
     }
 
-    if (this.stage === 'approach-camera' && cam && cam.s - p.s < 82) {
-      this.stage = 'camera';
-      this.show({
-        step: 5,
-        title: t('tut.camera.title'),
-        body: t('tut.camera.body'),
-        target: { world: cam.mesh, size: 150 },
-        placement: 'bottom',
-        next: () => {
-          this.stage = 'await-camera-result';
-          this.objective(t('tut.camera.objective'));
-        },
-      });
+    if (this.stage === 'approach-camera' && cam) {
+      this.game.traffic.clearTutorialCameraSightline(cam.s, p.s);
+      if (cam.s - p.s < 82) {
+        this.stage = 'camera';
+        this.show({
+          step: 5,
+          title: t('tut.camera.title'),
+          body: t('tut.camera.body'),
+          target: { world: cam.mesh, size: 150 },
+          placement: 'bottom',
+          next: () => {
+            this.stage = 'await-camera-result';
+            this.objective(t('tut.camera.objective'));
+          },
+        });
+      }
       return;
     }
 
@@ -208,16 +212,15 @@ export class Tutorial {
       return;
     }
 
-    if (this.stage === 'measure-resolved' && p.s >= this.route.freeSignS - 85) {
+    if (this.stage === 'measure-resolved' && p.s >= this.route.freeSignS) {
       this.game.enf.dismissTutorialCop();
       this.stage = 'free';
-      const sign = this.game.world.regimeSignAt(this.route.freeSignS);
       this.show({
         step: 7,
         title: t('tut.free.title'),
         body: t('tut.free.body'),
-        target: sign ? { world: sign, size: 118 } : { dom: '#hud-limit' },
-        placement: 'bottom',
+        target: { dom: '#hud-limit' },
+        placement: 'left',
         next: () => {
           this.stage = 'free-drive';
           this.freeT = 0;

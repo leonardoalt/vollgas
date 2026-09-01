@@ -52,6 +52,11 @@ await page.evaluate(() => {
   g.step(0.05);
 });
 await expectStage('camera', '05-camera');
+assert.equal(await page.evaluate(() => {
+  const g = window.__game;
+  return g.traffic.same.every(v => v.s < g.player.s - 25
+    || v.s > g.enf.tutorialCamera.s + 220);
+}), true);
 await next();
 await page.evaluate(() => {
   const g = window.__game;
@@ -84,14 +89,16 @@ assert.equal(await page.evaluate(() => window.__game.tutorial.target?.element?.i
 await next();
 await page.evaluate(() => {
   const g = window.__game;
-  g.player.s = g.tutorial.route.freeSignS - 82;
+  g.player.s = g.tutorial.route.freeSignS + 2;
   g._camPos.set(0, 0, 0); g._camLook.set(0, 0, 0);
   g.step(0.05);
 });
 await expectStage('free', '07-unrestricted');
 assert.equal(await page.evaluate(() => {
   const g = window.__game;
-  return g.tutorial.route.freeSignS > g.player.s && g.hud._lastLimit === '80|false';
+  return g.player.s >= g.tutorial.route.freeSignS
+    && g.hud._lastLimit === 'Infinity|false'
+    && g.tutorial.target?.dom === '#hud-limit';
 }), true);
 await next();
 await page.evaluate(() => {

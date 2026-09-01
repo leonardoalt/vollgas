@@ -598,9 +598,7 @@ function buildSigns(mats) {
     let tex = null, w = 0.90;
     if (sec.limit == null) tex = sec.advice ? signAdvice(130) : signEndAll();
     else tex = signLimit(sec.limit);
-    const regime = vergeSign(mats, tex, w, s, RIGHT, 1.70);
-    regime.userData.regimeS = s;
-    group.add(regime);
+    group.add(vergeSign(mats, tex, w, s, RIGHT, 1.70));
     // repeater on the far carriageway, facing the other way
     const mirror = vergeSign(mats, tex, w, s + 30, -RIGHT, 1.70);
     mirror.rotation.y += Math.PI;
@@ -1080,11 +1078,8 @@ export function buildWorld(scene, renderer, onProgress = () => {}) {
   const tunnelRange = tunnel.userData.range || [-1, -1];
 
   return {
-    env, sun, mats, signs,
+    env, sun, mats,
     tunnelRange,
-    regimeSignAt(s) {
-      return signs.children.find(x => Math.abs((x.userData.regimeS ?? -99999) - s) < 2) || null;
-    },
     /** call each frame with the player's arc length */
     update(dt, playerPos) {
       // keep the shadow frustum on the car
