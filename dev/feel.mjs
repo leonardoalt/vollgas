@@ -31,6 +31,8 @@
     11  brake + steer   hard braking must retain a useful, stable turn response
     12  slalom reversal full left → full right → full left while lifting off;
                         heading and travel direction must follow promptly
+    13  lift-off turn    full steering immediately after releasing throttle
+                        must remain as controllable as throttle-on steering
 
    Usage: node dev/feel.mjs [url] [--json]
    ========================================================================== */
@@ -582,6 +584,35 @@ const out = await page.evaluate(async () => {
     };
   }
 
+  /* ====================================================== 13. lift-off turn
+     Compare the same full-left input with W held and immediately after W is
+     released. Seed throttle at one so the coast run contains the real pedal
+     ramp-down/load-transfer transient rather than starting already settled. */
+  function liftOffTurn(id) {
+    const p = useCar(id);
+    const dt = 1 / 100, V = 200 / 3.6;
+    function run(lift) {
+      place(p, SITE.straight, LANES[0], V);
+      g.input.throttle = 1;
+      let maxR = 0, maxBeta = 0, maxPsi = 0;
+      for (let i = 0; i < 2.5 / dt; i++) {
+        stepWith(p, dt, lift ? 'a' : ['a', 'w'], null, { pin: LANES[0] });
+        maxR = Math.max(maxR, Math.abs(p.r));
+        maxBeta = Math.max(maxBeta, Math.abs(Math.atan2(p.vy, Math.max(0.1, p.v))));
+        maxPsi = Math.max(maxPsi, Math.abs(p.psi));
+      }
+      return { yaw: maxR * R2D, beta: maxBeta * R2D, psi: maxPsi * R2D,
+               exit: p.v * 3.6 };
+    }
+    const on = run(false), lift = run(true);
+    return { car: id,
+      throttle_yaw_deg_s: +on.yaw.toFixed(1), liftoff_yaw_deg_s: +lift.yaw.toFixed(1),
+      throttle_sideslip_deg: +on.beta.toFixed(1), liftoff_sideslip_deg: +lift.beta.toFixed(1),
+      throttle_heading_deg: +on.psi.toFixed(1), liftoff_heading_deg: +lift.psi.toFixed(1),
+      liftoff_exit_kmh: Math.round(lift.exit),
+    };
+  }
+
   const cars = ['turbo', 'm5', 'rs6', 'amg'];
   return {
     site: { straight_s: SITE.straight, tight_s: SITE.tight,
@@ -598,6 +629,7 @@ const out = await page.evaluate(async () => {
     policeStop: policeStop(),
     brakeSteer: cars.map(brakeSteer),
     slalomReversal: cars.map(slalomReversal),
+    liftOffTurn: cars.map(liftOffTurn),
   };
 });
 
@@ -641,6 +673,9 @@ if (JSON_OUT) {
 
   console.log('\n=== 12. SLALOM REVERSAL  (left → right → lift-off left, 150 km/h) ===');
   console.table(out.slalomReversal);
+
+  console.log('\n=== 13. LIFT-OFF TURN  (full left after releasing throttle, 200 km/h) ===');
+  console.table(out.liftOffTurn);
 
   /* -------------------------------------------------------------- verdicts */
   const fail = [];
@@ -736,6 +771,14 @@ if (JSON_OUT) {
       `${s.car}: lift-off +12 to -12 deg takes ${s.left_12deg_liftoff_s} s (want < 1.8)`);
     ok(s.peak_sideslip_liftoff_deg < 8,
       `${s.car}: lift-off reversal sideslip = ${s.peak_sideslip_liftoff_deg} deg (want < 8)`);
+  }
+  for (const l of out.liftOffTurn) {
+    ok(l.liftoff_yaw_deg_s < 30,
+      `${l.car}: lift-off turn yaw = ${l.liftoff_yaw_deg_s} deg/s (want < 30: no spin)`);
+    ok(l.liftoff_heading_deg < 50,
+      `${l.car}: lift-off turn heading = ${l.liftoff_heading_deg} deg (want < 50: no safety clamp)`);
+    ok(l.liftoff_sideslip_deg < 6,
+      `${l.car}: lift-off turn sideslip = ${l.liftoff_sideslip_deg} deg (want < 6)`);
   }
   console.log(`\n${fail.length ? fail.length + ' FAILURES' : 'ALL CHECKS PASS'}`);
 }

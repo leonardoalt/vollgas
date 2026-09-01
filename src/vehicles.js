@@ -562,6 +562,23 @@ export class Player extends Vehicle {
       const rWant = this._counterDir * 0.62; // 35.5 deg/s during correction
       this.r += (rWant - this.r) * (1 - Math.exp(-dt * 7));
     }
+    else if (stopping <= 0.02 && this.v > 15 && thr < 0.85) {
+      /* Lift-off removes the rear-axle load that was stabilising a full-lock
+         turn. The simplified load/tyre model exaggerated that transient from
+         an ordinary tightening line into 40-54 deg/s spins. Road-car ESC
+         follows the steering request while coasting and rejects only that
+         excess yaw; counter-steering above deliberately takes precedence. */
+      const v = Math.max(6, this.v);
+      const gripR = Math.min(0.30, this.ch.ayMax / v);
+      let rWant = (v / this.ch.L) * Math.tan(this.steerAngle);
+      if (rWant > gripR) rWant = gripR;
+      else if (rWant < -gripR) rWant = -gripR;
+      const authority = (0.85 - thr) / 0.85;
+      this.r += (rWant - this.r) * (1 - Math.exp(-dt * (6 + 6 * authority)));
+      const hardR = Math.min(0.34, gripR * 1.25);
+      if (this.r > hardR) this.r = hardR;
+      else if (this.r < -hardR) this.r = -hardR;
+    }
     /* The saturating tyre curve deliberately permits under/oversteer, but a
        road car with ESC must not retain 20 degrees of body sideslip through a
        direction reversal. That made the nose point left while the velocity

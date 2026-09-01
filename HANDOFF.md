@@ -34,8 +34,8 @@ escape margins) must not drift.
 - The harness fixes described below (pinned open-loop tests and a sub-limit
   step steer) are now applied. The remaining feel-harness failures concern the
   unfinished balance/lane-controller tuning, not the corrected visual yaw.
-- Follow-up play testing found five control issues and they are now covered by
-  feel-harness cases 8–12. The tests use the actual full keyboard combinations,
+- Follow-up play testing found six control issues and they are now covered by
+  feel-harness cases 8–13. The tests use the actual full keyboard combinations,
   not the old 30 % direct-steer approximation. At 150 km/h, full steering plus
   handbrake peaks at 10.2–10.3 deg/s yaw and 26.0–26.8 degrees heading; full
   steering plus footbrake peaks at 13.6 deg/s and 37.0–39.2 degrees. Neither
@@ -53,6 +53,12 @@ escape margins) must not drift.
   is established. Across all cars, the first reversal now takes 1.27–1.73 s,
   the lift-off reversal 1.17–1.36 s, and peak lift-off sideslip is 4.9–5.0
   degrees. Normal sub-limit handling remains car-dependent.
+- Case 13 isolates full steering immediately after releasing full throttle at
+  200 km/h. Before the fix, lift-off rear unloading produced 25–54 deg/s yaw,
+  4.3–5.7 degrees sideslip and 52–60 degrees heading, versus only 17–24 deg/s
+  yaw with throttle held. High-speed coasting now has its own steering-following
+  ESC path (counter-steering takes precedence): lift-off yaw is 16.5–17.9
+  deg/s, sideslip 3.3–3.4 degrees and heading 31.9–33.2 degrees across all cars.
 
 ## Diagnosis — what is actually wrong in the old code
 
@@ -161,12 +167,13 @@ Rejected alternatives:
 - **`src/suspension.js`** — `Spring` (damped harmonic oscillator, sub-stepped so
   `w·h < 0.4`; stable at the 0.05 s dt clamp) and the `BODY` frequencies
   (roll 1.30 Hz/ζ0.44, pitch 1.55 Hz/ζ0.52, heave 1.20 Hz/ζ0.38).
-- **`dev/feel.mjs`** — the feel harness. 12 sub-tests with numeric verdicts:
+- **`dev/feel.mjs`** — the feel harness. 13 sub-tests with numeric verdicts:
   step steer, keyboard lane change, skidpad, tightest-corner-flat-out, balance
   (throttle/brake shift), timestep robustness (1/120…1/20), stability (yaw kick),
   full-key handbrake/steering, steering reversal, police stop, full-key
-  footbrake/steering and a left/right/lift-off slalom reversal. Drives the real
-  `Player` through the real `input.js` with real key presses.
+  footbrake/steering, a left/right/lift-off slalom reversal and an isolated
+  high-speed lift-off turn. Drives the real `Player` through the real `input.js`
+  with real key presses.
 
 ### `src/vehicles.js`
 
@@ -313,9 +320,9 @@ node dev/drive.mjs         "http://localhost:5203/" /tmp/out 200 fast
 ## Risk register / do-not-merge-blind
 
 - `dev/feel.mjs` now has valid pinned open-loop cases and full-key braking
-  regressions. It still reports 17 known WIP failures in the unrelated residual
-  lane drift, sweeper controller/scrape, AMG throttle-balance and timestep
-  lane-change checks. Cases 8–12 all pass; do not mistake the total failure
+  regressions. It still reports 14 known WIP failures in the unrelated residual
+  lane drift, sweeper controller/lane-error, brake-balance and timestep
+  lane-change checks. Cases 8–13 all pass; do not mistake the total failure
   count for a braking or steering-reversal regression.
 - The handbrake's full longitudinal retardation is preserved, but only 45 % of
   that force is charged to the simplified rear friction circle and its extra
